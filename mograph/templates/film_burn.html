@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="transition">
+<meta name="vedit:blend" content="screen">
+<meta name="vedit:duration" content="1.2">
+<meta name="vedit:cover-at" content="0.55">
+<meta name="vedit:description" content="Celluloid burn: hot orange flare blooms from an edge to blown-out white at the cut, then cools away. Screen-blended.">
+<meta name="vedit:params" content="origin: [x, y] in 0..1; hot: CSS color; warm: CSS color">
+<script src="../lib/runtime.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #000; }
+  #burn, #core, #flash { position: absolute; inset: 0; }
+</style></head>
+<body><div id="burn"></div><div id="core"></div><div id="flash"></div>
+<script>
+  const P = VM.params({ origin: [0.85, 0.2], hot: '#fff3d6', warm: '#ff5a00', deep: '#a10a00' });
+  const ox = P.origin[0] * 100, oy = P.origin[1] * 100;
+  const burn = document.getElementById('burn'), core = document.getElementById('core'), flash = document.getElementById('flash');
+  flash.style.background = P.hot;
+  VM.onFrame((t) => {
+    const D = VM.duration, C = D * (0.55 / 1.2); // cover point (matches vedit:cover-at)
+    const grow = VM.prog(t, 0, C, 'inQuad');
+    const fade = VM.prog(t, C, D - C, 'outCubic');
+    const jit = 4 * VM.noise(t * 18, 2);
+    const r1 = 10 + grow * 160 + jit, r2 = r1 * 0.55, r3 = r1 * 0.25;
+    burn.style.background = `radial-gradient(circle at ${ox}% ${oy}%, ${P.hot} 0%, ${P.warm} ${r3}%, ${P.deep} ${r2}%, transparent ${r1}%)`;
+    core.style.background = `radial-gradient(circle at ${ox + jit}% ${oy - jit}%, ${P.hot} 0%, transparent ${r2 * 0.8}%)`;
+    core.style.opacity = VM.clamp(grow * 1.4);
+    flash.style.opacity = VM.prog(t, C - D * 0.12, D * 0.12, 'inQuad') * (1 - fade);
+    burn.style.opacity = 1 - fade;
+    core.style.opacity = (1 - fade) * VM.clamp(grow * 1.4);
+  });
+</script></body></html>

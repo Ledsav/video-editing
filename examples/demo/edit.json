@@ -1,0 +1,65 @@
+{
+  "brief": {
+    "prompt": "Make a 25s teaser that starts calm and curious, turns tense in the middle and lands on a warm, hopeful ending. Bold titles, music driven, punchy transitions.",
+    "logline": "A journey from wonder through doubt to hope.",
+    "audience": "social / trailer",
+    "duration_target": 25
+  },
+  "output": {"path": "out/demo.mp4", "width": 1280, "height": 720, "fps": 30, "crf": 20},
+  "sources": {
+    "city": "../../projects/demo/media/city.mp4",
+    "forest": "../../projects/demo/media/forest.mp4",
+    "fractal": "../../projects/demo/media/fractal.mp4",
+    "life": "../../projects/demo/media/life.mp4",
+    "bars": "../../projects/demo/media/bars.mp4"
+  },
+  "story": {
+    "arc": [
+      {"at": "0%",   "label": "wonder",     "tone": "dreamy_pastel", "intensity": 0.9},
+      {"at": "35%",  "label": "doubt",      "tone": "cold_thriller", "intensity": 1.0},
+      {"at": "65%",  "label": "crisis",     "tone": "bleach_bypass", "intensity": 0.9},
+      {"at": "100%", "label": "hope",       "tone": "golden_hour",   "intensity": 1.0}
+    ],
+    "look": {"letterbox": 2.39}
+  },
+  "sync": {"beats": "../../projects/demo/music/bed.beats.json", "to": "beats", "every": 2},
+  "timeline": [
+    {"id": "open",   "color": "#000000", "duration": 1.0},
+    {"id": "c1", "source": "forest", "in": 0.5, "out": 4.5, "motion": "push_in",
+     "transition": {"type": "dip_black", "duration": 0.8}},
+    {"id": "c2", "source": "city", "in": 1.0, "out": 4.5, "motion": {"type": "ken_burns", "from": [0.3, 0.4], "to": [0.7, 0.6]},
+     "transition": "light_leak"},
+    {"id": "c3", "source": "fractal", "in": 0, "out": 3.5, "motion": "drift",
+     "transition": {"type": "mograph", "template": "shape_wipe", "duration": 0.9, "params": {"colors": ["#0b4a5e", "#7fd1e8", "#0d0d0d"]}, "sfx": "whoosh"}},
+    {"id": "c4", "source": "life", "in": 0, "out": 3.0, "motion": {"type": "shake", "amount": 0.01},
+     "transition": "glitch"},
+    {"id": "c5", "source": "bars", "in": 0, "out": 2.5, "speed": 1.5, "mute": true,
+     "transition": "zoom_punch"},
+    {"id": "c6", "source": "city", "in": 4.0, "out": 7.8, "motion": "pull_out",
+     "transition": {"type": "mograph", "template": "ink_spread", "duration": 1.2, "params": {"color": "#1a0f05"}}},
+    {"id": "c7", "source": "forest", "in": 3.0, "out": 7.5, "motion": "push_in",
+     "transition": {"type": "whip_left"}}
+  ],
+  "text": [
+    {"text": "EVERY JOURNEY", "style": "title", "at_clip": "c1", "offset": 0.6, "duration": 2.6},
+    {"text": "begins with a question", "style": "quote", "at_clip": "c2", "offset": 0.4, "duration": 2.5, "position": "bottom"},
+    {"text": "WHAT IF IT *FAILS*?", "style": "kinetic", "at_clip": "c4", "offset": 0.2, "duration": 2.4, "accent_color": "#ff3b30", "size": 0.14},
+    {"text": "Chapter II", "style": "chapter", "at_clip": "c3", "offset": 0.3, "duration": 2.5}
+  ],
+  "graphics": [
+    {"template": "lower_third", "at_clip": "c2", "offset": 1.0, "duration": 1.9, "params": {"name": "Ana Ríos", "role": "Explorer", "accent": "#f2b27a"}},
+    {"template": "shape_burst", "at_clip": "c5", "offset": 0.0, "params": {"colors": ["#ffffff", "#ff3b30"]}},
+    {"template": "title_card", "at_clip": "c7", "offset": 1.0, "duration": 3.4, "params": {"title": "HOPE\nREMAINS", "subtitle": "coming soon", "accent": "#ffb347", "size": 18}}
+  ],
+  "effects": [
+    {"type": "flash", "at_clip": "c7", "offset": -0.05, "duration": 0.2, "intensity": 0.5}
+  ],
+  "music": [
+    {"path": "../../projects/demo/music/bed.wav", "start": 0, "volume": 0.9, "fade_in": 1.0, "fade_out": 2.5, "duck": true}
+  ],
+  "sfx": [
+    {"name": "riser", "at_clip": "c5", "offset": 0.0, "volume": 0.6},
+    {"name": "boom", "at_clip": "c7", "offset": 0.0, "volume": 0.7}
+  ],
+  "audio": {"loudness": -14}
+}

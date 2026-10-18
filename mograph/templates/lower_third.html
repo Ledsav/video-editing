@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="lower_third">
+<meta name="vedit:duration" content="5.0">
+<meta name="vedit:description" content="Name + role lower third: an accent bar wipes in, the name slides out from behind it, the role fades up; reverses out.">
+<meta name="vedit:params" content="name; role; accent: CSS color; plate: CSS color or 'none'; color: text color; side: left|right">
+<script src="../lib/runtime.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: transparent; }
+  #lt { position: absolute; bottom: 11vh; display: flex; align-items: stretch; }
+  #bar { width: 0.7vh; margin-right: 1.8vh; transform-origin: center bottom; }
+  #txt { overflow: hidden; padding: 1.1vh 2.2vh 1.3vh 0; }
+  #name { font: 700 4.6vh 'Montserrat', 'Inter', sans-serif; letter-spacing: 0.01em; white-space: nowrap; }
+  #role { font: 500 2.3vh 'Montserrat', 'Inter', sans-serif; letter-spacing: 0.25em; text-transform: uppercase; margin-top: 0.6vh; white-space: nowrap; }
+  #plate { position: absolute; inset: 0; transform-origin: left center; z-index: -1; }
+</style></head>
+<body><div id="lt"><div id="plate"></div><div id="bar"></div><div id="txt"><div id="name"></div><div id="role"></div></div></div>
+<script>
+  const P = VM.params({ name: 'Jane Doe', role: 'Director', accent: '#ffcc00', plate: 'rgba(0,0,0,0.45)', color: '#ffffff', side: 'left' });
+  const lt = document.getElementById('lt'), bar = document.getElementById('bar'), name = document.getElementById('name'),
+        role = document.getElementById('role'), plate = document.getElementById('plate'), txt = document.getElementById('txt');
+  name.textContent = P.name; role.textContent = P.role; bar.style.background = P.accent; role.style.color = P.accent;
+  name.style.color = P.color; plate.style.background = P.plate === 'none' ? 'transparent' : P.plate;
+  if (P.side === 'right') { lt.style.right = '7vw'; lt.style.flexDirection = 'row-reverse'; bar.style.margin = '0 0 0 1.8vh'; txt.style.padding = '1.1vh 0 1.3vh 2.2vh'; txt.style.textAlign = 'right'; plate.style.transformOrigin = 'right center'; }
+  else lt.style.left = '7vw';
+  const dir = P.side === 'right' ? 1 : -1;
+  VM.onFrame((t) => {
+    const D = VM.duration, out = D - 0.6;
+    const pb = VM.prog(t, 0, 0.45, 'outExpo') * (1 - VM.prog(t, out + 0.3, 0.3, 'inExpo'));
+    bar.style.transform = `scaleY(${pb})`;
+    const pn = VM.prog(t, 0.2, 0.7, 'outExpo') - VM.prog(t, out, 0.4, 'inExpo');
+    name.style.transform = `translateX(${dir * (1 - VM.clamp(pn)) * 105}%)`;
+    role.style.opacity = VM.prog(t, 0.55, 0.5) * (1 - VM.prog(t, out - 0.1, 0.25));
+    role.style.transform = `translateY(${(1 - VM.prog(t, 0.55, 0.6, 'outCubic')) * 60}%)`;
+    plate.style.transform = `scaleX(${VM.prog(t, 0.15, 0.6, 'outExpo') * (1 - VM.prog(t, out + 0.15, 0.35, 'inExpo'))})`;
+  });
+</script></body></html>

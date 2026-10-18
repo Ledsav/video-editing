@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="overlay">
+<meta name="vedit:duration" content="1.0">
+<meta name="vedit:description" content="Radial anime-style speed lines that flicker around the frame edges, focusing attention on the center. For impacts, drops and hero moments.">
+<meta name="vedit:params" content="color: CSS color; density: lines count; inner: clear radius 0..1; seed: int; opacity: 0..1">
+<script src="../lib/runtime.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: transparent; } canvas { position: absolute; inset: 0; }</style>
+</head><body><canvas id="cv"></canvas>
+<script>
+  const P = VM.params({ color: '#ffffff', density: 90, inner: 0.42, seed: 4, opacity: 0.85 });
+  const cv = document.getElementById('cv'), W = cv.width = innerWidth, H = cv.height = innerHeight, g = cv.getContext('2d');
+  const R = Math.hypot(W, H) / 2;
+  VM.onFrame((t) => {
+    const D = VM.duration; g.clearRect(0, 0, W, H);
+    const rnd = VM.rand(P.seed * 7919 + Math.floor(t * 30));
+    const env = VM.prog(t, 0, 0.08) * (1 - VM.prog(t, D - 0.25, 0.25));
+    g.fillStyle = P.color; g.globalAlpha = P.opacity * env;
+    for (let i = 0; i < P.density; i++) {
+      const a = rnd() * Math.PI * 2, w = (0.002 + rnd() * 0.012) * Math.PI;
+      const r0 = R * (P.inner + rnd() * 0.25);
+      g.beginPath();
+      g.moveTo(W / 2 + Math.cos(a) * r0, H / 2 + Math.sin(a) * r0);
+      g.lineTo(W / 2 + Math.cos(a - w) * R * 1.1, H / 2 + Math.sin(a - w) * R * 1.1);
+      g.lineTo(W / 2 + Math.cos(a + w) * R * 1.1, H / 2 + Math.sin(a + w) * R * 1.1);
+      g.closePath(); g.fill();
+    }
+  });
+</script></body></html>

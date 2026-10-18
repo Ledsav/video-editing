@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vedit"
+version = "0.1.0"
+description = "Prompt-driven video editing: story-aware color grading, text, music and motion graphics on top of ffmpeg."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "pillow>=10.0"]
+
+[project.optional-dependencies]
+transcribe = ["faster-whisper>=1.0"]
+fonts = ["fonttools>=4.40", "brotli>=1.1"]
+
+[project.scripts]
+vedit = "vedit.cli:main"
+
+[tool.setuptools]
+packages = ["vedit"]

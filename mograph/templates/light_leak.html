@@ -1,0 +1,36 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="overlay">
+<meta name="vedit:blend" content="screen">
+<meta name="vedit:duration" content="1.6">
+<meta name="vedit:description" content="Warm film light leak drifting across the frame. Rendered on black and screen-blended. Pair with a crossfade for nostalgic or dreamy transitions.">
+<meta name="vedit:params" content="colors: [3 CSS colors]; strength: 0..1.5; seed: int">
+<script src="../lib/runtime.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #000; }
+  .blob { position: absolute; border-radius: 50%; mix-blend-mode: screen; filter: blur(6vh); }
+</style></head>
+<body>
+<script>
+  const P = VM.params({ colors: ['#ff6a00', '#ff2e63', '#ffd27a'], strength: 1.0, seed: 3 });
+  const rnd = VM.rand(P.seed);
+  const blobs = P.colors.concat(P.colors.slice(0, 1)).map((c, i) => {
+    const el = document.createElement('div');
+    el.className = 'blob';
+    const size = 70 + rnd() * 60;
+    el.style.width = size + 'vw'; el.style.height = size * 0.8 + 'vw';
+    el.style.background = `radial-gradient(closest-side, ${c}, transparent)`;
+    document.body.appendChild(el);
+    return { el, size, y: -20 + rnd() * 60, speed: 0.6 + rnd() * 0.8, phase: rnd() * 6.28, dir: i % 2 ? -1 : 1 };
+  });
+  VM.onFrame((t) => {
+    const D = VM.duration, p = t / D;
+    const env = Math.sin(Math.PI * VM.clamp(p)) ** 1.5 * P.strength;
+    blobs.forEach((b, i) => {
+      const x = b.dir > 0 ? VM.lerp(-b.size, 100, p * b.speed + 0.15 * i) : VM.lerp(100, -b.size, p * b.speed + 0.1 * i);
+      const y = b.y + 8 * VM.noise(t * 1.3 + b.phase, i);
+      b.el.style.transform = `translate(${x}vw, ${y}vh)`;
+      b.el.style.opacity = VM.clamp(env * (0.65 + 0.35 * VM.noise(t * 6 + i, 9)), 0, 1);
+    });
+  });
+</script></body></html>
