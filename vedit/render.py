@@ -58,7 +58,7 @@ def _motion_chain(c: Clip, W: int, H: int, inp: str, out: str) -> list[str]:
     D = max(c.duration, 1e-3)
     typ = m.get("type", "none")
     a = float(m.get("amount", {"push_in": 0.08, "pull_out": 0.08, "ken_burns": 0.12, "shake": 0.012,
-                               "drift": 0.025}.get(typ, 0.1)))
+                               "drift": 0.025, "crash_zoom": 0.2}.get(typ, 0.1)))
     u = f"clip(t/{D:.4f},0,1)"
     e = {"linear": u, "in": f"pow({u},2)", "out": f"(1-pow(1-{u},2))"}.get(m.get("ease", "smooth"),
                                                                        f"({u}*{u}*(3-2*{u}))")
@@ -78,6 +78,14 @@ def _motion_chain(c: Clip, W: int, H: int, inp: str, out: str) -> list[str]:
         z = f"(1+{a}*{e})" if m.get("zoom", "in") == "in" else f"(1+{a}*(1-{e}))"
         px = f"(({fx * 2 - 1}) + ({(tx - fx) * 2})*{e})"
         py = f"(({fy * 2 - 1}) + ({(ty - fy) * 2})*{e})"
+    elif typ == "crash_zoom":
+        # fast in-camera style zoom into a subject, then hold (Kill Bill / Tarantino crash zoom)
+        at = float(m.get("at", 0.0))
+        dur = max(float(m.get("duration", 0.22)), 1.0 / 30)
+        p = f"(1-pow(1-clip((t-{at})/{dur},0,1),3))"
+        z = f"(1+{a}*{p})"
+        fx, fy = m.get("focus", [0.5, 0.45])
+        px, py = f"({fx * 2 - 1})", f"({fy * 2 - 1})"
     elif typ in ("shake", "drift"):
         f = float(m.get("frequency", 1.0 if typ == "shake" else 0.15))
         z = f"(1+{a * 2.2})"
@@ -294,8 +302,9 @@ def _audio_graph(plan: Plan, seg_audio: list[Path | None], first_input: int, inp
         inputs += ["-i", path]
         vol = 10 ** (float(m["gain_db"]) / 20) if "gain_db" in m else float(m.get("volume", 0.8))
         fi, fo = float(m.get("fade_in", 0.5)), float(m.get("fade_out", 2.0))
-        steps.append(f"[{idx}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=start={src_in:.3f}:"
-                     f"duration={dur:.3f},asetpts=PTS-STARTPTS,volume={vol:.4f},afade=t=in:st=0:d={fi:.3f},"
+        extra = f"{m['filter']}," if m.get("filter") else ""
+        steps.append(f"[{idx}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=start={src_in:.3f},"
+                     f"asetpts=PTS-STARTPTS,{extra}atrim=duration={dur:.3f},volume={vol:.4f},afade=t=in:st=0:d={fi:.3f},"
                      f"afade=t=out:st={max(dur - fo, 0):.3f}:d={fo:.3f},adelay={round(start * 1000)}:all=1[mu{idx}]")
         (duck_bus if m.get("duck", True) else free_bus).append(f"[mu{idx}]")
         idx += 1

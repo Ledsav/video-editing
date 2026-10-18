@@ -86,7 +86,8 @@ Export any look as a LUT for other software: `bin/vedit lut teal_orange --out te
 - `speed` 0.5 = slow motion, 2 = double speed (audio pitch-preserved).
 - `fit`: `cover` crops to fill, `contain` letterboxes, `blur_fill` puts vertical footage on a blurred copy of itself.
 - `crop`: normalized source region (reframing), applied before fit.
-- `motion`: `push_in`, `pull_out`, `pan_left|right|up|down`, `ken_burns`, `shake` (handheld energy), `drift` (subtle float). `amount` = zoom fraction.
+- `motion`: `push_in`, `pull_out`, `pan_left|right|up|down`, `ken_burns`, `shake` (handheld energy), `drift` (subtle float),
+  `crash_zoom` (fast zoom into `focus` [x, y] over `duration` s starting `at` s, then hold; the Tarantino crash zoom). `amount` = zoom fraction.
 - `transition` is the transition INTO this clip from the previous one.
 
 ### Transitions
@@ -148,6 +149,7 @@ and `effect`/`overlay` to layer extras.
 {"path": "music/track.mp3", "start": 0, "in": 12.0, "duration": 45, "volume": 0.8, "gain_db": -3,
  "fade_in": 1.0, "fade_out": 3.0, "duck": true, "loop": false}
 ```
+- `filter`: optional raw ffmpeg audio filter applied to the track, e.g. `"atempo=0.9,lowpass=f=2000"` for a softer, slower, distant feel.
 - `in` skips into the track (start on the drop); `start` is when it enters the edit (or `at_clip`).
 - `duck: true` compresses the music under clip audio (dialogue). Mute b-roll (`"mute": true`) so it does not trigger ducking.
 - Multiple tracks can overlap (crossfade them with fades).
