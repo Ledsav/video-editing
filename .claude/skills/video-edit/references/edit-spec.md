@@ -43,6 +43,8 @@ Common sizes: 16:9 `1920x1080`, vertical/Reels/TikTok `1080x1920`, square `1080x
   `hold` = keep previous look until this keyframe, `snap` = switch immediately).
 - Each clip is graded from the arc value at its first frame to the value at its last frame,
   so the color shifts continuously *inside* clips too.
+- Keyframes can be anchored to clips instead of times: `{"at_clip": "ch4", "offset": 0, "tone": ...}`
+  (`"anchor": "end"` to use the clip's end), so the arc follows re-timing.
 - `look` holds global grade overrides applied to every keyframe, plus `letterbox` (aspect ratio of bars).
 - A clip's own `"grade"` replaces the arc for that clip: `"grade": "noir"` or
   `{"tone": "noir", "intensity": 0.8, "overrides": {...}}`. Use `{"overrides": {...}}` alone
@@ -116,7 +118,9 @@ and `effect`/`overlay` to layer extras.
  "subtext": "second smaller line", "box": "#000000@0.5", "uppercase": true}
 ```
 
-- Timing: `start` / `end` / `duration`, or `at_clip` + `offset` (+ `"anchor": "end"`). Default length: the anchored clip, else 3 s.
+- Timing: `start` / `end` / `duration`, or `at_clip` + `offset` (+ `"anchor": "end"`). End at another
+  clip with `"end_at_clip": "ch3"` (its start; `"end_anchor": "end"` for its end, `"end_offset"` to nudge).
+  The same timing keys work for `graphics`, `effects`, `music` and `sfx`. Default length: the anchored clip, else 3 s.
 - `*word*` renders in `accent_color`.
 - Styles: `title`, `subtitle`, `lower_third`, `caption`, `social`, `kinetic`, `quote`, `chapter`, `credit`, `handwritten`.
 - Positions: `center top bottom left right lower_left lower_right upper_left upper_right` or `[x, y]` normalized. `nudge` shifts by a fraction of the frame.
@@ -166,5 +170,6 @@ centered words with the current word highlighted. Disable per clip with `"captio
 
 `"sync": {"beats": "music/track.beats.json", "to": "beats|downbeats", "every": 2, "max_shift": 0.4, "offset": 0}`
 - Every cut moves to the nearest beat (within `max_shift`) when the source has the footage.
-- `"beats": N` on a clip makes it last exactly N beats; `"snap": false` opts a clip out.
+- `"beats": N` on a clip makes it last exactly N beats; `"snap": false` opts a clip out;
+  `"from_clip": "c12"` snaps only that clip and the ones after it (e.g. when the beat-driven music starts mid-edit).
 - The beat file must be relative to the music's placement: if the music starts at 0 with `in: 0`, beat times are output times. Otherwise set `offset` (= music start − music in).

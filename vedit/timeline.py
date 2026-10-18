@@ -180,7 +180,11 @@ class Plan:
 
     def resolve_span(self, item: dict, default_duration: float = 3.0) -> tuple[float, float]:
         start = self.resolve_time(item)
-        if "end" in item:
+        if "end_at_clip" in item:
+            ref = item["end_at_clip"]
+            clip = self.clips[ref] if isinstance(ref, int) else self.clip_by_id(ref)
+            end = (clip.end if item.get("end_anchor") == "end" else clip.start) + parse_time(item.get("end_offset", 0.0))
+        elif "end" in item:
             end = parse_time(item["end"], self.duration)
         elif "duration" in item:
             end = start + parse_time(item["duration"], self.duration)
@@ -298,7 +302,7 @@ def _ease(mode: str, x: float) -> float:
     return x * x * (3 - 2 * x)  # smooth
 
 
-def build_arc(spec: dict, total: float) -> list[dict]:
+def build_arc(spec: dict, total: float, clips: list | None = None) -> list[dict]:
     story = spec.get("story", {}) or {}
     raw_arc = story.get("arc") or []
     if not raw_arc and story.get("tone"):
@@ -308,7 +312,15 @@ def build_arc(spec: dict, total: float) -> list[dict]:
     arc = []
     for kf in raw_arc:
         kf = dict(kf)
-        t = parse_time(kf.get("at", 0), total)
+        if kf.get("at_clip") is not None and clips:
+            ref = kf["at_clip"]
+            match = [c for c in clips if c.id == ref] if not isinstance(ref, int) else [clips[ref]]
+            if not match:
+                raise VeditError(f"story.arc: no clip with id {ref!r}")
+            c = match[0]
+            t = (c.end if kf.get("anchor") == "end" else c.start) + parse_time(kf.get("offset", 0.0))
+        else:
+            t = parse_time(kf.get("at", 0), total)
         overrides = {**base_overrides, **(kf.get("overrides") or {})}
         overrides.update({k: v for k, v in kf.items() if k in G.NEUTRAL})
         params = G.look(kf.get("tone") or story.get("tone"), float(kf.get("intensity", 1.0)), overrides)
@@ -432,7 +444,7 @@ def build_plan(spec_or_path, base_dir: Path | None = None) -> Plan:
 
     total_frames = clips[-1].start_frame + clips[-1].frames
     total = total_frames / fps
-    arc = build_arc(spec, total)
+    arc = build_arc(spec, total, clips)
     for c in clips:
         if c.transition.kind == "xfade":
             c.transition.boundary = c.start + c.transition.duration / 2
@@ -483,7 +495,15 @@ def _snap_to_beats(clips: list[Clip], beats: list[float], sync: dict, fps: float
     max_shift = float(sync.get("max_shift", 0.75 * period))
     every = max(1, int(sync.get("every", 1)))
     grid = beats[::every]
+    first = 0
+    if sync.get("from_clip") is not None:
+        ids = [c.id for c in clips]
+        if sync["from_clip"] not in ids:
+            raise VeditError(f"sync.from_clip: no clip with id {sync['from_clip']!r}")
+        first = ids.index(sync["from_clip"])
     for i, c in enumerate(clips[:-1]):
+        if i < first:
+            continue
         nxt = clips[i + 1]
         half = nxt.transition.overlap_frames / 2
         natural = c.start + (c.frames - half) / fps

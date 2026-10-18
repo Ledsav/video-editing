@@ -182,11 +182,15 @@ def collect_overlays(plan: Plan, work: Path, W: int, H: int, pool: ThreadPoolExe
         jobs.append((path, g.get("params", {}), start, end - start, g.get("blend", meta.get("blend", "normal")),
                      float(g.get("opacity", 1.0))))
     futures = []
+    submitted: dict = {}  # identical graphics (same file, params, length) render once
     for path, params, start, dur, blend, opacity in jobs:
         if dur <= 0:
             continue
-        futures.append((pool.submit(mograph.render, path, work / "graphics", width=W, height=H, fps=fps,
-                                    duration=dur, params=params), start, dur, blend, opacity))
+        key = (str(path), json.dumps(params, sort_keys=True), round(dur, 4))
+        if key not in submitted:
+            submitted[key] = pool.submit(mograph.render, path, work / "graphics", width=W, height=H, fps=fps,
+                                         duration=dur, params=params)
+        futures.append((submitted[key], start, dur, blend, opacity))
     return [Overlay(f.result(), s, d, b, o) for f, s, d, b, o in futures]
 
 
@@ -278,7 +282,7 @@ def _audio_graph(plan: Plan, seg_audio: list[Path | None], first_input: int, inp
         info = probe(path)
         start = plan.resolve_time(m, "start", 0.0)
         src_in = parse_time(m.get("in", 0.0))
-        if "duration" in m or "end" in m:
+        if "duration" in m or "end" in m or "end_at_clip" in m:
             _, end = plan.resolve_span(m)
         else:
             end = total
@@ -344,11 +348,10 @@ def _audio_graph(plan: Plan, seg_audio: list[Path | None], first_input: int, inp
         steps.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={total:.4f}[aout]")
         return "[aout]"
     pre = mix(buses, "amaster")
-    chain = [f"apad=whole_dur={total:.4f}", f"atrim=duration={total:.4f}"]
-    lufs = audio_cfg.get("loudness", -14)
-    if lufs is not None:
-        chain.append(f"loudnorm=I={float(lufs)}:TP=-1.5:LRA=11")
-    chain += ["aresample=48000", "alimiter=limit=0.95:level=disabled", f"atrim=duration={total:.4f}"]
+    # No dynamic loudness normalisation here: it would flatten deliberate dynamics (quiet
+    # intro, loud climax). The whole mix gets one static gain afterwards (normalize_loudness).
+    chain = [f"apad=whole_dur={total:.4f}", f"atrim=duration={total:.4f}",
+             "aresample=48000", "alimiter=limit=0.95:level=disabled", f"atrim=duration={total:.4f}"]
     steps.append(f"{pre}{','.join(chain)}[aout]")
     return "[aout]"
 
@@ -459,5 +462,31 @@ def render(spec_path: str | Path, *, preview: bool = False, output: str | Path |
     ffmpeg([*inputs, "-filter_complex_script", graph, "-map", "[vout]", "-map", aout,
             *venc, "-r", fps, "-c:a", "aac", "-b:a", out_cfg.get("audio_bitrate", "256k"),
             "-ar", "48000", "-movflags", "+faststart", "-frames:v", plan.total_frames, out_path])
+    lufs = (plan.spec.get("audio") or {}).get("loudness", -14)
+    if lufs is not None:
+        normalize_loudness(out_path, float(lufs), out_cfg.get("audio_bitrate", "256k"))
     log(f"done: {out_path}")
     return out_path
+
+
+def measure_loudness(path: Path) -> float | None:
+    import re
+    import subprocess
+    proc = subprocess.run(["ffmpeg", "-hide_banner", "-nostdin", "-i", str(path), "-vn",
+                           "-af", "ebur128=framelog=quiet", "-f", "null", "-"], capture_output=True, text=True)
+    m = re.findall(r"I:\s+(-?[\d.]+) LUFS", proc.stderr)
+    return float(m[-1]) if m else None
+
+
+def normalize_loudness(path: Path, target: float, bitrate: str) -> None:
+    """Bring the whole mix to `target` LUFS with one static gain (keeps the edit's dynamics)."""
+    measured = measure_loudness(path)
+    if measured is None or measured < -70 or abs(measured - target) < 0.5:
+        return
+    gain = target - measured
+    tmp = path.with_name(path.stem + ".loud" + path.suffix)
+    ffmpeg(["-i", path, "-map", "0", "-c:v", "copy", "-af",
+            f"volume={gain:.2f}dB,alimiter=limit=0.89:attack=3:release=60:level=disabled",
+            "-c:a", "aac", "-b:a", bitrate, "-movflags", "+faststart", tmp])
+    tmp.replace(path)
+    log(f"loudness {measured:.1f} -> {target:.1f} LUFS (static gain {gain:+.1f} dB)")

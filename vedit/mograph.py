@@ -6,7 +6,9 @@ graphic: the bundled templates, or custom pages written for a specific edit.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import threading
 from pathlib import Path
 
 from .timeline import template_meta, template_path
@@ -48,11 +50,11 @@ def render(html: Path, out_dir: Path, *, width: int, height: int, fps: float, du
     if out.exists():
         return out
     out_dir.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(".tmp.mov")
+    tmp = out.with_name(f"{out.stem}.{os.getpid()}.{threading.get_ident()}.tmp.mov")
     log(f"rendering motion graphic {html.name} ({duration:.2f}s @ {width}x{height})")
     run(["node", RENDERER, "--html", html, "--out", tmp, "--width", width, "--height", height,
          "--fps", fps, "--duration", f"{duration:.4f}", "--params", json.dumps(params)], capture=True)
-    tmp.rename(out)
+    tmp.replace(out)
     return out
 
 
