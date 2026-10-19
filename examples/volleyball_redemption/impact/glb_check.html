@@ -1,0 +1,35 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="vedit:kind" content="scene"><meta name="vedit:duration" content="1"><meta name="vedit:libs" content="three">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="loadglb.js"></script><style>html,body{margin:0;background:#fff;width:100vw;height:100vh;overflow:hidden}</style></head><body>
+<script type="module">
+  const P = VM.params({ file: 'mocap/smash2.glb', cols: 6, rows: 2 });
+  window.VM_READY = new Promise(async (res) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const g = await loadGLB(GLTFLoader, P.file);
+    const root = g.scene, clip = g.animations[0], mixer = new THREE.AnimationMixer(root); mixer.clipAction(clip).play();
+    const W = innerWidth, H = innerHeight, cv = document.createElement('canvas'); cv.width = W; cv.height = H; document.body.appendChild(cv);
+    const c = cv.getContext('2d'); c.font = '16px sans-serif';
+    const pos = (n) => { const o = root.getObjectByName(n); return new THREE.Vector3().setFromMatrixPosition(o.matrixWorld); };
+    const links = []; root.traverse((o) => { if (o.parent && o.parent !== root && o.parent.name && o.parent.name !== 'mocap_root') links.push([o.parent.name, o.name]); });
+    const N = P.cols * P.rows, cw = W / P.cols, ch = H / P.rows;
+    // side view: look along the athlete's left-right axis (from frame 0)
+    mixer.setTime(0); root.updateMatrixWorld(true);
+    const side = pos('RShoulder').sub(pos('LShoulder')).setY(0).normalize(), fwd = new THREE.Vector3(0, 1, 0).cross(side).normalize();
+    const all = []; for (let i = 0; i < N; i++) { mixer.setTime(clip.duration * i / (N - 1)); root.updateMatrixWorld(true); const pts = {}; root.traverse((o) => { if (o.name) pts[o.name] = new THREE.Vector3().setFromMatrixPosition(o.matrixWorld); }); all.push(pts); }
+    const xs = all.flatMap((p) => Object.values(p).map((v) => v.dot(fwd))), mnx = Math.min(...xs), mxx = Math.max(...xs);
+    const ys = all.flatMap((p) => Object.values(p).map((v) => v.y)), mny = Math.min(...ys), mxy = Math.max(...ys);
+    const s = Math.min(ch / (mxy - mny + 0.3), 9999) * 0.85;
+    all.forEach((pts, i) => {
+      const ox = (i % P.cols) * cw, oy = Math.floor(i / P.cols) * ch, hx = pts.Hip.dot(fwd);
+      c.strokeStyle = '#ccc'; c.beginPath(); c.moveTo(ox, oy + ch - 10 - (0 - mny) * s); c.lineTo(ox + cw, oy + ch - 10 - (0 - mny) * s); c.stroke();
+      for (const [a, b] of links) { if (!pts[a] || !pts[b]) continue;
+        c.strokeStyle = b.startsWith('R') || b.startsWith('Right') ? '#d22' : b.startsWith('L') || b.startsWith('Left') ? '#22d' : '#111'; c.lineWidth = 4;
+        const P2 = (v) => [ox + cw / 2 + (v.dot(fwd) - hx) * s, oy + ch - 10 - (v.y - mny) * s];
+        c.beginPath(); c.moveTo(...P2(pts[a])); c.lineTo(...P2(pts[b])); c.stroke(); }
+      c.fillStyle = '#555'; c.fillText(`${(clip.duration * i / (N - 1)).toFixed(2)}s  hip y=${pts.Hip.y.toFixed(2)}m`, ox + 6, oy + 18);
+    });
+    console.error('CLIP ' + clip.name + ' ' + clip.duration.toFixed(2) + 's tracks=' + clip.tracks.length + ' floor(min y)=' + mny.toFixed(2) + ' top=' + mxy.toFixed(2));
+    res(); } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); res(); } });
+</script></body></html>

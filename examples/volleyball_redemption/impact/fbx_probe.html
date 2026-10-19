@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="vedit:kind" content="scene"><meta name="vedit:duration" content="1"><meta name="vedit:libs" content="three">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="loadglb.js"></script></head><body>
+<script type="module">
+  const P = VM.params({ file: 'mocap/smash2.fbx' });
+  window.VM_READY = new Promise(async (res) => { try {
+    const THREE = await import('three');
+    const { FBXLoader } = await import(VEDIT.libs.three_addons + 'loaders/FBXLoader.js');
+    const o = new FBXLoader().parse(await readBinary(P.file), '');
+    let bones = [], meshes = [], skinned = 0;
+    o.traverse((n) => { if (n.isBone) bones.push(n.name); if (n.isMesh) { meshes.push(n.name + ':' + n.geometry.attributes.position.count); if (n.isSkinnedMesh) skinned++; } });
+    console.error('BONES ' + bones.length + ' ' + JSON.stringify(bones));
+    console.error('MESHES ' + JSON.stringify(meshes) + ' skinned=' + skinned);
+    console.error('ANIMS ' + JSON.stringify(o.animations.map((a) => ({ name: a.name, dur: +a.duration.toFixed(3), tracks: a.tracks.length, keys: a.tracks.slice(0, 1).map((t) => t.times.length) }))));
+    if (o.animations[0]) console.error('TRACKS ' + JSON.stringify(o.animations[0].tracks.slice(0, 80).map((t) => t.name + ':' + t.times.length)));
+    const b = new THREE.Box3().setFromObject(o); console.error('BOX ' + JSON.stringify([b.min, b.max]));
+    res(); } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); res(); } });
+</script></body></html>

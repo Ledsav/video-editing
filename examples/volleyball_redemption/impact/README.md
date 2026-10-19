@@ -19,3 +19,16 @@ The ball (`styles/mikasa.js`, `v200wRefMaps`) is matched to a V200W product phot
 Player model (default in `spike_seq.html`): "RIGGED ANIME MALE CHARACTER-1" by Ret.ouchs (Sketchfab), CC BY-SA 4.0.
 Not committed: download it from Sketchfab and save it as `impact/anime_male.glb`. The scene credits it on screen.
 `intro_ngu.html` is the NEVER GIVE UP intro; `spike_full.json` assembles intro + rendered spike + outro (same template, faster params).
+
+## Converting Cinema 4D mocap (.c4d) without Cinema 4D
+
+`tools/c4d_anim.py` reads joint animation straight from a `.c4d` file (reverse-engineered: big-endian typed
+stream, UTF-16BE names, CKey records with rational times and f64 values) and writes a standard glTF `.glb`
+(skeleton + baked animation, upright, metres). Rotation convention: Ry(-H)·Rx(-P)·Rz(-B), left-handed → right-handed
+by mirroring Z (chosen by minimising foot slide over all 96 order/sign/handedness combinations).
+
+    python3 tools/c4d_anim.py "8-Smash-Take1.c4d" impact/mocap/8-Smash-Take1.glb
+
+`impact/glb_check.html` draws the converted skeleton as a stick-figure contact sheet for verification.
+Tested on the Motion Cast "Volley-ball" pack (Cinema 4D 2024); geometry/materials are not extracted.
+The mocap and ball model are licensed assets and are not committed.
