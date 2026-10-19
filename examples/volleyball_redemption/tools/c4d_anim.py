@@ -151,6 +151,8 @@ def to_glb(order, joints, out_path, clip_name='take', parents=PARENTS_MC):
     for f in range(0, nf, max(1, nf // 12)):
         W = fk(f); feet = [(W['LFoot'][i] + W['RFoot'][i]) / 2 for i in range(3)]; ups.append(norm(sub(W['Head'], feet)))
     up = norm([sum(u[i] for u in ups) for i in range(3)])
+    k = max(range(3), key=lambda i: abs(up[i]))                 # the scene's vertical is an exact axis: athletes lean, floors don't
+    up = [0.0, 0.0, 0.0]; up[k] = 1.0 if sum(u[k] for u in ups) > 0 else -1.0
     W0, W1 = fk(0), fk(nf // 2)
     fwd = sub(W1['Hip'], W0['Hip']); d = sum(fwd[i] * up[i] for i in range(3)); fwd = [fwd[i] - d * up[i] for i in range(3)]
     if math.sqrt(sum(c * c for c in fwd)) < 1e-3:                           # standing clip: face the toes
