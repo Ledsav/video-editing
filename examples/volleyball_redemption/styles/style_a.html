@@ -1,0 +1,49 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="1">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Style A, Arena Cinematic: dark arena, volumetric light, photoreal 3D Mikasa ball, film grain, Anton + Montserrat.">
+<script src="../scenes/common.js"></script>
+<script src="mikasa.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #070b14; } #stage { position: absolute; inset: 0; }</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ moment: 'fall' });
+  const Y = MIKASA.yellow, BL = MIKASA.blue, INK = '#070b14', CR = '#f3ede2', RED = '#e8473a';
+  const stage = document.getElementById('stage');
+  const place = (m, x, y) => { m.canvas.style.left = `calc(${x}vw - ${m.canvas.style.width} / 2)`; m.canvas.style.top = `calc(${y}vh - ${m.canvas.style.height} / 2)`; stage.appendChild(m.canvas); };
+  window.VM_READY = (async () => {
+    if (P.moment === 'fall') {
+      el('div', { position: 'absolute', left: 0, right: 0, top: '78vh', bottom: 0, background: 'linear-gradient(#141b2e, #070b14)' });
+      el('div', { position: 'absolute', left: 0, right: 0, top: '78vh', height: '0.25vmin', background: 'rgba(243,237,226,0.35)' });
+      el('div', { position: 'absolute', left: '50vw', top: '-10vh', width: '80vmin', height: '100vh', marginLeft: '-40vmin', clipPath: 'polygon(44% 0, 56% 0, 100% 100%, 0 100%)',
+        background: 'linear-gradient(rgba(255,236,205,0.16), rgba(255,236,205,0.02))', mixBlendMode: 'screen' });
+      el('div', { position: 'absolute', left: 0, right: 0, top: '14vh', textAlign: 'center', font: `400 46vmin ${DISPLAY}`, lineHeight: 1, color: 'transparent', WebkitTextStroke: `0.35vmin ${RED}` }, stage, 'LOST');
+      el('div', { position: 'absolute', left: 0, right: 0, top: '9vh', textAlign: 'center', font: `600 2vmin ${TEXT}`, letterSpacing: '0.6em', color: CR, opacity: 0.8 }, stage, 'MATCH POINT &nbsp;·&nbsp; 24 : 25');
+      el('div', { position: 'absolute', left: '50vw', top: '78vh', width: '30vmin', height: '4vmin', margin: '-2vmin 0 0 -15vmin', borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(0,0,0,.8), transparent)' });
+      const m = await createMikasa({ size: 17, key: [-1, 4, 3], rim: 0xe8473a, rimI: 1.5 }); place(m, 50, 70);
+      m.canvas.style.filter = 'saturate(0.8) brightness(0.9)';
+      VM.onFrame(() => m.render({ rx: 0.6, ry: 0.9, rz: 0.3 }));
+    } else if (P.moment === 'grind') {
+      stage.style.background = Y;
+      el('div', { position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 50% 45%, rgba(255,255,255,0.25), rgba(0,0,0,0.18))' });
+      el('div', { position: 'absolute', left: 0, right: 0, top: '24vh', textAlign: 'center', font: `400 36vmin ${DISPLAY}`, color: INK, lineHeight: 1 }, stage, '05:00');
+      el('div', { position: 'absolute', left: 0, right: 0, top: '66vh', textAlign: 'center', font: `700 2.6vmin ${TEXT}`, letterSpacing: '0.6em', color: INK }, stage, 'AM &nbsp;·&nbsp; FIRST ONE IN');
+      const m = await createMikasa({ size: 20, key: [-3, 3, 4], rim: 0xffffff, rimI: 0.6 }); place(m, 85, 80);
+      VM.onFrame(() => m.render({ rx: 0.4, ry: 2.2, rz: -0.2 }));
+    } else {
+      el('div', { position: 'absolute', inset: 0, background: 'linear-gradient(#1a2148 0%, #5c3550 48%, #f0a043 72%, #1a1520 72%, #0c0b12 100%)' });
+      el('div', { position: 'absolute', left: '50vw', top: '72vh', width: '150vmin', height: '150vmin', margin: '-75vmin 0 0 -75vmin', borderRadius: '50%', mixBlendMode: 'screen',
+        background: `radial-gradient(closest-side, ${Y}bb, #ff8a3d44 40%, transparent)` });
+      const wrap = el('div', { position: 'absolute', left: 0, right: 0, top: 0, height: '72vh', overflow: 'hidden' });
+      const m = await createMikasa({ size: 44, key: [0, 1, 5], keyColor: 0xffe2b0, rim: 0xffb547, rimI: 2 });
+      m.canvas.style.left = 'calc(50vw - 22vmin)'; m.canvas.style.top = 'calc(76vh - 22vmin)'; wrap.appendChild(m.canvas);
+      el('div', { position: 'absolute', left: '50vw', top: '72vh', width: '34vmin', height: '24vh', marginLeft: '-17vmin', filter: 'blur(2.5vmin)', background: `linear-gradient(${Y}88, transparent)` });
+      el('div', { position: 'absolute', left: 0, right: 0, top: '12vh', textAlign: 'center', font: `400 25vmin ${DISPLAY}`, color: CR, lineHeight: 0.95, textShadow: '0 1vmin 4vmin rgba(0,0,0,.35)' }, stage, 'RISE AGAIN.');
+      el('div', { position: 'absolute', left: 0, right: 0, top: '45vh', textAlign: 'center', font: `600 2.1vmin ${TEXT}`, letterSpacing: '0.5em', color: CR }, stage, 'EVERY SET &nbsp;·&nbsp; EVERY POINT &nbsp;·&nbsp; EVERY DAY');
+      VM.onFrame(() => m.render({ rx: 0.3, ry: 0.4, rz: 0.1 }));
+    }
+    addFinish({ grain: 0.09, vignette: 0.55 });
+  })();
+</script></body></html>

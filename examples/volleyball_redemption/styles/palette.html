@@ -1,0 +1,42 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="1">
+<meta name="vedit:libs" content="three">
+<script src="../scenes/common.js"></script>
+<script src="mikasa.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #f3efe7; } #stage { position: absolute; inset: 0; }</style></head>
+<body><div id="stage"></div>
+<script>
+  const INK = '#0a1020';
+  const sw = [
+    ['MIKASA BLUE', '#1347A8', 'Determination · the team · primary field', 30],
+    ['MIKASA YELLOW', '#FFD21F', 'Hope · the comeback · the win', 20],
+    ['NIGHT INK', '#0A1020', 'The arena · the struggle · dominant dark', 30],
+    ['CHALK', '#F3EDE2', 'Type · court lines · paper', 14],
+    ['LOSS RED', '#E8473A', 'Only the lost point (one scene)', 3],
+    ['DOUBT STEEL', '#8EA0C4', 'The ball drained of colour · rain', 3],
+  ];
+  el('div', { position: 'absolute', left: '6vw', top: '7vh', font: `600 1.9vmin ${TEXT}`, letterSpacing: '0.45em', color: INK }, undefined, 'COLOUR DESIGN &nbsp;·&nbsp; BUILT FROM THE BALL');
+  sw.forEach(([n, c, role], i) => {
+    const x = 6 + i * 14.8;
+    el('div', { position: 'absolute', left: `${x}vw`, top: '14vh', width: '13.4vw', height: '26vh', background: c, border: c === '#F3EDE2' ? '1px solid #ccc' : 'none' });
+    el('div', { position: 'absolute', left: `${x}vw`, top: '42vh', width: '13.4vw', font: `700 1.7vmin ${TEXT}`, letterSpacing: '0.12em', color: INK }, undefined, n);
+    el('div', { position: 'absolute', left: `${x}vw`, top: '45.5vh', width: '13.4vw', font: `500 1.6vmin ${TEXT}`, color: '#555' }, undefined, c);
+    el('div', { position: 'absolute', left: `${x}vw`, top: '48.5vh', width: '13vw', font: `400 1.5vmin ${TEXT}`, lineHeight: 1.35, color: '#333' }, undefined, role);
+  });
+  // proportion bar
+  el('div', { position: 'absolute', left: '6vw', top: '57vh', font: `600 1.5vmin ${TEXT}`, letterSpacing: '0.3em', color: INK }, undefined, 'SCREEN SHARE ACROSS THE FILM');
+  let acc = 0; sw.forEach(([n, c, , p]) => { el('div', { position: 'absolute', top: '60.5vh', height: '2.4vh', left: `${6 + acc * 0.88}vw`, width: `${p * 0.88}vw`, background: c }); acc += p; });
+  // story arc
+  el('div', { position: 'absolute', left: '6vw', top: '68vh', font: `600 1.5vmin ${TEXT}`, letterSpacing: '0.3em', color: INK }, undefined, 'COLOUR ARC (SCENE BY SCENE)');
+  const arc = [['01 DREAM', ['#0A1020', '#1347A8', '#FFD21F']], ['02 FALL', ['#0A1020', '#E8473A', '#1347A8']], ['03 DOUBT', ['#0A1020', '#8EA0C4', '#8EA0C4']],
+               ['04 GRIND', ['#FFD21F', '#0A1020', '#1347A8']], ['05 RETURN', ['#1347A8', '#0A1020', '#FFD21F']], ['06 SPIKE', ['#FFD21F', '#1347A8', '#F3EDE2']], ['07 LESSON', ['#1347A8', '#FFD21F', '#F3EDE2']]];
+  arc.forEach(([n, cs], i) => {
+    const x = 6 + i * 12.6;
+    cs.forEach((c, k) => el('div', { position: 'absolute', left: `${x}vw`, top: `${71.5 + [0, 7, 9.6][k]}vh`, width: '11.6vw', height: `${[7, 2.6, 1.2][k]}vh`, background: c }));
+    el('div', { position: 'absolute', left: `${x}vw`, top: '83.5vh', font: `600 1.4vmin ${TEXT}`, letterSpacing: '0.15em', color: INK }, undefined, n);
+  });
+  el('div', { position: 'absolute', left: '6vw', top: '88vh', width: '88vw', font: `400 1.6vmin ${TEXT}`, color: '#444', lineHeight: 1.5 }, undefined,
+    'Night ink and loss red own the first act. The ball loses its colour in the doubt. Yellow floods in at 05:00 and the grind is played on yellow. Blue and yellow together (the full Mikasa ball) arrive with the win.');
+</script></body></html>
