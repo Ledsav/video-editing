@@ -13,7 +13,7 @@
     {
       "id": "spike",
       "html": "impact/spike_seq.html",
-      "duration": 11
+      "duration": 12
     }
   ],
   "music": [
@@ -21,7 +21,7 @@
       "path": "music/rise.wav",
       "start": 0,
       "in": 0,
-      "duration": 11,
+      "duration": 12,
       "volume": 0.5,
       "fade_in": 0.5,
       "fade_out": 1.5
@@ -31,82 +31,82 @@
     {
       "name": "tick",
       "start": 0.15,
-      "volume": 0.5
-    },
-    {
-      "name": "whoosh",
-      "start": 1.7,
       "volume": 0.4
     },
     {
       "name": "whoosh",
-      "start": 2.5,
-      "volume": 0.45
+      "start": 1.2,
+      "volume": 0.35
     },
     {
       "name": "whoosh",
-      "start": 3.45,
+      "start": 2.55,
       "volume": 0.5
     },
     {
       "name": "riser",
-      "start": 3.87,
+      "start": 3.02,
       "volume": 0.6
     },
     {
       "name": "impact",
-      "start": 3.87,
+      "start": 3.02,
       "volume": 1.0
     },
     {
       "name": "boom",
-      "start": 3.87,
+      "start": 3.02,
       "volume": 0.9
     },
     {
       "name": "whoosh",
-      "start": 4.35,
+      "start": 3.5,
       "volume": 0.55
     },
     {
       "name": "reverse_swell",
-      "start": 5.5,
+      "start": 4.7,
       "volume": 0.6
     },
     {
       "name": "glitch",
-      "start": 6.15,
+      "start": 5.35,
       "volume": 0.5
     },
     {
       "name": "riser",
-      "start": 6.83,
+      "start": 6.19,
       "volume": 0.6
     },
     {
       "name": "impact",
-      "start": 6.83,
+      "start": 6.19,
       "volume": 1.0
     },
     {
       "name": "boom",
-      "start": 6.83,
+      "start": 6.19,
       "volume": 0.8
     },
     {
       "name": "whoosh",
-      "start": 7.55,
-      "volume": 0.6
+      "start": 7.2,
+      "volume": 0.7
     },
     {
       "name": "impact",
-      "start": 7.86,
-      "volume": 0.8
+      "start": 7.91,
+      "volume": 1.0
     },
     {
       "name": "boom",
-      "start": 7.86,
-      "volume": 0.6
+      "start": 7.91,
+      "volume": 0.9
+    },
+    {
+      "name": "glitch",
+      "start": 7.95,
+      "volume": 0.35
     }
   ],
   "audio": {

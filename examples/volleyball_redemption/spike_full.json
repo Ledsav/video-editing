@@ -1,27 +1,134 @@
 {
-  "brief": {"prompt": "NEVER GIVE UP intro + the spike sequence + NEVER GIVE UP outro (Mikasa palette, comic/anime power language)"},
-  "output": {"path": "out/spike_never_give_up.mp4", "width": 1920, "height": 1080, "fps": 30, "crf": 16},
-  "sources": {"spike": "out/spike_sequence.mp4"},
+  "brief": {
+    "prompt": "NEVER GIVE UP intro + the spike sequence + NEVER GIVE UP outro (Mikasa palette, comic/anime power language)"
+  },
+  "output": {
+    "path": "out/spike_never_give_up.mp4",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "crf": 16
+  },
+  "sources": {
+    "spike": "out/spike_sequence.mp4"
+  },
   "timeline": [
-    {"id": "intro", "html": "impact/intro_ngu.html", "duration": 5.0},
-    {"id": "spike", "source": "spike", "in": 0, "out": 11.0},
-    {"id": "outro", "html": "impact/intro_ngu.html", "duration": 3.4,
-     "params": {"beats": [0.12, 0.42, 0.72], "lock": 1.05, "dive": 99, "fadeOut": 2.9, "kicker": "FINAL &nbsp;·&nbsp; 25 : 24", "sub": "EVERY SET &nbsp;·&nbsp; EVERY POINT &nbsp;·&nbsp; EVERY DAY"}}
+    {
+      "id": "intro",
+      "html": "impact/intro_ngu.html",
+      "duration": 5.0
+    },
+    {
+      "id": "spike",
+      "source": "spike",
+      "in": 0,
+      "out": 12.0
+    },
+    {
+      "id": "outro",
+      "html": "impact/intro_ngu.html",
+      "duration": 3.4,
+      "params": {
+        "beats": [
+          0.12,
+          0.42,
+          0.72
+        ],
+        "lock": 1.05,
+        "dive": 99,
+        "fadeOut": 2.9,
+        "kicker": "FINAL &nbsp;\u00b7&nbsp; 25 : 24",
+        "sub": "EVERY SET &nbsp;\u00b7&nbsp; EVERY POINT &nbsp;\u00b7&nbsp; EVERY DAY"
+      }
+    }
   ],
   "music": [
-    {"path": "music/rise.wav", "start": 0, "in": 0, "duration": 5.0, "volume": 0.6, "fade_in": 0.2, "fade_out": 0.15},
-    {"path": "music/rise.wav", "at_clip": "outro", "offset": 0, "in": 16.36, "duration": 3.4, "volume": 0.6, "fade_out": 1.0}
+    {
+      "path": "music/rise.wav",
+      "start": 0,
+      "in": 21.82,
+      "duration": 5.0,
+      "volume": 0.6,
+      "fade_in": 0.2,
+      "fade_out": 0.12
+    },
+    {
+      "path": "music/rise.wav",
+      "at_clip": "outro",
+      "offset": 0,
+      "in": 12.0,
+      "duration": 3.4,
+      "volume": 0.55,
+      "fade_out": 1.0
+    }
   ],
   "sfx": [
-    {"name": "whoosh", "start": 0.05, "volume": 0.4},
-    {"name": "impact", "start": 0.35, "volume": 0.9}, {"name": "boom", "start": 0.35, "volume": 0.6},
-    {"name": "impact", "start": 1.25, "volume": 0.9}, {"name": "boom", "start": 1.25, "volume": 0.6},
-    {"name": "impact", "start": 2.15, "volume": 1.0}, {"name": "boom", "start": 2.25, "volume": 0.8},
-    {"name": "riser", "start": 5.0, "volume": 0.6},
-    {"name": "impact", "at_clip": "outro", "offset": 0.12, "volume": 0.8},
-    {"name": "impact", "at_clip": "outro", "offset": 0.42, "volume": 0.8},
-    {"name": "impact", "at_clip": "outro", "offset": 0.72, "volume": 0.9},
-    {"name": "boom", "at_clip": "outro", "offset": 1.05, "volume": 0.8}
+    {
+      "name": "whoosh",
+      "start": 0.05,
+      "volume": 0.4
+    },
+    {
+      "name": "impact",
+      "start": 0.35,
+      "volume": 0.9
+    },
+    {
+      "name": "boom",
+      "start": 0.35,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 1.25,
+      "volume": 0.9
+    },
+    {
+      "name": "boom",
+      "start": 1.25,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 2.15,
+      "volume": 1.0
+    },
+    {
+      "name": "boom",
+      "start": 2.25,
+      "volume": 0.8
+    },
+    {
+      "name": "riser",
+      "start": 5.0,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "at_clip": "outro",
+      "offset": 0.12,
+      "volume": 0.8
+    },
+    {
+      "name": "impact",
+      "at_clip": "outro",
+      "offset": 0.42,
+      "volume": 0.8
+    },
+    {
+      "name": "impact",
+      "at_clip": "outro",
+      "offset": 0.72,
+      "volume": 0.9
+    },
+    {
+      "name": "boom",
+      "at_clip": "outro",
+      "offset": 1.05,
+      "volume": 0.8
+    }
   ],
-  "audio": {"loudness": -14}
+  "audio": {
+    "loudness": -14
+  }
 }

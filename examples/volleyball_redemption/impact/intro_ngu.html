@@ -34,7 +34,7 @@
   words.forEach((d) => (d.className = 'word'));
   const lock = el('div', { position: 'absolute', left: 0, right: 0, top: '50%', textAlign: 'center', opacity: 0 });
   P.words.forEach((w, i) => el('div', { font: `400 ${size * 0.42}px ${DISPLAY}`, lineHeight: 0.86, color: i === 1 ? Y : CR,
-    WebkitTextStroke: i === 1 ? '0' : '0', textShadow: '0.8vmin 0.8vmin 0 rgba(5,7,13,0.85)' }, lock, w));
+    WebkitTextStroke: '0.5vmin #05070d', paintOrder: 'stroke fill', textShadow: '0.9vmin 0.9vmin 0 #05070d' }, lock, w));   // ink outline: readable over the ball
   const kick = el('div', { position: 'absolute', left: 0, right: 0, top: '9vh', textAlign: 'center', font: `600 1.9vmin ${TEXT}`, letterSpacing: '0.55em', textIndent: '0.55em', color: Y, opacity: 0 }, stage, P.kicker);
   const sub = el('div', { position: 'absolute', left: 0, right: 0, bottom: '11vh', textAlign: 'center', font: `600 1.9vmin ${TEXT}`, letterSpacing: '0.55em', textIndent: '0.55em', color: CR, opacity: 0 }, stage, P.sub);
   const black = el('div', { position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 41 });
@@ -82,7 +82,8 @@
       const scale = (locked ? 1.0 : 0.85) * (1 + dive * 9);
       m.canvas.style.opacity = t >= bt ? 1 : 0;
       m.canvas.style.transform = `translate(${bx}vw, ${by}vh) scale(${scale * (1 + 0.18 * hitK)}, ${scale * (1 - 0.18 * hitK)})`;
-      m.canvas.style.filter = dive > 0 ? `blur(${dive * 1.2}vmin)` : 'none';
+      const ink = 'drop-shadow(0.35vmin 0 0 #05070d) drop-shadow(-0.35vmin 0 0 #05070d) drop-shadow(0 0.35vmin 0 #05070d) drop-shadow(0 -0.35vmin 0 #05070d)';   // anime ink outline
+      m.canvas.style.filter = dive > 0 ? `blur(${dive * 1.2}vmin)` : ink;
       ballBox.style.zIndex = locked ? 0 : 0;
       m.render({ rx: 0.2 + t * 0.6, ry: -1.4 + t * 2.4, rz: -0.2 });
       // lockup

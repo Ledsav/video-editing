@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="vedit:kind" content="scene">
-<meta name="vedit:duration" content="11">
+<meta name="vedit:duration" content="12">
 <meta name="vedit:libs" content="three">
 <meta name="vedit:description" content="Spike as a shot sequence (male athlete): behind-the-hitter set, close-up, wide approach and jump, POV hand, comic-book impact frame, ball into the court, landing roar. Based on: 3-step approach, double-arm swing, load, takeoff, bow-and-arrow arch, arm whip and wrist snap at contact, follow-through, landing, roar. Speed ramps (near-freeze at contact), crane/punch-in/whip camera, sub-frame motion blur, V200W ball, net, court, flash, shockwave, sweat, ball trail.">
 <script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
@@ -12,7 +12,7 @@
   canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }</style></head>
 <body><div id="stage"></div>
 <script type="module">
-  const P = VM.params({ model: 'anime_male.glb', subframes: 5, shutter: 0.5 });
+  const P = VM.params({ model: 'anime_male.glb', subframes: 5, shutter: 0.5, cel: 0.75 });
   const stage = document.getElementById('stage');
   window.VM_READY = new Promise(async (resolve) => { try {
     const THREE = await import('three');
@@ -26,9 +26,9 @@
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.HalfFloatType });
     const lensMat = new THREE.ShaderMaterial({
-      uniforms: { tDiffuse: { value: rt.texture }, k: { value: 0 }, ca: { value: 0.06 }, aspect: { value: W / H }, zoom: { value: 0 }, center: { value: new THREE.Vector2(0.5, 0.5) } },
+      uniforms: { tDiffuse: { value: rt.texture }, k: { value: 0 }, ca: { value: 0.06 }, aspect: { value: W / H }, zoom: { value: 0 }, cel: { value: 0.75 }, px: { value: new THREE.Vector2(1 / W, 1 / H) }, center: { value: new THREE.Vector2(0.5, 0.5) } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float k; uniform float ca; uniform float aspect; uniform float zoom; uniform vec2 center; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float k; uniform float ca; uniform float aspect; uniform float zoom; uniform vec2 center; uniform float cel; uniform vec2 px; varying vec2 vUv;
         vec2 warp(vec2 uv, float kk) {            // barrel: centre magnified, edges compressed, corners stay put
           vec2 p = (uv - 0.5) * vec2(aspect, 1.0); float r2 = dot(p, p), rc2 = 0.25 * (aspect * aspect + 1.0);
           return 0.5 + p * ((1.0 + kk * r2) / (1.0 + kk * rc2)) / vec2(aspect, 1.0); }
@@ -48,6 +48,25 @@
           gl_FragColor = vec4(r, g.g, b, g.a);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
+          // ---- anime pass (display space): posterised tones, ink outlines, halftone shadows ----
+          if (cel > 0.0) {
+            vec3 c = gl_FragColor.rgb;
+            float l = dot(c, vec3(0.299, 0.587, 0.114));
+            float q = (floor(l * 4.0 + 0.5) / 4.0);                       // 4 tone bands
+            vec3 cq = c * (q + 0.04) / (l + 0.04);
+            float m = dot(cq, vec3(0.333)); cq = mix(vec3(m), cq, 1.25);  // a touch more saturation, like cel paint
+            // ink: luminance edges of the warped image (Sobel-ish cross)
+            vec2 o = px * 1.6;
+            float lx = dot(texture2D(tDiffuse, warp(vUv + vec2(o.x, 0.0), k)).rgb - texture2D(tDiffuse, warp(vUv - vec2(o.x, 0.0), k)).rgb, vec3(0.333));
+            float ly = dot(texture2D(tDiffuse, warp(vUv + vec2(0.0, o.y), k)).rgb - texture2D(tDiffuse, warp(vUv - vec2(0.0, o.y), k)).rgb, vec3(0.333));
+            float edge = smoothstep(0.06, 0.2, sqrt(lx * lx + ly * ly));
+            // halftone dots in the shadows (screen space)
+            vec2 g = fract(gl_FragCoord.xy / 7.0) - 0.5;
+            float dots = step(length(g), 0.5 * clamp((0.32 - l) / 0.32, 0.0, 1.0));
+            vec3 outc = mix(cq, cq * 0.55, dots * 0.6);
+            outc = mix(outc, vec3(0.04, 0.05, 0.1), edge * 0.85);
+            gl_FragColor.rgb = mix(c, outc, cel);
+          }
         }`,
       depthTest: false, depthWrite: false });
     const postScene = new THREE.Scene(), postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -127,6 +146,7 @@
     const kitMat = new THREE.MeshStandardMaterial({ color: 0x2140a6, roughness: 0.4, metalness: 0.1 });
     const toonSkin = new THREE.MeshToonMaterial({ color: 0xe6e8ee }), toonKit = new THREE.MeshToonMaterial({ color: 0x2b4fc4 });
     const bodyMeshes = [];
+    const ramp = (() => { const d = new Uint8Array([70, 150, 255]); const t = new THREE.DataTexture(d, 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
     const KIT = { Wolf3D_Outfit_Top: 0x2140a6, Wolf3D_Outfit_Bottom: 0x0f1d4a, Wolf3D_Outfit_Footwear: 0xf2f2f2,
                   N00_007_01_Tops_01_CLOTH: 0x2140a6, N00_001_02_Bottoms_01_CLOTH: 0x0f1d4a, N00_004_01_Shoes_01_CLOTH: 0xf4f4f4 };   // Mikasa kit
     model.traverse((o) => { if (o.isMesh && o.material && o.material.name === 'Wolf3D_Headwear') o.visible = false; });   // no hat on court
@@ -136,7 +156,8 @@
         const m = o.material.clone(); m.roughness = Math.max(0.45, m.roughness ?? 0.6); m.metalness = 0;
         const kk = KIT[o.name] ?? KIT[o.material.name];
         if (kk !== undefined) { m.color = new THREE.Color(kk); m.map = null; }
-        o.userData.std = m; o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? 0xffffff, map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest });
+        o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? 0xffffff, map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, gradientMap: ramp });
+        o.userData.std = P.cel > 0 ? o.userData.toon : m;      // anime: the player is cel-shaded in every shot
       }
       o.material = o.userData.std; });
     { model.updateMatrixWorld(true);
@@ -207,8 +228,12 @@
         rSh: [-0.75, 0.85, 0.1], rA: [-0.06, 0.98, 0.2], rF: [-0.04, 0.97, 0.25], rH: [0, 0.6, 0.8],
         lSh: [1, -0.15, 0.1], lA: [0.25, -0.75, 0.6], lF: [-0.55, -0.25, 0.6],
         rT: [-0.1, -0.6, 0.8], rS: [0, -0.9, -0.2], lT: [0.12, -0.55, 0.83], lS: [0, -0.88, -0.25], rFt: [0, -0.8, 0.2], lFt: [0, -0.8, 0.2] })],
-      [1.28, pose({ hips: [0, 1, 0.45], s: [[0, 1, 0.6], [0, 1, 0.55], [0, 1, 0.45]], neck: [0, 1, 0.4], head: [0, 0.92, 0.4], twist: 0.6, // close like a book: torso folds forward over the hips, legs come forward to meet it
-        rSh: [-1, -0.2, 0.25], rA: [0.25, -0.5, 0.82], rF: [0.65, -0.7, 0.25], rH: [0.6, -0.8, 0],
+      [1.17, pose({ hips: [0, 1, 0.35], s: [[0, 1, 0.45], [0, 1, 0.45], [0, 1, 0.35]], neck: [0, 1, 0.3], head: [0, 0.95, 0.25], twist: 0.7, // swing through: arm whips down in front
+        rSh: [-1, 0.1, 0.2], rA: [-0.05, -0.35, 0.94], rF: [0.05, -0.55, 0.83], rH: [0.1, -0.8, 0.55],
+        lA: [0.3, -0.9, -0.2], lF: [0.1, -1, 0.1],
+        rT: [-0.12, -0.65, 0.75], rS: [0, -0.95, -0.2], lT: [0.12, -0.65, 0.75], lS: [0, -0.95, -0.25] })],
+      [1.28, pose({ hips: [0, 1, 0.45], s: [[0, 1, 0.6], [0, 1, 0.55], [0, 1, 0.45]], neck: [0, 1, 0.4], head: [0, 0.92, 0.4], twist: 0.6, // book close: torso folded, hitting arm fully down past the opposite hip
+        rSh: [-0.9, -0.35, 0.2], rA: [0.25, -0.96, 0.1], rF: [0.3, -0.95, -0.05], rH: [0.2, -0.97, -0.1],
         lA: [0.3, -0.9, -0.25], lF: [0.1, -1, 0.1],
         rT: [-0.12, -0.7, 0.7], rS: [0, -0.97, -0.15], lT: [0.12, -0.72, 0.68], lS: [0, -0.97, -0.2] })],
       [1.55, pose({ hips: [0, 1, 0.25], s: [[0, 1, 0.3], [0, 1, 0.3], [0, 1, 0.25]], neck: [0, 1, 0.2], head: [0, 0.95, 0.15], twist: 0.2,    // descending: legs reach for the floor, arms out for balance
@@ -305,18 +330,20 @@
     placeAthlete(T_CONTACT);
     const handC = V3(0, 0, 0).setFromMatrixPosition(bone('RightHandMiddle1').matrixWorld);
     const C = handC.clone().add(V3(0, 0.03, BR * 0.95));                               // ball centre at contact, on the palm
-    const D = V3(0.06, -0.45, 1).normalize(), SPEED = 27;                             // ~100 km/h, down the line
+    const D = V3(0.06, -0.5, 1).normalize(), SPEED = 39;                              // ~140 km/h, down the line
     const G = V3(0, -9.81, 0);
     const SET_T0 = -0.55, Ps = V3(2.2, 2.25, 0.05);                      // the set comes from the setter (her left)
     const vSet = C.clone().sub(Ps).sub(G.clone().multiplyScalar(0.5 * (T_CONTACT - SET_T0) ** 2)).divideScalar(T_CONTACT - SET_T0);
     // after the hit: straight line + gravity until the floor, then a bounce
     const tFloor = (() => { const vy = D.y * SPEED, y0 = C.y - BR; return (-vy - Math.sqrt(vy * vy + 2 * 9.81 * y0)) / -9.81; })();
     const hitPoint = C.clone().add(D.clone().multiplyScalar(SPEED * tFloor)).add(G.clone().multiplyScalar(0.5 * tFloor * tFloor));
+    const HITSTOP = 0.035;   // action seconds the ball stays crushed on the floor
     function ballAt(t) {
       if (t < T_CONTACT) { const s = Math.max(0, t - SET_T0); return Ps.clone().add(vSet.clone().multiplyScalar(s)).add(G.clone().multiplyScalar(0.5 * s * s)); }
       const s = t - T_CONTACT;
       if (s < tFloor) return C.clone().add(D.clone().multiplyScalar(SPEED * s)).add(G.clone().multiplyScalar(0.5 * s * s));
-      const s2 = s - tFloor, v = D.clone().multiplyScalar(SPEED).add(G.clone().multiplyScalar(tFloor));
+      if (s < tFloor + HITSTOP) return hitPoint.clone().setY(BR * 0.5);              // stuck to the floor, squashed
+      const s2 = s - tFloor - HITSTOP, v = D.clone().multiplyScalar(SPEED).add(G.clone().multiplyScalar(tFloor));
       const vb = V3(v.x * 0.7, -v.y * 0.55, v.z * 0.7);
       return hitPoint.clone().add(vb.multiplyScalar(s2)).add(G.clone().multiplyScalar(0.5 * s2 * s2));
     }
@@ -348,9 +375,11 @@
     for (let i = 0; i < ND; i++) { const a = dr() * Math.PI * 2, sp = 0.8 + dr() * 2.6, up = 0.3 + dr() * 1.8; dv.push(V3(Math.cos(a) * sp, up, Math.sin(a) * sp)); }
     const dust = new THREE.Points(dGeo, new THREE.PointsMaterial({ color: 0xf6e7cc, size: 0.055, transparent: true, depthWrite: false }));
     scene.add(dust);
+    const crack2 = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.MeshBasicMaterial({ map: crackTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    crack2.rotation.x = -Math.PI / 2; crack2.rotation.z = 1.1; scene.add(crack2);
     // floor impact ring
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 64), new THREE.MeshBasicMaterial({ color: 0xfff0c8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2; ring.position.copy(hitPoint).setY(0.01); scene.add(ring);
+    ring.rotation.x = -Math.PI / 2; ring.position.copy(hitPoint).setY(0.01); scene.add(ring); crack2.position.copy(hitPoint).setY(0.007);
     // contact shockwave (in the plane facing the hit direction)
     const shock = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 96), new THREE.MeshBasicMaterial({ color: 0xfff4d8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     shock.position.copy(C); shock.lookAt(C.clone().add(D)); scene.add(shock);
@@ -366,32 +395,42 @@
     // each shot: video [T0, T1] maps to action [t0, t1] (with an ease for slow-mo ramps) and has its own camera
     const headPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Head').matrixWorld);
     const hipPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Hips').matrixWorld);
+    const orbit = (c, r, h, a) => [c.x + Math.sin(a) * r, h, c.z + Math.cos(a) * r];   // a = 0: in front of him (+z), PI: behind
     const SHOTS = [
-      { name: 'set', T: [0, 1.7], t: [-1.6, -0.5], ease: 'linear', lens: 0.25,                      // behind the hitter, ball rises from the setter
-        cam: (t, u) => { const h = headPos(), b = ballAt(t); return { p: [h.x - 0.6, h.y + 0.15, h.z - 1.35 - 0.25 * u], look: [b.x, b.y - 0.2, b.z], fov: 50 }; } },
-      { name: 'feet', T: [1.7, 2.5], t: [-0.25, 0.3], ease: 'linear', lens: 0.65,                   // floor level: the first steps of the approach
-        cam: (t, u) => { const h = headPos(); const hp = hipPos(); return { p: [hp.x - 1.1, 0.12, -2.1], look: [hp.x, 0.6, hp.z + 0.4], fov: 44, roll: 0.14 }; } },
-      { name: 'jump', T: [2.5, 3.45], t: [0.3, 0.69], ease: 'linear', lens: 0.3,                    // wide side: run-up and the load
-        cam: (t, u) => ({ p: [8.0, 1.3, -2.2 + 0.2 * u], look: [0, 1.2, -1.5 + 0.4 * u], fov: 33, roll: -0.14 }) },
-      { name: 'liftoff', T: [3.45, 4.35], t: [0.69, 0.80], ease: 'inOutSine', lens: 0.85,           // ground level, close: the explosion off the floor
-        cam: (t, u) => { const f = LIFT; return { p: [f.x - 1.45, 0.95, f.z + 1.15], look: [f.x, 0.3 + 1.5 * VM.ease.inCubic(u), f.z - 0.1], fov: 60, roll: 0.1 }; } },
-      { name: 'jump', T: [4.35, 5.5], t: [0.80, 1.06], ease: 'outExpo', lens: 0.3,                  // wide again: rising above the net into the arch
-        cam: (t, u) => ({ p: [8.0, 1.8 + 0.3 * u, -1.8 + 0.2 * u], look: [0, 2.3 + 0.3 * u, -0.5 + 0.2 * u], fov: 30 - 3 * u, roll: -0.08 + 0.04 * u }) },
-      { name: 'pov', T: [5.5, 6.15], t: [1.06, 1.092], ease: 'inCubic', lens: 0.75,                    // first person: the ball, the net below, the hand coming through
+      { name: 'runup', T: [0, 2.6], t: [-0.45, 0.69], ease: 'inQuad', lens: 0.35,       // dolly-orbit from behind him round to his side as he accelerates
+        cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.92 - 0.45 * VM.ease.inOutSine(u)), r = 3.4 + 0.8 * u;
+          return { p: orbit(h, r, 0.55 + 0.45 * u, a), look: [h.x, 1.0 + 0.3 * u, h.z + 0.9], fov: 44 - 4 * u, roll: 0.08 * Math.sin(u * Math.PI) }; } },
+      { name: 'liftoff', T: [2.6, 3.5], t: [0.69, 0.80], ease: 'inOutSine', lens: 0.85,    // ground level, close: the explosion off the floor, crane up with him
+        cam: (t, u) => { const f = LIFT; return { p: [f.x - 1.45, 0.95 + 0.6 * u, f.z + 1.15], look: [f.x, 0.3 + 1.7 * VM.ease.inCubic(u), f.z - 0.1], fov: 60, roll: 0.1 }; } },
+      { name: 'rise', T: [3.5, 4.7], t: [0.80, 1.06], ease: 'outExpo', lens: 0.3,          // sweeping orbit + push-in as he climbs above the net into the arch
+        cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.55 - 0.2 * u), r = 6.8 - 1.6 * u;
+          return { p: orbit(h, r, 1.6 + 0.8 * u, a), look: [h.x, h.y + 0.5, h.z], fov: 32 - 3 * u, roll: -0.1 + 0.06 * u }; } },
+      { name: 'pov', T: [4.7, 5.35], t: [1.06, 1.092], ease: 'inCubic', lens: 0.75,        // first person: the ball, the hand coming through
         cam: (t, u) => { const h = headPos(), b = ballAt(t); return { p: [h.x + 0.12, h.y + 0.15, h.z + 0.12], look: [b.x, b.y - 0.55, b.z + 0.35], fov: 82, roll: 0.15 }; } },
-      { name: 'comic', T: [6.15, 7.55], t: [1.092, 1.16], ease: 'inOutExpo', comic: true, lens: 0.9, // the impact frame: palm slams towards the lens
-        cam: (t, u) => { const p = C.clone().add(D.clone().multiplyScalar(0.36 - 0.06 * u)).add(V3(-0.32, -0.02, 0)); return { p: [p.x, p.y, p.z], look: [C.x + 0.05, C.y - 0.2, C.z - 0.25], fov: 96 - 8 * u, roll: -0.22 + 0.35 * u }; } },
-      { name: 'smash', T: [7.55, 8.8], t: [1.16, 1.62], ease: 'outCubic', lens: 0.5,                  // over the net: into the court
-        cam: (t, u) => ({ p: [-2.2, 3.1, 0.0], look: [hitPoint.x * 0.6, 0.6, hitPoint.z * 0.8 + 0.4], fov: 46 - 8 * u, roll: 0.16 }) },
-      { name: 'roar', T: [8.8, 11], t: [1.62, 2.85], ease: 'outCubic', lens: 0.35,                    // landing and the roar
-        cam: (t, u) => { const h = hipPos(); return { p: [-4.6 + 0.5 * u, 1.05, 0.4], look: [h.x, 1.0, h.z + 0.75], fov: 38 - 6 * u, roll: -0.08 }; } },
+      { name: 'comic', T: [5.35, 7.25], t: [1.092, 1.24], comic: true, lens: 0.9,           // the impact frame: slow into contact, hold, then the arm whips all the way down
+        keys: [[0, 1.092], [0.3, 1.114], [0.55, 1.124], [1, 1.24]],
+        cam: (t, u) => { const p = C.clone().add(D.clone().multiplyScalar(0.42 - 0.08 * u)).add(V3(-0.32, -0.05 - 0.25 * u, 0)); return { p: [p.x, p.y, p.z], look: [C.x + 0.05, C.y - 0.3 - 0.5 * u, C.z - 0.25], fov: 96 - 6 * u, roll: -0.22 + 0.35 * u }; } },
+      { name: 'smash', T: [7.25, 7.75], t: [1.24, 1.24], ease: 'linear', lens: 0.5,         // tracking the ball over the net (t is set below from the flight)
+        cam: (t, u) => { const b = ballAt(t); return { p: [b.x - 1.3, b.y + 0.7, b.z - 1.6], look: [b.x, b.y, b.z + 0.6], fov: 50, roll: 0.12 }; } },
+      { name: 'floor', T: [7.75, 9.1], t: [0, 0], lens: 0.6,                                 // low by the impact: hit-stop, crush, BAM, then the bounce
+        keys: [[0, 0], [1, 0]],
+        cam: (t, u) => { const a = 2.2 + 0.35 * u; return { p: orbit(hitPoint, 1.9 - 0.3 * u, 0.32 + 0.1 * u, a), look: [hitPoint.x, 0.12, hitPoint.z], fov: 46, roll: 0.1 - 0.12 * u }; } },
+      { name: 'roar', T: [9.1, 12], t: [1.62, 2.85], ease: 'outCubic', lens: 0.35,          // landing and the roar: slow circle around him
+        cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.64 - 0.12 * u); return { p: orbit(h, 3.4 - 0.4 * u, 1.0, a), look: [h.x, 1.15, h.z + 0.2], fov: 38 - 5 * u, roll: -0.06 }; } },   // stays on his side of the net
     ];
+    // flight and floor timing depend on tFloor: fill them in now
+    { const sm = SHOTS.find((x) => x.name === 'smash'), fl = SHOTS.find((x) => x.name === 'floor'), tf = T_CONTACT + tFloor;
+      sm.t = [1.24, tf - 0.004];
+      fl.keys = [[0, tf - 0.004], [0.12, tf], [0.7, tf + HITSTOP * 0.9], [1, tf + HITSTOP + 0.22]]; fl.t = [tf - 0.004, tf + HITSTOP + 0.22]; }
     const shotAt = (T) => SHOTS.find((s) => T < s.T[1]) || SHOTS[SHOTS.length - 1];
+    const warp = (keys, u) => { let i = 0; while (i < keys.length - 2 && u > keys[i + 1][0]) i++;
+      const [a, ta] = keys[i], [b, tb] = keys[i + 1], v = Math.min(1, Math.max(0, (u - a) / (b - a))); return ta + (tb - ta) * VM.ease.inOutSine(v); };
     const actionAt = (T) => { const s = shotAt(T), u = Math.min(1, Math.max(0, (T - s.T[0]) / (s.T[1] - s.T[0])));
+      if (s.keys) return warp(s.keys, u);
       return s.t[0] + (s.t[1] - s.t[0]) * VM.ease[s.ease](u); };
     const shotBy = (n) => SHOTS.find((s) => s.name === n);
     const T_HIT_VIDEO = (() => { const s = shotBy('comic'); let lo = s.T[0], hi = s.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_CONTACT) lo = m; else hi = m; } return lo; })();
-    const T_FLOOR_VIDEO = (() => { const s = shotBy('smash'); let lo = s.T[0], hi = s.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_CONTACT + tFloor) lo = m; else hi = m; } return lo; })();
+    const T_FLOOR_VIDEO = (() => { const s = shotBy('floor'); let lo = s.T[0], hi = s.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_CONTACT + tFloor) lo = m; else hi = m; } return lo; })();
     window.SPIKE_TIMES = { hit: T_HIT_VIDEO, floor: T_FLOOR_VIDEO, cuts: SHOTS.map((s) => s.T[0]) };
 
     // ================= comic layer: burst, halftone, speed lines =================
@@ -408,6 +447,8 @@
     }
     const halftoneFg = el('div', { position: 'absolute', inset: 0, mixBlendMode: 'multiply', opacity: 0, pointerEvents: 'none',
       backgroundImage: 'radial-gradient(circle, rgba(20,30,80,0.5) 0.22vmin, transparent 0.26vmin)', backgroundSize: '0.9vmin 0.9vmin' });
+    const floorWord = el('div', { position: 'absolute', right: '8vw', top: '16vh', font: `400 22vmin ${DISPLAY}`, color: V200W.yellow, opacity: 0, zIndex: 30,
+      WebkitTextStroke: '0.6vmin #0a1020', letterSpacing: '0.02em', textShadow: '1.4vmin 1.4vmin 0 #0a1020' }, stage, 'BAM!');
     const comicWord = el('div', { position: 'absolute', left: '6vw', bottom: '10vh', font: `400 18vmin ${DISPLAY}`, color: V200W.yellow, opacity: 0,
       WebkitTextStroke: '0.5vmin #0a1020', transform: 'rotate(-8deg)', letterSpacing: '0.02em', textShadow: '1.2vmin 1.2vmin 0 #0a1020' }, stage, 'BAM!');
 
@@ -419,7 +460,7 @@
     addFinish({ grain: 0.06, vignette: 0.5 });
     const credit = el('div', { position: 'absolute', left: '7vw', bottom: '5vh', font: `500 1.3vmin ${TEXT}`, letterSpacing: '0.12em', color: 'rgba(243,237,226,0.7)', opacity: 0, zIndex: 60 }, document.body,
       'CHARACTER: "RIGGED ANIME MALE CHARACTER-1" BY RET.OUCHS (SKETCHFAB) · CC BY-SA 4.0');
-    VM.onFrame((T) => { credit.style.opacity = VM.prog(T, 9.6, 0.5); });
+    VM.onFrame((T) => { credit.style.opacity = VM.prog(T, 10.6, 0.5); });
 
     // ================= frame =================
     let comicMode = null;
@@ -442,7 +483,11 @@
       const sq = s >= 0 && s < 0.02 ? Math.sin(s / 0.02 * Math.PI) : 0;
       if (sq > 0) { ball.lookAt(ball.position.clone().add(D)); }
       ball.scale.set(1 + 0.2 * sq, 1 + 0.2 * sq, 1 - 0.4 * sq);
-      if (s >= 0.02 && s < 0.25) { const st = Math.exp(-(s - 0.02) * 14); ball.lookAt(ball.position.clone().add(D)); ball.scale.set(1 - 0.22 * st, 1 - 0.22 * st, 1 + 0.75 * st); }
+      const fs = s - tFloor;
+      if (fs >= 0 && fs < HITSTOP + 0.05) {                                       // floor: flatten, then spring back
+        const k = fs < HITSTOP ? Math.min(1, fs / 0.006) : Math.max(0, 1 - (fs - HITSTOP) / 0.05);
+        ball.rotation.set(0, 0, 0); ball.scale.set(1 + 0.6 * k, 1 - 0.55 * k, 1 + 0.6 * k);
+      } else if (s >= 0.02 && s < 0.25) { const st = Math.exp(-(s - 0.02) * 14); ball.lookAt(ball.position.clone().add(D)); ball.scale.set(1 - 0.22 * st, 1 - 0.22 * st, 1 + 0.75 * st); }
       if (trail) { scene.remove(trail); trail.geometry.dispose(); trail = null; }
       if (!shot.comic && s > 0.004 && s < tFloor + 0.25) {
         const pts = []; for (let k = 0; k <= 12; k++) pts.push(ballAt(Math.max(T_CONTACT, t - (k / 12) * 0.05)));
@@ -464,7 +509,8 @@
         for (let i = 0; i < ND; i++) { const v = dv[i]; dp[i * 3] = LIFT.x + v.x * ss; dp[i * 3 + 1] = Math.max(0.01, v.y * ss - 4.9 * ss * ss); dp[i * 3 + 2] = LIFT.z + v.z * ss; }
         dGeo.attributes.position.needsUpdate = true; dust.material.opacity = lo > 0 ? Math.max(0, 1 - lo / 0.7) : 0; dust.visible = !shot.comic; }
       const sf = s - tFloor, rf = sf > 0 ? Math.min(1, sf / 0.35) : 0;
-      ring.scale.setScalar(0.1 + rf * 1.6); ring.material.opacity = sf > 0 ? (1 - rf) * 0.9 : 0;
+      ring.scale.setScalar(0.1 + rf * 2.4); ring.material.opacity = sf > 0 ? (1 - rf) * 0.95 : 0;
+      crack2.material.opacity = sf > 0 ? Math.min(1, sf / 0.01) * (1 - VM.prog(t, T_CONTACT + tFloor + 0.6, 0.4)) : 0; crack2.scale.setScalar(0.3 + 0.7 * Math.min(1, Math.max(0, sf) / 0.03));
       const u = Math.min(1, Math.max(0, (T - shot.T[0]) / (shot.T[1] - shot.T[0])));
       const c = shot.cam(t, u);
       const punch = T > T_HIT_VIDEO ? 22 * Math.exp(-(T - T_HIT_VIDEO) * 9) * (shot.comic ? 1 : 0.5) : 0;
@@ -473,7 +519,7 @@
       const shakeK = (T > T_TAKEOFF ? Math.exp(-(T - T_TAKEOFF) * 5) * 0.06 : 0) + (T > T_HIT_VIDEO ? Math.exp(-(T - T_HIT_VIDEO) * 6) * 0.08 : 0) + (T > T_FLOOR_VIDEO ? Math.exp(-(T - T_FLOOR_VIDEO) * 7) * 0.12 : 0);
       cam.position.x += VM.noise(T * 50, 1) * shakeK; cam.position.y += VM.noise(T * 50, 2) * shakeK;
       lensMat.uniforms.k.value = (shot.lens || 0) + (T > T_HIT_VIDEO ? 0.45 * Math.exp(-(T - T_HIT_VIDEO) * 6) : 0);
-      lensMat.uniforms.zoom.value = zoomAt(T);
+      lensMat.uniforms.zoom.value = zoomAt(T); lensMat.uniforms.cel.value = shot.comic ? 0.35 : P.cel;
       { const f = (shot.name === 'smash' && T > T_FLOOR_VIDEO - 0.2) ? hitPoint : (T > T_HIT_VIDEO - 0.7 && T < T_FLOOR_VIDEO + 0.5) ? (shot.name === 'smash' ? ball.position : C) : hipPos();
         cam.updateMatrixWorld(); const pf = f.clone().project(cam); lensMat.uniforms.center.value.set((pf.x + 1) / 2, (pf.y + 1) / 2); }
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
@@ -489,7 +535,7 @@
     const speed = el('canvas', { position: 'absolute', inset: 0, width: '100vw', height: '100vh', pointerEvents: 'none', mixBlendMode: 'screen' });
     speed.width = W; speed.height = H; const sg = speed.getContext('2d');
     const linesAt = (T) => { const n = shotAt(T).name;
-      return n === 'liftoff' ? (T > T_TAKEOFF ? 1 : 0.25) : n === 'jump' ? 0.85 * VM.env(T, T_TAKEOFF - 0.05, T_TAKEOFF + 1.4, 0.08, 0.6) : n === 'pov' ? 0.9 : n === 'smash' ? 1 : n === 'feet' ? 0.35 : 0; };
+      return n === 'liftoff' ? (T > T_TAKEOFF ? 1 : 0.25) : n === 'rise' ? 0.7 * (1 - VM.prog(T, 4.0, 0.7)) : n === 'runup' ? 0.3 * VM.prog(T, 1.2, 1.4) : n === 'floor' ? (T > T_FLOOR_VIDEO ? 1 : 0.3) : n === 'pov' ? 0.9 : n === 'smash' ? 1 : n === 'feet' ? 0.35 : 0; };
     function drawSpeed(T, fx, fy) {
       sg.clearRect(0, 0, W, H); const a = linesAt(T); if (a <= 0) return;
       const R = VM.rand(1 + Math.floor(T * 24)), diag = Math.hypot(W, H);
@@ -497,7 +543,7 @@
         sg.strokeStyle = `rgba(255,248,230,${(0.12 + R() * 0.45) * a})`; sg.lineWidth = w;
         sg.beginPath(); sg.moveTo(fx + Math.cos(ang) * r0, fy + Math.sin(ang) * r0); sg.lineTo(fx + Math.cos(ang) * r1, fy + Math.sin(ang) * r1); sg.stroke(); }
     }
-    const shutterOf = (shot) => ({ jump: 0.85, liftoff: 0.45, pov: 0.15, smash: 0.95 }[shot.name] ?? P.shutter);
+    const shutterOf = (shot) => ({ runup: 0.6, rise: 0.7, liftoff: 0.45, pov: 0.15, smash: 1.0, floor: 0.2 }[shot.name] ?? P.shutter);
     VM.onFrame((T) => {
       const shot = shotAt(T);
       setComic(!!shot.comic);
@@ -520,7 +566,13 @@
       // impact frames: 3 frames of inverted, high-contrast black/white on the hit and a hard one on the floor
       const fi = Math.floor((T - T_HIT_VIDEO) * 30), ff = Math.floor((T - T_FLOOR_VIDEO) * 30);
       const fl = Math.floor((T - T_TAKEOFF) * 30);
-      stage.style.filter = (fi >= 0 && fi < 3 && fi !== 1) || ff === 0 || fl === 0 ? 'invert(1) grayscale(1) contrast(3.5)' : 'none';
+      const strobe = (f, pat) => f >= 0 && f < pat.length && pat[f] === 1;
+      const PAT_HIT = [1, 1, 1, 0, 1, 1, 0, 0, 1], PAT_FLOOR = [1, 1, 1, 0, 0, 1, 1], PAT_LIFT = [1, 1, 0, 1];
+      stage.style.filter = strobe(fi, PAT_HIT) || strobe(ff, PAT_FLOOR) || strobe(fl, PAT_LIFT) ? 'invert(1) grayscale(1) contrast(3.5)' : 'none';
+      // BAM on the floor
+      const wf = T > T_FLOOR_VIDEO ? VM.prog(T, T_FLOOR_VIDEO, 0.2, 'outBack') : 0;
+      floorWord.style.opacity = shot.name === 'floor' && wf > 0 ? 1 - VM.prog(T, shot.T[1] - 0.25, 0.25) : 0;
+      floorWord.style.transform = `rotate(6deg) scale(${0.3 + 0.9 * wf})`;
       cam.updateMatrixWorld(); const pc = C.clone().project(cam);
       flash.style.setProperty('--x', `${(pc.x + 1) * 50}%`); flash.style.setProperty('--y', `${(1 - pc.y) * 50}%`);
       flash.style.opacity = T > T_HIT_VIDEO ? 0.9 * Math.exp(-(T - T_HIT_VIDEO) * 9) : 0;
