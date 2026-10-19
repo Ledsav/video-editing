@@ -1,0 +1,145 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="1">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Impact frame: rigged 3D athlete posed at the spike contact, rim-lit in the arena, Mikasa ball squashing on the hand, shockwave, light burst, debris.">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="../scenes/common.js"></script>
+<script src="../styles/mikasa.js"></script>
+<script src="loadglb.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #05070d; } #stage { position: absolute; inset: 0; overflow: hidden; }
+  canvas.gl { position: absolute; inset: 0; width: 100vw; height: 100vh; }</style></head>
+<body><div id="stage"></div>
+<script type="module">
+  const P = VM.params({ camYaw: 0.38, camPitch: -0.16, model: 'Michelle.glb' });
+  const stage = document.getElementById('stage');
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const W = innerWidth, H = innerHeight;
+
+    // ---------- background: arena darkness, light burst behind the contact ----------
+    const bg = el('div', { position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 70% 80% at 62% 28%, #1b2a55 0%, #0b1226 45%, #04060c 100%)' });
+    const burst = el('div', { position: 'absolute', left: 0, top: 0, width: '120vmin', height: '120vmin', margin: '-60vmin 0 0 -60vmin', borderRadius: '50%', mixBlendMode: 'screen',
+      background: `radial-gradient(closest-side, rgba(255,240,190,0.95), ${MIKASA.yellow}88 12%, rgba(255,160,40,0.25) 35%, transparent 70%)` });
+    const raysSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    Object.assign(raysSvg.style, { position: 'absolute', inset: 0, width: '100vw', height: '100vh', mixBlendMode: 'screen' }); stage.appendChild(raysSvg);
+    // big type behind the athlete
+    const big = el('div', { position: 'absolute', left: '3vw', top: '14vh', font: `400 60vmin ${DISPLAY}`, lineHeight: 0.8, color: 'transparent',
+      WebkitTextStroke: '0.25vmin rgba(243,237,226,0.16)', letterSpacing: '-0.01em' }, stage, '25');
+
+    // ---------- three.js scene ----------
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+    renderer.domElement.className = 'gl'; stage.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(30, W / H, 0.1, 100);
+
+    const gltf = await loadGLB(GLTFLoader, P.model);
+    const model = gltf.scene; scene.add(model);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x141a2a, roughness: 0.38, metalness: 0.15 });
+    const jointMat = new THREE.MeshStandardMaterial({ color: 0x1347a8, roughness: 0.35, metalness: 0.2, emissive: 0x0a2a6a, emissiveIntensity: 0.25 });
+    if (P.model.startsWith('Xbot')) model.traverse((o) => { if (o.isMesh) { o.material = o.name.includes('Joints') ? jointMat : bodyMat; o.frustumCulled = false; } });
+    else model.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; if (o.material) { o.material.roughness = 0.6; o.material.metalness = 0; } } });
+    // normalise height to 1.8 m, feet at y = 0
+    { const box = new THREE.Box3().setFromObject(model), h = box.max.y - box.min.y; model.scale.multiplyScalar(1.8 / h); }
+    const bone = (n) => model.getObjectByName('mixamorig' + n) || model.getObjectByName('mixamorig:' + n);
+
+    // pose by aiming each bone at a direction in model space (x = athlete's left, y = up, z = forward)
+    model.updateMatrixWorld(true);
+    const aim = (name, childName, dir) => {
+      const b = bone(name), c = bone(childName); model.updateMatrixWorld(true);
+      const bp = new THREE.Vector3().setFromMatrixPosition(b.matrixWorld), cp = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld);
+      const cur = cp.sub(bp).normalize();
+      const want = new THREE.Vector3(...dir).normalize().transformDirection(model.matrixWorld);
+      const qWorld = new THREE.Quaternion().setFromUnitVectors(cur, want);
+      const parentQ = new THREE.Quaternion(); b.parent.getWorldQuaternion(parentQ);
+      const bq = new THREE.Quaternion(); b.getWorldQuaternion(bq);
+      const newWorld = qWorld.multiply(bq);
+      b.quaternion.copy(parentQ.invert().multiply(newWorld));
+      model.updateMatrixWorld(true);
+    };
+    // spike, frame of contact: hitting arm (right) fully extended up-forward, torso arched then snapping,
+    // left arm pulled down across the body, knees folded back, toes pointed, chin up to the ball
+    aim('Spine', 'Spine1', [0, 1, 0.12]);
+    aim('Spine1', 'Spine2', [0, 1, 0.22]);
+    aim('Spine2', 'Neck', [0.0, 1, 0.16]);
+    aim('Neck', 'Head', [0, 1, 0.12]);
+    aim('Head', 'HeadTop_End', [-0.05, 0.85, -0.45]);
+    aim('RightShoulder', 'RightArm', [-1, 0.45, 0.05]);
+    aim('RightArm', 'RightForeArm', [-0.18, 1, 0.42]);
+    aim('RightForeArm', 'RightHand', [-0.1, 1, 0.62]);
+    aim('RightHand', 'RightHandMiddle1', [0, 0.85, 0.75]);
+    aim('LeftShoulder', 'LeftArm', [1, -0.1, 0.1]);
+    aim('LeftArm', 'LeftForeArm', [0.2, -0.85, 0.5]);
+    aim('LeftForeArm', 'LeftHand', [-0.7, -0.15, 0.55]);
+    aim('LeftUpLeg', 'LeftLeg', [0.12, -1, 0.55]);
+    aim('LeftLeg', 'LeftFoot', [0.05, -0.3, -1]);
+    aim('LeftFoot', 'LeftToeBase', [0, -0.9, -0.35]);
+    aim('RightUpLeg', 'RightLeg', [-0.12, -1, 0.25]);
+    aim('RightLeg', 'RightFoot', [-0.05, -0.55, -0.85]);
+    aim('RightFoot', 'RightToeBase', [0, -0.85, -0.45]);
+    bone('Hips').rotation.x += 0.12;              // hips tilted, the body is in the air
+    model.updateMatrixWorld(true);
+
+    // ball at the hitting hand
+    const handPos = new THREE.Vector3().setFromMatrixPosition(bone('RightHandMiddle1').matrixWorld);
+    const ballTex = new THREE.CanvasTexture(v200wTexture(2048, 1024)); ballTex.colorSpace = THREE.SRGBColorSpace;
+    const ballR = 0.105;    // 21 cm ball vs ~1.8 m figure
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(ballR, 96, 64), new THREE.MeshStandardMaterial({ map: ballTex, roughness: 0.4, bumpMap: new THREE.CanvasTexture(dimpleTexture()), bumpScale: 0.4 }));
+    const hitDir = new THREE.Vector3(0, -0.35, 1).normalize();       // spike goes forward-down
+    ball.position.copy(handPos).add(new THREE.Vector3(0, 0.08, 0.11));
+    ball.scale.setScalar(1.3);                                        // slightly heroic scale so the ball reads
+    ball.rotation.set(0.6, 0.4, 0.2);
+    scene.add(ball);
+
+    // lights: blue fill from the crowd side, hot yellow-white key from behind the contact (rim), floor bounce
+    scene.add(new THREE.HemisphereLight(0x3a5aa8, 0x07090f, 0.6));
+    const rim = new THREE.DirectionalLight(0xffd88a, 22); rim.position.set(3, 3.5, 1.2); scene.add(rim);
+    const rim2 = new THREE.DirectionalLight(0x6f9cff, 12); rim2.position.set(2.5, 0.8, -2.5);
+    const top = new THREE.SpotLight(0xfff3d6, 40, 12, 0.5, 0.6, 1.2); top.position.set(0.3, 6, 0.6); top.target.position.set(0, 1.2, 0); scene.add(top, top.target); scene.add(rim2);
+    const key = new THREE.PointLight(0xfff0c8, 3, 3, 1.5); key.position.copy(ball.position).add(new THREE.Vector3(-0.6, -0.1, 0.3)); scene.add(key);
+    const front = new THREE.DirectionalLight(0x9fb4ff, 0.35); front.position.set(-2, 0.5, 4); scene.add(front);
+
+    // camera: low 3/4 angle from the athlete's right, looking up at the hit
+    const target = new THREE.Vector3(0, 1.45, 0.25);
+    const dist = 5.0;
+    cam.position.set(target.x - Math.cos(P.camYaw) * dist, target.y + Math.sin(P.camPitch) * dist, target.z + Math.sin(P.camYaw) * dist * 0.6);
+    cam.lookAt(target);
+    cam.setViewOffset(W, H, -W * 0.06, H * 0.02, W, H);
+    cam.updateMatrixWorld(true);
+
+    // project the contact point to place the 2D effects
+    const proj = (v) => { const p = v.clone().project(cam); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H]; };
+    const [bx, by] = proj(ball.position);
+    burst.style.transform = `translate(${bx}px, ${by}px)`;
+    // light rays from the contact point
+    const R = VM.rand(12); let rays = '';
+    for (let i = 0; i < 26; i++) { const a = R() * Math.PI * 2, w = 0.01 + R() * 0.03, L = 2600;
+      rays += `<path d="M${bx} ${by} L${bx + Math.cos(a - w) * L} ${by + Math.sin(a - w) * L} L${bx + Math.cos(a + w) * L} ${by + Math.sin(a + w) * L}Z" fill="rgba(255,226,150,${0.03 + R() * 0.06})"/>`; }
+    // shockwave rings (tilted ellipses around the hit direction)
+    for (let i = 0; i < 3; i++) { const rr = 70 + i * 55;
+      rays += `<ellipse cx="${bx + 10}" cy="${by + 6}" rx="${rr}" ry="${rr * 0.42}" transform="rotate(-28 ${bx} ${by})" fill="none" stroke="rgba(255,244,214,${0.75 - i * 0.22})" stroke-width="${4 - i}"/>`; }
+    // speed streaks along the spike path (down-right on screen)
+    const ux = 0.55, uy = 0.835;     // the spike leaves down-right on screen
+    for (let i = 0; i < 16; i++) { const off = (R() - 0.5) * 70, s0 = 40 + R() * 120, s1 = s0 + 140 + R() * 380;
+      rays += `<line x1="${bx + ux * s0 - uy * off}" y1="${by + uy * s0 + ux * off}" x2="${bx + ux * s1 - uy * off}" y2="${by + uy * s1 + ux * off}" stroke="rgba(255,240,205,${0.25 + R() * 0.5})" stroke-width="${1 + R() * 3}" stroke-linecap="round"/>`; }
+    // sweat / dust particles
+    for (let i = 0; i < 70; i++) { const a = R() * Math.PI * 2, d = 40 + Math.pow(R(), 0.6) * 520, s = 1 + R() * 4;
+      rays += `<circle cx="${bx + Math.cos(a) * d}" cy="${by + Math.sin(a) * d * 0.8}" r="${s}" fill="rgba(255,236,190,${0.25 + R() * 0.6})"/>`; }
+    raysSvg.innerHTML = rays;
+
+    // type: kicker + headline + score
+    el('div', { position: 'absolute', right: '7vw', top: '9vh', font: `600 1.8vmin ${TEXT}`, letterSpacing: '0.5em', color: MIKASA.yellow, zIndex: 5 }, stage, 'MATCH POINT &nbsp;·&nbsp; 24 : 24');
+    el('div', { position: 'absolute', right: '7vw', bottom: '10vh', textAlign: 'right', font: `400 15vmin ${DISPLAY}`, lineHeight: 0.85, color: '#f3ede2', zIndex: 5,
+      textShadow: '0 0.6vmin 3vmin rgba(0,0,0,0.5)' }, stage, 'NEVER<br><span style="color:' + MIKASA.yellow + '">AGAIN.</span>');
+    el('div', { position: 'absolute', right: '7vw', bottom: '6.5vh', font: `500 1.7vmin ${TEXT}`, letterSpacing: '0.45em', color: '#f3ede2', opacity: 0.75, zIndex: 5 }, stage, 'NEVER LOSING THAT POINT AGAIN');
+    big.style.zIndex = 0;
+    addFinish({ grain: 0.07, vignette: 0.6 });
+
+    VM.onFrame(() => renderer.render(scene, cam));
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

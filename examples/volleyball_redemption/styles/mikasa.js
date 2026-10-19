@@ -32,6 +32,39 @@ function mikasaTexture(W = 2048, H = 1024, { blue = MIKASA.blue, yellow = MIKASA
   return c;
 }
 
+
+// V200W structure: 18 panels = 6 cube faces x 3 strips, strip direction rotating between faces.
+// Colour (from the maker's description: royal blue + yellow): yellow centre strip, blue outer strips,
+// the colour boundary waves across the straight seams.
+function v200wTexture(W = 2048, H = 1024, { blue = MIKASA.blue, yellow = MIKASA.yellow, seam = MIKASA.seam, wave = 0.11 } = {}) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const B = hex(blue), Y = hex(yellow), S = hex(seam);
+  for (let j = 0; j < H; j++) {
+    const th = (j / H) * Math.PI, py = Math.cos(th), r = Math.sin(th);
+    for (let i = 0; i < W; i++) {
+      const ph = (i / W) * Math.PI * 2, px = -Math.cos(ph) * r, pz = Math.sin(ph) * r;
+      const ax = Math.abs(px), ay = Math.abs(py), az = Math.abs(pz);
+      let a, b, face;
+      if (ax >= ay && ax >= az) { a = py / ax; b = pz / ax; face = 0; }
+      else if (ay >= az) { a = pz / ay; b = px / ay; face = 1; }
+      else { a = px / az; b = py / az; face = 2; }
+      // gnomonic -> equal-angle so strips look even on the sphere
+      a = Math.atan(a) / (Math.PI / 4); b = Math.atan(b) / (Math.PI / 4);
+      const edge = Math.min(1 - Math.abs(a), 1 - Math.abs(b), Math.abs(Math.abs(b) - 1 / 3));
+      const bound = 1 / 3 + wave * Math.sin(a * Math.PI * 1.5 + face);
+      const col = Math.abs(b) < bound ? Y : B;
+      let s = edge < 0.022 ? 1 - edge / 0.022 : 0;
+      s *= 0.85;
+      const k = (j * W + i) * 4;
+      d[k] = col[0] + (S[0] - col[0]) * s; d[k + 1] = col[1] + (S[1] - col[1]) * s; d[k + 2] = col[2] + (S[2] - col[2]) * s; d[k + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
 // dimpled micro-texture used as a bump map
 function dimpleTexture(W = 1024, H = 512) {
   const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -47,7 +80,7 @@ function dimpleTexture(W = 1024, H = 512) {
 
 // Creates a renderer canvas with the ball; returns { canvas, render(t, opts) }.
 // look: 'studio' (lit, glossy), 'flat' (graphic, little shading), 'print' (high-contrast for halftone)
-async function createMikasa({ size = 60, look = 'studio', key = [-2.5, 3, 4], keyColor = 0xffffff, rim = 0x6aa0ff, rimI = 1.2, colors } = {}) {
+async function createMikasa({ size = 60, look = 'studio', key = [-2.5, 3, 4], keyColor = 0xffffff, rim = 0x6aa0ff, rimI = 1.2, colors, pattern = 'v200w' } = {}) {
   const THREE = await import(VEDIT.libs.three);
   const px = Math.round(Math.min(innerWidth, innerHeight) * size / 100);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -55,7 +88,7 @@ async function createMikasa({ size = 60, look = 'studio', key = [-2.5, 3, 4], ke
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(20, 1, 0.1, 100); cam.position.set(0, 0, 6.1);
-  const tex = new THREE.CanvasTexture(mikasaTexture(2048, 1024, colors)); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const tex = new THREE.CanvasTexture((pattern === 'v200w' ? v200wTexture : mikasaTexture)(2048, 1024, colors)); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const bump = new THREE.CanvasTexture(dimpleTexture());
   const mat = look === 'flat'
     ? new THREE.MeshLambertMaterial({ map: tex })
