@@ -145,6 +145,11 @@
     __start() {
       if (window.gsap) { window.gsap.ticker.lagSmoothing(0); window.gsap.globalTimeline.pause(); }
     },
+    /** Step stateful libraries (GSAP) through skipped frames before a jump to t. */
+    __preroll(from, to, step) {
+      if (!window.gsap) return;
+      for (let x = from; x < to - 1e-6; x += step) window.gsap.globalTimeline.seek(x, false);
+    },
     /** Called by the renderer for every frame. */
     __seek(t) {
       for (const a of document.getAnimations()) { a.pause(); a.currentTime = t * 1000; }
@@ -160,6 +165,9 @@
   // Freeze GSAP's clock before any page script creates tweens, so every tween is anchored at
   // t = 0 and the renderer can seek them exactly.
   if (window.__VEDIT_RENDERER__ && window.gsap) {
+    // lazy:false: tweens render on the seek itself instead of on the next ticker tick (which never
+    // comes), so a worker that starts mid-scene sees exactly the same frame as a sequential render.
+    window.gsap.defaults({ lazy: false });
     window.gsap.ticker.lagSmoothing(0);
     window.gsap.globalTimeline.pause();
     window.gsap.globalTimeline.seek(0, false);

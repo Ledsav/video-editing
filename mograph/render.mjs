@@ -86,8 +86,25 @@ await page.waitForFunction(() => window.VM_READY === undefined || window.VM_READ
 await page.evaluate(() => (window.VM_READY ? window.VM_READY : null));
 await page.evaluate(() => window.VM.__start && window.VM.__start());
 
+// GSAP can skip tweens when its playhead jumps straight to a late time. Pre-roll its timeline
+// through every skipped frame (cheap: no drawing, no screenshot) so parallel workers and stills
+// match a sequential render exactly. Page code itself is a pure function of t by contract.
+let playhead = 0;
+const advance = async (t) => {
+  await page.evaluate(({ from, to, step }) => {
+    window.VM.__preroll(from, to, step);
+    window.VM.__seek(to);
+  }, { from: playhead, to: t, step: 1 / fps });
+  playhead = t + 1 / fps;
+};
 const grab = async (t, type) => {
-  await page.evaluate((tt) => window.VM.__seek(tt), t);
+  if (t + 1e-6 < playhead - 1 / fps) {          // going backwards: restart from 0
+    await page.reload({ waitUntil: 'load' });
+    await page.evaluate(() => (window.VM_READY ? window.VM_READY : null));
+    await page.evaluate(() => window.VM.__start && window.VM.__start());
+    playhead = 0;
+  }
+  await advance(t);
   return type === 'jpeg'
     ? page.screenshot({ type: 'jpeg', quality: 94 })
     : page.screenshot({ omitBackground: true, type: 'png' });
