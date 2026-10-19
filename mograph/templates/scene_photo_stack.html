@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="6.0">
+<meta name="vedit:description" content="Photo montage in 3D space: prints fly in one after another with perspective and spin, land on a growing stack with captions, while the camera slowly pushes in. Use stills grabbed from your footage (bin/vedit frames) or photos.">
+<meta name="vedit:params" content="images: [paths, absolute or relative to the edit]; captions: [strings]; bg, paper, ink, accent: CSS colours; title">
+<script src="../lib/runtime.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #world { position: absolute; inset: 0; perspective: 140vmin; perspective-origin: 50% 40%; }
+  #stack { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; }
+  .card { position: absolute; padding: 1.4vmin 1.4vmin 6vmin; box-shadow: 0 2vmin 5vmin rgba(0,0,0,0.35); transform-origin: 50% 50%; }
+  .card img { display: block; object-fit: cover; }
+  .cap { position: absolute; left: 0; right: 0; bottom: 1.6vmin; text-align: center; font: 400 3.2vmin 'Permanent Marker', 'Montserrat', sans-serif; }
+  #title { position: absolute; left: 0; right: 0; top: 7vh; text-align: center; font: 700 3.6vmin 'Montserrat', sans-serif; letter-spacing: 0.45em; padding-left: 0.45em; }
+</style></head>
+<body><div id="world"><div id="stack"></div></div><div id="title"></div>
+<script>
+  const P = VM.params({ images: [], captions: [], bg: '#1b1814', paper: '#f7f2e8', ink: '#2a241d', accent: '#e8b04a', title: '' });
+  document.body.style.background = `radial-gradient(ellipse at 50% 40%, ${P.bg}, #000 120%)`;
+  const title = document.getElementById('title'); title.textContent = P.title; title.style.color = P.accent;
+  const stack = document.getElementById('stack');
+  const portrait = innerHeight > innerWidth;
+  const cw = portrait ? 62 : 34, chh = cw * 1.25;                 // card size in vmin (3:4 prints)
+  const rnd = VM.rand(11);
+  const cards = P.images.map((src, i) => {
+    const c = document.createElement('div'); c.className = 'card'; c.style.background = P.paper;
+    c.style.width = `${cw}vmin`; c.style.marginLeft = `${-cw / 2 - 1.4}vmin`; c.style.marginTop = `${-chh / 2 - 3.7}vmin`;
+    const img = new Image(); img.src = src; img.style.width = `${cw}vmin`; img.style.height = `${chh}vmin`; c.appendChild(img);
+    const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = P.captions[i] || ''; cap.style.color = P.ink; c.appendChild(cap);
+    stack.appendChild(c);
+    return { c, img, rest: { x: (rnd() - 0.5) * (portrait ? 10 : 26), y: (rnd() - 0.5) * 8, rot: (rnd() - 0.5) * 16 },
+             from: { x: (i % 2 ? 1 : -1) * 120, y: -40 + rnd() * 30, rot: (i % 2 ? 1 : -1) * (40 + rnd() * 30) } };
+  });
+  window.VM_READY = Promise.all(cards.map(({ img }) => img.decode().catch(() => null)));
+  VM.onFrame((t) => {
+    const D = VM.duration, n = Math.max(cards.length, 1);
+    const each = Math.min(1.1, (D - 1.2) / n);
+    cards.forEach(({ c, rest, from }, i) => {
+      const t0 = 0.25 + i * each;
+      const p = VM.spring(t, t0, { stiffness: 120, damping: 15 });
+      const x = VM.lerp(from.x, rest.x, p), y = VM.lerp(from.y, rest.y, p), rot = VM.lerp(from.rot, rest.rot, p);
+      const lift = (1 - Math.min(1, p)) * 60;
+      c.style.opacity = t < t0 ? 0 : 1;
+      c.style.transform = `translate3d(${x}vmin, ${y}vmin, ${lift + i * 0.4}vmin) rotateZ(${rot}deg) rotateX(${(1 - p) * 35}deg)`;
+      c.style.zIndex = i;
+      c.style.filter = `brightness(${VM.lerp(1, 0.55, VM.prog(t, t0 + each * 1.5, 0.8))})`;   // older prints dim as new ones land
+    });
+    const out = VM.prog(t, D - 0.5, 0.5, 'inCubic');
+    stack.style.transform = `scale(${1 + 0.08 * VM.prog(t, 0, D, 'inOutSine')}) rotateX(${8 - 6 * VM.prog(t, 0, D)}deg)`;
+    document.getElementById('world').style.opacity = 1 - out;
+    title.style.opacity = VM.prog(t, 0.2, 0.6) * (1 - out);
+  });
+</script></body></html>

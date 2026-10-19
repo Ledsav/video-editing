@@ -83,6 +83,9 @@ Export any look as a LUT for other software: `bin/vedit lut teal_orange --out te
 
 - `out` or `duration` (output seconds). Stills (`.jpg/.png`) default to 3 s; use `motion` on them.
 - Solid slug: `{"id": "black", "color": "#000000", "duration": 1.0}`.
+- Motion-design scene: `{"id": "s1", "scene": "scene_kinetic", "duration": 5, "params": {...}}` or
+  `{"html": "scenes/my_scene.html", ...}`: an HTML page rendered full-screen as a clip (see the
+  motion-design skill). Scenes keep their own colours unless `"graded": true`.
 - `speed` 0.5 = slow motion, 2 = double speed (audio pitch-preserved).
 - `fit`: `cover` crops to fill, `contain` letterboxes, `blur_fill` puts vertical footage on a blurred copy of itself.
 - `crop`: normalized source region (reframing), applied before fit.

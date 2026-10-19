@@ -105,7 +105,9 @@ def _motion_chain(c: Clip, W: int, H: int, inp: str, out: str) -> list[str]:
 def _segment_args(plan: Plan, c: Clip, work: Path, W: int, H: int, quality: dict) -> list:
     fps = plan.fps
     pad = 3 / fps
-    if c.kind == "video":
+    if c.kind == "scene":
+        inp = ["-i", c.scene_file]
+    elif c.kind == "video":
         inp = ["-ss", f"{c.src_in:.4f}", "-t", f"{c.src_span + pad:.4f}", "-i", c.path]
     elif c.kind == "image":
         inp = ["-loop", "1", "-framerate", f"{fps}", "-t", f"{c.duration + pad:.4f}", "-i", c.path]
@@ -141,6 +143,12 @@ def _atempo(speed: float) -> str:
 def render_segment(plan: Plan, c: Clip, work: Path, W: int, H: int, quality: dict) -> tuple[Path, Path | None]:
     seg_dir = work / "segments"
     seg_dir.mkdir(parents=True, exist_ok=True)
+    if c.kind == "scene":
+        beats = [b - c.start for b in (plan.beats or []) if c.start - 0.5 <= b <= c.end + 0.5]
+        c.scene_file = mograph.render(c.path, work / "scenes", width=W, height=H, fps=plan.fps,
+                                      duration=c.duration + 3 / plan.fps,
+                                      params=mograph.resolve_assets(c.raw.get("params", {}), plan.base_dir),
+                                      opaque=True, beats=beats)
     args = _segment_args(plan, c, work, W, H, quality)
     key = stable_hash([str(a) for a in args], c.path if c.path else "")
     vpath = seg_dir / f"{c.index:03d}_{c.id}_{key}.mp4"
@@ -181,13 +189,15 @@ def collect_overlays(plan: Plan, work: Path, W: int, H: int, pool: ThreadPoolExe
         meta_dur = float(meta.get("duration", dur)) or dur
         cover = float(ov.get("cover_at", meta.get("cover_at", meta_dur / 2) * dur / meta_dur))
         start = c.transition.boundary - cover
-        jobs.append((path, ov.get("params", {}), start, dur, ov.get("blend", meta.get("blend", "normal")),
+        jobs.append((path, mograph.resolve_assets(ov.get("params", {}), plan.base_dir), start, dur,
+                     ov.get("blend", meta.get("blend", "normal")),
                      float(ov.get("opacity", 1.0))))
     for g in plan.spec.get("graphics") or []:
         path, meta = mograph.resolve(g, plan.base_dir)
         dflt = float(g.get("duration", meta.get("duration", 3.0)))
         start, end = plan.resolve_span({**g, "duration": g.get("duration", dflt)}, dflt)
-        jobs.append((path, g.get("params", {}), start, end - start, g.get("blend", meta.get("blend", "normal")),
+        jobs.append((path, mograph.resolve_assets(g.get("params", {}), plan.base_dir), start, end - start,
+                     g.get("blend", meta.get("blend", "normal")),
                      float(g.get("opacity", 1.0))))
     futures = []
     submitted: dict = {}  # identical graphics (same file, params, length) render once

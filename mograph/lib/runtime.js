@@ -83,20 +83,93 @@
       }
       return spans;
     },
+    /** Piecewise keyframes: VM.keys(t, [[0, 0], [0.5, 1, 'outBack'], [2, 1], [2.4, 0, 'inCubic']]).
+     *  Each key is [time, value, easeIntoThisKey]; values may be numbers or arrays of numbers. */
+    keys(t, ks) {
+      if (t <= ks[0][0]) return ks[0][1];
+      for (let i = 1; i < ks.length; i++) {
+        const [t1, v1, e] = ks[i], [t0, v0] = ks[i - 1];
+        if (t <= t1) {
+          const p = (ease[e] || ease.inOutCubic)(clamp((t - t0) / Math.max(t1 - t0, 1e-6)));
+          return Array.isArray(v0) ? v0.map((x, j) => lerp(x, v1[j], p)) : lerp(v0, v1, p);
+        }
+      }
+      return ks[ks.length - 1][1];
+    },
+    /** Damped spring response (0 -> 1 with overshoot) started at `start`. */
+    spring(t, start = 0, { stiffness = 180, damping = 12, mass = 1 } = {}) {
+      const x = t - start;
+      if (x <= 0) return 0;
+      const w0 = Math.sqrt(stiffness / mass), zeta = damping / (2 * Math.sqrt(stiffness * mass));
+      if (zeta < 1) {
+        const wd = w0 * Math.sqrt(1 - zeta * zeta);
+        return 1 - Math.exp(-zeta * w0 * x) * (Math.cos(wd * x) + (zeta * w0 / wd) * Math.sin(wd * x));
+      }
+      return 1 - Math.exp(-w0 * x) * (1 + w0 * x);
+    },
+    /** Delay for item i of a staggered group (seconds). `from`: 'start' | 'end' | 'center'. */
+    stagger(i, n, each = 0.06, from = 'start') {
+      const k = from === 'end' ? n - 1 - i : from === 'center' ? Math.abs(i - (n - 1) / 2) : i;
+      return k * each;
+    },
+    /** Draw an SVG path/shape progressively (p in 0..1) using its stroke. */
+    draw(el, p) {
+      const len = el.__len || (el.__len = el.getTotalLength ? el.getTotalLength() : 1000);
+      el.style.strokeDasharray = `${len} ${len}`;
+      el.style.strokeDashoffset = String(len * (1 - clamp(p)));
+    },
+    /** Animated number: VM.count(t, 0.5, 1.5, 0, 12800, {decimals: 0, sep: '.'}) -> "12.800". */
+    count(t, start, dur, from, to, { decimals = 0, sep = '.', ease: e = 'outExpo', prefix = '', suffix = '' } = {}) {
+      const v = lerp(from, to, VM.prog(t, start, dur, e));
+      const [i, d] = v.toFixed(decimals).split('.');
+      return prefix + i.replace(/\B(?=(\d{3})+(?!\d))/g, sep) + (d ? (sep === '.' ? ',' : '.') + d : '') + suffix;
+    },
+    /** Interpolate two CSS hex colours. */
+    mix(c1, c2, p) {
+      const h = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+      const a = h(c1), b = h(c2);
+      return `rgb(${a.map((x, i) => Math.round(lerp(x, b[i], clamp(p)))).join(',')})`;
+    },
+    /** Music beats (seconds, relative to this scene's start) passed in by the editor. */
+    get beats() { return (window.VEDIT && window.VEDIT.beats) || []; },
+    /** Index of the last beat at or before t (-1 before the first). */
+    beatIndex(t) { const b = VM.beats; let i = -1; while (i + 1 < b.length && b[i + 1] <= t) i++; return i; },
+    /** 1 on each beat, decaying to 0 (exponential, `decay` per second): for pulses and flashes. */
+    pulse(t, decay = 8) {
+      const i = VM.beatIndex(t);
+      return i < 0 ? 0 : Math.exp(-(t - VM.beats[i]) * decay);
+    },
     /** Register a per-frame render function f(t). */
     onFrame(fn) { frameFns.push(fn); },
+    /** Called once by the renderer before the first frame. */
+    __start() {
+      if (window.gsap) { window.gsap.ticker.lagSmoothing(0); window.gsap.globalTimeline.pause(); }
+    },
     /** Called by the renderer for every frame. */
     __seek(t) {
       for (const a of document.getAnimations()) { a.pause(); a.currentTime = t * 1000; }
+      if (window.gsap) window.gsap.globalTimeline.seek(t, false);
+      if (window.lottie && window.lottie.getRegisteredAnimations) {
+        for (const an of window.lottie.getRegisteredAnimations()) an.goToAndStop(t * 1000, false);
+      }
       for (const fn of frameFns) fn(t);
       if (typeof window.seek === 'function') window.seek(t);
     },
   };
   window.VM = VM;
+  // Freeze GSAP's clock before any page script creates tweens, so every tween is anchored at
+  // t = 0 and the renderer can seek them exactly.
+  if (window.__VEDIT_RENDERER__ && window.gsap) {
+    window.gsap.ticker.lagSmoothing(0);
+    window.gsap.globalTimeline.pause();
+    window.gsap.globalTimeline.seek(0, false);
+  }
 
   // Opened directly in a browser (not by the renderer): loop in real time for previewing.
   if (!window.__VEDIT_RENDERER__) {
-    window.addEventListener('load', () => {
+    window.addEventListener('load', async () => {
+      if (window.VM_READY) await window.VM_READY;
+      VM.__start();
       const t0 = performance.now();
       const loop = () => { VM.__seek(((performance.now() - t0) / 1000) % VM.duration); requestAnimationFrame(loop); };
       requestAnimationFrame(loop);

@@ -389,6 +389,13 @@ def build_plan(spec_or_path, base_dir: Path | None = None) -> Plan:
         if "color" in rc and "source" not in rc:
             kind, path, info = "color", None, None
             src_in = 0.0
+        elif ("scene" in rc or "html" in rc) and "source" not in rc:
+            # a full-screen motion-design scene (HTML page) used as a clip
+            kind, info = "scene", None
+            path = template_path(rc.get("html") or rc["scene"], base_dir)
+            src_in = 0.0
+            if "duration" not in rc and "out" not in rc:
+                rc = {**rc, "duration": float(template_meta(str(path)).get("duration", 3.0))}
         else:
             if "source" not in rc:
                 raise VeditError(f"clip {cid}: needs 'source' (or 'color' for a solid slug)")
@@ -450,8 +457,11 @@ def build_plan(spec_or_path, base_dir: Path | None = None) -> Plan:
             c.transition.boundary = c.start + c.transition.duration / 2
         else:
             c.transition.boundary = c.start
-        if c.grade_spec is not None and not (isinstance(c.grade_spec, dict)
-                                             and set(c.grade_spec) <= {"overrides"}):
+        if c.kind == "scene" and c.grade_spec is None and not c.raw.get("graded"):
+            # designed scenes keep their exact colours unless asked to follow the story grade
+            c.grade_start = c.grade_end = G.look()
+        elif c.grade_spec is not None and not (isinstance(c.grade_spec, dict)
+                                               and set(c.grade_spec) <= {"overrides"}):
             g = G.resolve(c.grade_spec)
             c.grade_start = c.grade_end = g
         else:

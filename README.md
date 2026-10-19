@@ -21,6 +21,21 @@ that starts calm, turns tense, ends hopeful, punchy transitions, bold titles") a
   rendered frame-by-frame in headless Chromium with alpha. That covers the 13 bundled
   templates and any custom graphic Claude designs for your edit.
 
+## Motion design
+
+The **motion-design skill** (`.claude/skills/motion-design/`) makes videos that are entirely
+designed: promos, explainers, kinetic typography, logo reveals, data animations, 3D scenes and
+photo montages. Each scene is an HTML page (CSS/SVG/canvas/WebGL, with **GSAP**, **Lottie** and
+**three.js** available offline) rendered frame-accurately, so it can be cut, beat-synced,
+transitioned and mixed with footage like any clip:
+
+```json
+{"id": "s1", "scene": "scene_kinetic", "duration": 6, "params": {"lines": ["CORTES", "APERTAS"]}}
+```
+
+Scene templates: `scene_kinetic`, `scene_stats`, `scene_logo_reveal`, `scene_3d_mountains`,
+`scene_photo_stack`. Long scenes render in parallel browser workers.
+
 ## Setup
 
 ```bash

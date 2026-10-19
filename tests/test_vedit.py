@@ -117,6 +117,13 @@ class TimelineTests(unittest.TestCase):
         self.assertIn("Dialogue:", ass)
         self.assertIn("THERE", ass)
 
+    def test_scene_clip(self):
+        p = self.plan(timeline=[{"id": "s", "scene": "scene_kinetic", "duration": 2.0},
+                                {"id": "c", "source": "a", "in": 0, "out": 1}])
+        self.assertEqual(p.clips[0].kind, "scene")
+        self.assertEqual(p.clips[0].frames, 60)
+        self.assertEqual(p.clips[0].grade_start["saturation"], 1.0)   # scenes keep their own colours
+
     def test_bad_source_range(self):
         with self.assertRaises(Exception):
             build_plan(base_spec(timeline=[{"source": "a", "in": 10, "out": 12}]), self.dir)
@@ -145,7 +152,9 @@ class RenderTests(unittest.TestCase):
                                   "params": {"name": "Test", "role": "Role"}}]
             extra["timeline"] = base_spec()["timeline"] + [
                 {"id": "c5", "source": "b", "in": 0, "out": 2,
-                 "transition": {"type": "mograph", "template": "shape_wipe", "duration": 0.6}}]
+                 "transition": {"type": "mograph", "template": "shape_wipe", "duration": 0.6}},
+                {"id": "s1", "scene": "scene_stats", "duration": 1.5, "transition": "crossfade",
+                 "params": {"title": "TEST", "stats": [{"value": 42, "label": "answer"}]}}]
         spec_path = self.dir / "edit.json"
         spec_path.write_text(json.dumps(base_spec(**extra)))
         plan = build_plan(spec_path)

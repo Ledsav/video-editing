@@ -202,7 +202,11 @@ def cmd_storyboard(a) -> int:
     tiles = []
     for c in plan.clips:
         mid = G.lerp_params(c.grade_start, c.grade_end, 0.5)
-        if c.kind == "color":
+        if c.kind == "scene":
+            from . import mograph as MG
+            src = MG.stills(c.path, [c.duration * 0.6], work / f"{c.id}_scene", width=plan.output["width"] // 2,
+                            height=plan.output["height"] // 2, duration=c.duration, params=c.raw.get("params", {}))[0]
+        elif c.kind == "color":
             from PIL import Image
             from .util import hex_to_rgb
             src = work / f"{c.id}_src.png"
@@ -252,6 +256,7 @@ def cmd_mograph(a) -> int:
 
     html = template_path(a.template)
     params = json.loads(a.params) if a.params else {}
+    params = mograph.resolve_assets(params, Path.cwd())
     meta = template_meta(str(html))
     dur = a.duration or float(meta.get("duration", 2.0))
     if a.action == "preview":
@@ -262,7 +267,8 @@ def cmd_mograph(a) -> int:
                                     width=a.width, height=a.height, background=bg))
     else:
         out_dir = Path(a.out or "work/mograph")
-        print(mograph.render(html, out_dir, width=a.width, height=a.height, fps=a.fps, duration=dur, params=params))
+        print(mograph.render(html, out_dir, width=a.width, height=a.height, fps=a.fps, duration=dur, params=params,
+                             opaque=meta.get("kind") == "scene"))
     return 0
 
 
