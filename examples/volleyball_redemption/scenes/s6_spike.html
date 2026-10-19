@@ -1,0 +1,121 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="5.455">
+<meta name="vedit:description" content="06 The Spike: match point. The player rises into the air in slow motion, cocks the arm, smashes on the downbeat. Flash, orange world: REDEMPTION.">
+<script src="common.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0a1020; }
+  #stage { position: absolute; inset: 0; }
+  svg.full { position: absolute; inset: 0; width: 100vw; height: 100vh; overflow: visible; }
+</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ hit: 2.727, kicker: '25 : 24 · MATCH POINT', title: 'REDEMPTION.' });
+  const T = P.hit, stage = document.getElementById('stage');
+  const ns = 'http://www.w3.org/2000/svg';
+  const vmin = Math.min(innerWidth, innerHeight) / 100, vw = innerWidth / 100, vh = innerHeight / 100;
+  const bgDark = el('div', { position: 'absolute', inset: 0, background: `radial-gradient(circle at 62% 30%, #22305a, ${C.ink} 70%)` });
+  const bgHot = el('div', { position: 'absolute', inset: 0, background: `radial-gradient(circle at 50% 45%, ${C.gold}, ${C.orange} 60%, #e24e1c)`, opacity: 0 });
+  // sunburst rays (svg in px)
+  const rays = document.createElementNS(ns, 'svg'); rays.setAttribute('class', 'full'); stage.appendChild(rays);
+  const RX = 62 * vw, RY = 30 * vh, NR = 28;
+  let rhtml = '';
+  for (let i = 0; i < NR; i++) { const a0 = (i / NR) * Math.PI * 2, a1 = a0 + Math.PI / NR, L = 3000;
+    rhtml += `<path d="M 0 0 L ${Math.cos(a0) * L} ${Math.sin(a0) * L} L ${Math.cos(a1) * L} ${Math.sin(a1) * L} Z"/>`; }
+  rays.innerHTML = `<g class="rg">${rhtml}</g>`;
+  const rg = rays.querySelector('.rg');
+  // speed lines converging on the ball
+  const lines = document.createElementNS(ns, 'svg'); lines.setAttribute('class', 'full'); stage.appendChild(lines);
+  const R = VM.rand(77), streaks = [];
+  for (let i = 0; i < 46; i++) { const l = document.createElementNS(ns, 'line'); l.setAttribute('stroke', C.cream); l.setAttribute('stroke-linecap', 'round');
+    lines.appendChild(l); streaks.push({ l, a: R() * Math.PI * 2, r: 0.3 + R() * 0.7, ph: R(), w: 1 + R() * 2.5 }); }
+
+  // the player: stroked limbs between joints, two poses interpolated
+  const fig = document.createElementNS(ns, 'svg'); fig.setAttribute('class', 'full'); stage.appendChild(fig);
+  fig.innerHTML = `<g class="body" stroke="${C.ink}" stroke-linecap="round" stroke-linejoin="round" fill="none"></g>`;
+  const body = fig.querySelector('.body');
+  const limb = (w) => { const p = document.createElementNS(ns, 'polyline'); p.setAttribute('stroke-width', w); body.appendChild(p); return p; };
+  const parts = { legB: limb(10), armB: limb(8), torso: limb(13), legF: limb(12), armF: limb(9) };
+  const chest = document.createElementNS(ns, 'polygon'); chest.setAttribute('fill', C.ink); chest.setAttribute('stroke', 'none'); body.appendChild(chest);
+  const head = document.createElementNS(ns, 'circle'); head.setAttribute('fill', C.ink); head.setAttribute('stroke', 'none'); body.appendChild(head);
+  const rimGlow = `drop-shadow(0 0 ${0.8 * vmin}px rgba(255,181,71,0.9))`;
+  // joints in figure units (y down), hip at origin. A = cocked (bow and arrow), C = contact (arm extended), B = follow-through
+  const A = { neck: [-3, -34], head: [-2, -45], shF: [-2, -31], elF: [-15, -39], haF: [-10, -55], elB: [12, -46], haB: [21, -60],
+              kF: [8, 14], fF: [-8, 27], kB: [-2, 16], fB: [-19, 25] };
+  const Cc = { neck: [2, -35], head: [4, -46], shF: [3, -32], elF: [10, -48], haF: [17, -63], elB: [12, -22], haB: [5, -13],
+              kF: [10, 15], fF: [-4, 30], kB: [2, 17], fB: [-13, 29] };
+  const B = { neck: [10, -32], head: [16, -41], shF: [9, -29], elF: [24, -36], haF: [32, -22], elB: [4, -16], haB: [-4, -7],
+              kF: [11, 17], fF: [3, 35], kB: [15, 13], fB: [11, 33] };
+  const S = 0.72 * vmin;                         // px per figure unit
+  const ball = makeBall(stage, 9);
+  const flash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0 });
+
+  const kick = el('div', { position: 'absolute', left: 0, right: 0, top: '30vh', textAlign: 'center', font: `700 2.6vmin ${TEXT}`,
+    letterSpacing: '0.5em', textIndent: '0.5em', color: C.ink }, stage, P.kicker);
+  const title = el('div', { position: 'absolute', left: 0, right: 0, top: '36vh', textAlign: 'center', font: `400 21vmin ${DISPLAY}`,
+    lineHeight: 0.95, color: C.ink, letterSpacing: '0.01em' }, stage, P.title);
+  const titleU = riseText(title, { t0: T + 0.75, out: 5.2, stagger: 0.035, dur: 0.6, outDur: 0.25 });
+  const pre = el('div', { position: 'absolute', left: '7vw', top: '76vh', font: `400 7vmin ${DISPLAY}`, color: C.cream, letterSpacing: '0.04em' }, stage, 'MATCH POINT.');
+  const preU = riseText(pre, { t0: 0.35, out: T - 0.45, stagger: 0.03 });
+  addFinish({ grain: 0.08, vignette: 0.45 });
+
+  const lerp2 = (a, b, k) => [VM.lerp(a[0], b[0], k), VM.lerp(a[1], b[1], k)];
+  VM.onFrame((t) => {
+    const hot = t >= T;
+    // the swing: cock (A) -> whip (B) in 0.12 s around the hit, slight anticipation before
+    const k1 = VM.prog(t, T - 0.16, 0.16, 'inCubic'), k2 = VM.prog(t, T, 0.18, 'outCubic');
+    const J = {}; for (const n in A) J[n] = k2 > 0 ? lerp2(Cc[n], B[n], k2) : lerp2(A[n], Cc[n], k1);
+    const k = k2;
+    // jump: rises from below the frame, hangs (slow motion), falls after the hit
+    const rise = VM.prog(t, 0, 2.3, 'outCubic');
+    const fall = VM.prog(t, T + 0.1, 0.7, 'inCubic');
+    const hipX = (38 + 3 * rise + 6 * fall) * vw, hipY = (125 - 63 * rise + 80 * fall) * vh + Math.sin(t * 2) * 0.4 * vh;
+    const lean = -6 + 10 * k;
+    body.setAttribute('transform', `translate(${hipX} ${hipY}) rotate(${lean}) scale(${S})`);
+    const pl = (...pts) => pts.map((p) => `${p[0]},${p[1]}`).join(' ');
+    parts.torso.setAttribute('points', pl([0, 0], J.neck));
+    parts.armF.setAttribute('points', pl(J.shF, J.elF, J.haF));
+    parts.armB.setAttribute('points', pl(J.shF, J.elB, J.haB));
+    parts.legF.setAttribute('points', pl([0, 0], J.kF, J.fF));
+    parts.legB.setAttribute('points', pl([0, 0], J.kB, J.fB));
+    const nk = J.neck; chest.setAttribute('points', `${nk[0] - 5.5},${nk[1] + 3} ${nk[0] + 5.5},${nk[1] + 3} 3.5,-6 -3.5,-6`);
+    head.setAttribute('cx', J.head[0]); head.setAttribute('cy', J.head[1]); head.setAttribute('r', 6.2);
+    fig.style.filter = hot ? 'none' : rimGlow;
+    // ball: hangs at the top of the set, meets the hand at T, then rockets down-right
+    const toPx = (j) => { const a = lean * Math.PI / 180, x = j[0] * S, y = j[1] * S;
+      return [hipX + x * Math.cos(a) - y * Math.sin(a), hipY + x * Math.sin(a) + y * Math.cos(a)]; };
+    // contact point: where the extended hand is at the moment of the hit (hip path evaluated at T)
+    const riseT = VM.ease.outCubic(Math.min(1, T / 2.3));
+    const hxT = (38 + 3 * riseT) * vw, hyT = (125 - 63 * riseT) * vh + Math.sin(T * 2) * 0.4 * vh;
+    const aT = -6 * Math.PI / 180, cxu = (Cc.haF[0] + 3) * S, cyu = (Cc.haF[1] - 6) * S;
+    const contact = [hxT + cxu * Math.cos(aT) - cyu * Math.sin(aT), hyT + cxu * Math.sin(aT) + cyu * Math.cos(aT)];
+    let bx, by, bs = 1;
+    if (!hot) { const f = VM.prog(t, 0, T, 'outSine'); bx = contact[0] + (1 - f) * 4 * vw; by = contact[1] - (1 - f) * 14 * vh - Math.sin(t * 1.4) * 0.3 * vh; }
+    else { const u = VM.prog(t, T, 0.3, 'linear'); bx = contact[0] + u * 60 * vw; by = contact[1] + u * 90 * vh; bs = 1 - 0.3 * u; }
+    ball.set({ x: bx / vw, y: by / vh, rot: t * (hot ? 1400 : 60), scale: bs * (hot ? 1 + 0.25 * Math.exp(-(t - T) * 12) : 1) });
+    // world switch on the hit
+    bgHot.style.opacity = hot ? 1 : 0;
+    bgDark.style.opacity = hot ? 0 : 1;
+    rg.setAttribute('transform', `translate(${hot ? 50 * vw : RX} ${hot ? 45 * vh : RY}) rotate(${t * (hot ? 10 : 4)})`);
+    rg.setAttribute('fill', hot ? 'rgba(255,240,200,0.18)' : 'rgba(120,150,220,0.06)');
+    flash.style.opacity = hot ? Math.exp(-(t - T) * 9) : 0;
+    // speed lines: converge on the ball before, burst out after
+    streaks.forEach((s) => {
+      const cyc = (t * (hot ? 2.5 : 1.1) + s.ph) % 1, d = hot ? 10 + cyc * 120 : 120 - cyc * 105;
+      const cx = hot ? 50 * vw : bx, cy = hot ? 45 * vh : by;
+      const x1 = cx + Math.cos(s.a) * d * vmin * s.r, y1 = cy + Math.sin(s.a) * d * vmin * s.r;
+      const x2 = cx + Math.cos(s.a) * (d + 14) * vmin * s.r, y2 = cy + Math.sin(s.a) * (d + 14) * vmin * s.r;
+      s.l.setAttribute('x1', x1); s.l.setAttribute('y1', y1); s.l.setAttribute('x2', x2); s.l.setAttribute('y2', y2);
+      s.l.setAttribute('stroke-width', s.w); s.l.setAttribute('stroke', hot ? C.cream : C.cream);
+      s.l.style.opacity = (hot ? 0.7 * (1 - VM.prog(t, T + 0.4, 1.2)) : 0.35 * VM.prog(t, 0.6, 1)) * Math.sin(cyc * Math.PI);
+    });
+    // camera: slow push during the hang, punch on the hit
+    const [sx, sy] = shake(t, T, 2.2, 5, 11);
+    const z = hot ? 1 + 0.06 * Math.exp(-(t - T) * 4) : 1 + 0.07 * VM.prog(t, 0, T, 'inSine');
+    stage.style.transform = `translate(${sx}vmin, ${sy}vmin) scale(${z})`;
+    kick.style.opacity = VM.prog(t, T + 0.65, 0.4); kick.style.transform = `translateY(${(1 - VM.prog(t, T + 0.65, 0.6, 'outExpo')) * 2}vh)`;
+    kick.style.opacity = Math.min(kick.style.opacity, 1 - VM.prog(t, 5.15, 0.25));
+    titleU(t); preU(t);
+  });
+</script></body></html>

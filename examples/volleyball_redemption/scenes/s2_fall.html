@@ -1,0 +1,108 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="5">
+<meta name="vedit:description" content="02 The Fall: match point, the scoreboard flips 24-24 to 24-25, the ball slams into the floor and rolls away. LOST.">
+<script src="common.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0a1020; }
+  #stage { position: absolute; inset: 0; }
+  .digit { position: relative; display: inline-block; overflow: hidden; height: 1em; line-height: 1; vertical-align: top; }
+  .digit span { display: block; }
+</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ home: 'HOME', away: 'AWAY', flip: 1.3, impact: 2.45 });
+  const stage = document.getElementById('stage');
+  el('div', { position: 'absolute', left: 0, right: 0, top: '80vh', bottom: 0, background: 'linear-gradient(#141c30, #0a1020)' });
+  const floorLine = el('div', { position: 'absolute', left: 0, right: 0, top: '80vh', height: '0.3vmin', background: 'rgba(243,237,226,0.35)' });
+  const redWash = el('div', { position: 'absolute', inset: 0, background: C.red, mixBlendMode: 'multiply', opacity: 0 });
+
+  // scoreboard
+  const board = el('div', { position: 'absolute', left: 0, right: 0, top: '20vh', display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
+    gap: '6vmin', color: C.cream });
+  const team = (name, html) => el('div', { textAlign: 'center' }, board,
+    `<div style="font:600 1.9vmin ${TEXT};letter-spacing:.5em;text-indent:.5em;opacity:.7;margin-bottom:2vmin">${name}</div>
+     <div style="font:400 26vmin ${DISPLAY};line-height:1">${html}</div>`);
+  const home = team(P.home, '24');
+  el('div', { font: `400 20vmin ${DISPLAY}`, lineHeight: 1.3, opacity: 0.4 }, board, ':');
+  const away = team(P.away, `<span class="digit"><span>2</span></span><span class="digit"><span class="roll">4<br>5</span></span>`);
+  const roll = away.querySelector('.roll');
+  const label = el('div', { position: 'absolute', left: 0, right: 0, top: '13vh', textAlign: 'center', font: `600 2vmin ${TEXT}`,
+    letterSpacing: '0.6em', textIndent: '0.6em', color: C.gold }, stage, 'MATCH POINT');
+
+  // giant LOST behind the impact
+  const lost = el('div', { position: 'absolute', left: 0, right: 0, top: '22vh', textAlign: 'center', font: `400 46vmin ${DISPLAY}`,
+    lineHeight: 1, color: 'transparent', WebkitTextStroke: `0.35vmin ${C.red}`, letterSpacing: '0.04em', opacity: 0 }, stage, 'LOST');
+
+  // impact: shockwave rings + floor cracks
+  const ns = 'http://www.w3.org/2000/svg';
+  const fx = document.createElementNS(ns, 'svg'); fx.setAttribute('viewBox', '0 0 1920 1080'); fx.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+  Object.assign(fx.style, { position: 'absolute', inset: 0, width: '100vw', height: '100vh', overflow: 'visible' }); stage.appendChild(fx);
+  const IX = 0.42 * 1920, IY = 864;
+  const rings = [0, 1, 2].map(() => { const e = document.createElementNS(ns, 'ellipse'); e.setAttribute('cx', IX); e.setAttribute('cy', IY);
+    e.setAttribute('fill', 'none'); e.setAttribute('stroke', C.cream); fx.appendChild(e); return e; });
+  const R = VM.rand(9), cracks = [];
+  for (let i = 0; i < 9; i++) {
+    let x = IX, y = IY, d = `M ${x} ${y}`; const a0 = (i / 9) * Math.PI * 2 + R() * 0.4;
+    for (let k = 0; k < 4; k++) { const a = a0 + (R() - 0.5) * 0.7; const L = 40 + R() * 90; x += Math.cos(a) * L; y += Math.sin(a) * L * 0.22; d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`; }
+    const p = document.createElementNS(ns, 'path'); p.setAttribute('d', d); p.setAttribute('fill', 'none');
+    p.setAttribute('stroke', 'rgba(243,237,226,0.55)'); p.setAttribute('stroke-width', '2'); fx.appendChild(p); cracks.push(p);
+  }
+  const shadow = makeShadow(stage);
+  const ball = makeBall(stage, 16);
+  chapterTag('02', 'THE FALL', 0.2, 4.7);
+  addFinish({ grain: 0.1, vignette: 0.65 });
+
+  // ball trajectory: falls fast, hits at `impact`, bounces lower and lower, rolls off right
+  function ballAt(t) {
+    const T = P.impact, floorY = 80 - 8 * Math.min(innerWidth, innerHeight) / innerHeight;
+    const g = 260;                               // vh / s^2
+    if (t < T - 0.42) return { x: 62, y: -20, sx: 1, sy: 1, rot: 0, vis: 0 };
+    if (t < T) { const k = (t - (T - 0.42)) / 0.42; return { x: VM.lerp(54, 42, k), y: VM.lerp(-20, floorY, k * k), sx: 0.9, sy: 1.12, rot: k * 200, vis: 1 }; }
+    // bounces: heights decaying by 0.42 each
+    let tt = t - T, h = 22, x = 42, rot = 200;
+    const roll = (u) => 8 * (1 - Math.exp(-u * 1.2));   // rolls to rest at the centre (match cut into the next scene)
+    for (let b = 0; b < 5; b++) {
+      const dur = 2 * Math.sqrt(2 * h / g);
+      if (tt < dur) {
+        const u = tt / dur, y = floorY - 4 * h * u * (1 - u);
+        const squash = b === 0 && tt < 0.07 ? 1 - tt / 0.07 : 0;
+        return { x: x + roll(t - T), y, sx: 1 + 0.28 * squash, sy: 1 - 0.3 * squash, rot: rot + roll(t - T) * 30, vis: 1 };
+      }
+      tt -= dur; h *= 0.42;
+    }
+    return { x: x + roll(t - T), y: floorY, sx: 1, sy: 1, rot: rot + roll(t - T) * 30, vis: 1 };
+  }
+
+  VM.onFrame((t) => {
+    const T = P.impact;
+    // scoreboard: 24 -> 25 roll, red wash, then sinks away
+    const r = VM.prog(t, P.flip, 0.45, 'inOutExpo');
+    roll.style.transform = `translateY(${-r * 50}%)`;
+    away.style.color = VM.mix(C.cream, C.red, r);
+    redWash.style.opacity = 0.35 * VM.env(t, P.flip, P.flip + 1.2, 0.08, 0.9);
+    const fall = VM.prog(t, T - 0.5, 0.45, 'inExpo');
+    board.style.transform = `translateY(${fall * 12}vh) scale(${1 - fall * 0.1})`; board.style.opacity = (1 - fall) * VM.prog(t, 0, 0.4, 'outCubic');
+    board.style.filter = `blur(${fall * 1.5}vmin)`;
+    label.style.opacity = VM.env(t, 0.2, T - 0.4, 0.5, 0.3) * (0.75 + 0.25 * Math.sin(t * 9));
+    // LOST: slams on impact, slow drift
+    const l = VM.prog(t, T, 0.35, 'outExpo');
+    lost.style.opacity = l * (1 - VM.prog(t, 4.5, 0.4));
+    lost.style.transform = `scale(${1.25 - 0.25 * l + 0.03 * VM.prog(t, T, 2.5)})`;
+    // ball + shadow
+    const b = ballAt(t);
+    ball.set({ x: b.x, y: b.y, rot: b.rot, sx: b.sx, sy: b.sy, opacity: b.vis });
+    const h = Math.max(0, (80 - b.y) / 60);
+    shadow.style.transform = `translate(${b.x}vw, 80.5vh) scale(${(1.0 - h * 0.6) * 0.8})`; shadow.style.opacity = b.vis * (0.9 - h * 0.7);
+    // impact fx
+    rings.forEach((e, i) => { const p = VM.prog(t, T + i * 0.08, 0.9, 'outCubic');
+      e.setAttribute('rx', 40 + p * (520 + i * 160)); e.setAttribute('ry', (40 + p * (520 + i * 160)) * 0.18);
+      e.setAttribute('stroke-width', (1 - p) * 6); e.setAttribute('opacity', t >= T ? (1 - p) : 0); });
+    cracks.forEach((p, i) => { VM.draw(p, VM.prog(t, T + i * 0.015, 0.35, 'outExpo')); p.style.opacity = t >= T ? 1 - VM.prog(t, 3.6, 1) : 0; });
+    const [sx, sy] = shake(t, T, 1.6, 5);
+    stage.style.transform = `translate(${sx}vmin, ${sy}vmin)`;
+    // light drains at the end
+    stage.style.filter = `brightness(${1 - 0.5 * VM.prog(t, 4.2, 0.8, 'inCubic')}) saturate(${1 - 0.4 * VM.prog(t, 3.5, 1.5)})`;
+  });
+</script></body></html>

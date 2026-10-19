@@ -1,0 +1,71 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="6">
+<meta name="vedit:description" content="01 The Dream: an empty arena at night, one spotlight, the ball floats down into the light.">
+<script src="common.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0a1020; }
+  #stage { position: absolute; inset: 0; }
+  svg.court { position: absolute; inset: 0; width: 100vw; height: 100vh; }
+</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ kicker: 'EVERY ATHLETE', title: 'HAS A DREAM' });
+  const stage = document.getElementById('stage');
+  // floor glow + spotlight cone
+  const floor = el('div', { position: 'absolute', left: 0, right: 0, top: '58vh', bottom: 0,
+    background: 'linear-gradient(#121b30, #0a1020)' });
+  const cone = el('div', { position: 'absolute', left: '50vw', top: '-10vh', width: '70vmin', height: '110vh', marginLeft: '-35vmin',
+    clipPath: 'polygon(42% 0, 58% 0, 100% 100%, 0 100%)', mixBlendMode: 'screen',
+    background: 'linear-gradient(rgba(255,236,205,0.30), rgba(255,236,205,0.05) 80%, rgba(255,236,205,0))' });
+  const pool = el('div', { position: 'absolute', left: '50vw', top: '82vh', width: '80vmin', height: '16vmin', marginLeft: '-40vmin', marginTop: '-8vmin',
+    borderRadius: '50%', mixBlendMode: 'screen', background: 'radial-gradient(closest-side, rgba(255,232,196,0.42), rgba(255,232,196,0))' });
+  // court lines in perspective
+  const W = 1000, H = 1000;
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const court = document.createElementNS(svgNS, 'svg'); court.setAttribute('class', 'court');
+  court.setAttribute('viewBox', '0 0 1000 1000'); court.setAttribute('preserveAspectRatio', 'none');
+  const lines = [
+    'M 80 1000 L 330 600', 'M 920 1000 L 670 600', 'M 330 600 L 670 600',   // sidelines + end line
+    'M 0 860 L 1000 860', 'M 237 750 L 763 750',                            // attack lines
+  ].map((d) => { const p = document.createElementNS(svgNS, 'path'); p.setAttribute('d', d);
+    p.setAttribute('stroke', 'rgba(243,237,226,0.35)'); p.setAttribute('stroke-width', '2.5'); p.setAttribute('fill', 'none');
+    court.appendChild(p); return p; });
+  stage.appendChild(court);
+
+  const shadow = makeShadow(stage);
+  const ball = makeBall(stage, 22);
+  const dust = [];
+  const R = VM.rand(5);
+  for (let i = 0; i < 40; i++) dust.push({ x: 38 + R() * 24, y: R() * 80, s: 0.15 + R() * 0.35, v: 0.6 + R() * 1.6, ph: R() * 10,
+    e: el('div', { position: 'absolute', left: 0, top: 0, borderRadius: '50%', background: 'rgba(255,240,215,0.8)' }) });
+
+  const kick = el('div', { position: 'absolute', left: 0, right: 0, top: '17vh', textAlign: 'center',
+    font: `500 2.4vmin ${TEXT}`, letterSpacing: '0.6em', color: C.cream, textIndent: '0.6em' }, stage, P.kicker);
+  const title = el('div', { position: 'absolute', left: 0, right: 0, top: '22vh', textAlign: 'center', lineHeight: 0.9,
+    font: `400 13vmin ${DISPLAY}`, color: C.cream, letterSpacing: '0.02em' }, stage, P.title);
+  const kickU = softWords(kick, { t0: 1.5, out: 5.2, stagger: 0.18 });
+  const titleU = riseText(title, { t0: 2.2, out: 5.45, stagger: 0.045, dur: 0.8 });
+  chapterTag('01', 'THE DREAM', 0.4, 5.6);
+  addFinish({ grain: 0.09, vignette: 0.7 });
+
+  VM.onFrame((t) => {
+    // light flickers on, then breathes
+    const on = VM.prog(t, 0.15, 0.08) * (t < 0.6 ? 0.55 + 0.45 * (VM.noise(t * 30, 2) > -0.2 ? 1 : 0.2) : 1);
+    const breathe = 0.92 + 0.08 * VM.noise(t * 1.3, 4);
+    cone.style.opacity = on * breathe; pool.style.opacity = on * breathe;
+    lines.forEach((p, i) => VM.draw(p, VM.prog(t, 0.4 + i * 0.12, 1.4, 'inOutCubic')));
+    // ball floats down into the light, then hovers
+    const land = VM.prog(t, 0.2, 2.6, 'outCubic');
+    const y = VM.lerp(-15, 62, land) + Math.sin(t * 1.6) * 0.8 * land;
+    const camZ = 1 + 0.04 * VM.prog(t, 0, 6, 'inOutSine');
+    stage.style.transform = `scale(${camZ})`;
+    ball.set({ x: 50, y, rot: t * 22 + 30, scale: 1 });
+    const h = Math.max(0, (82 - y) / 60);
+    shadow.style.transform = `translate(50vw, 82vh) scale(${1.2 - h * 0.6})`; shadow.style.opacity = 0.9 - h * 0.6;
+    dust.forEach((d) => { const yy = (d.y - t * d.v * 3 + 100) % 100; d.e.style.width = d.e.style.height = `${d.s}vmin`;
+      d.e.style.transform = `translate(${d.x + Math.sin(t + d.ph) * 0.6}vw, ${yy}vh)`; d.e.style.opacity = on * 0.6 * (0.5 + 0.5 * Math.sin(t * 2 + d.ph)); });
+    kickU(t); titleU(t);
+  });
+</script></body></html>

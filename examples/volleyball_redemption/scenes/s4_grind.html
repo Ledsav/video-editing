@@ -1,0 +1,120 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="10.909">
+<meta name="vedit:description" content="04 The Grind: four bars on the beat. 05:00 alarm, AGAIN x4, 1,000 serves a day, day 1 to day 365.">
+<script src="common.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0a1020; }
+  #stage { position: absolute; inset: 0; }
+  .sec { position: absolute; inset: 0; overflow: hidden; }
+  .digit { display: inline-block; overflow: hidden; height: 1em; line-height: 1; vertical-align: top; }
+  .digit > span { display: block; }
+</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ beat: 60 / 88, serves: 1000, days: 365 });
+  const b = P.beat, bar = 4 * b;
+  const stage = document.getElementById('stage');
+  const S = [0, 1, 2, 3].map((i) => el('div', {}, stage)); S.forEach((s) => (s.className = 'sec'));
+
+  // ---------- A: 05:00 on orange (opens as a circle from the ignited ball) ----------
+  S[0].style.background = C.orange;
+  const clock = el('div', { position: 'absolute', left: 0, right: 0, top: '27vh', textAlign: 'center', font: `400 34vmin ${DISPLAY}`, color: C.ink, lineHeight: 1 }, S[0],
+    `<span class="digit"><span>0</span></span><span class="digit"><span class="r1">4<br>5</span></span>:<span class="digit"><span class="r2">5<br>0</span></span><span class="digit"><span class="r3">9<br>0</span></span>`);
+  const rolls = ['.r1', '.r2', '.r3'].map((q) => clock.querySelector(q));
+  const am = el('div', { position: 'absolute', left: 0, right: 0, top: '66vh', textAlign: 'center', font: `700 2.6vmin ${TEXT}`,
+    letterSpacing: '0.6em', textIndent: '0.6em', color: C.ink }, S[0], 'AM &nbsp;·&nbsp; FIRST ONE IN');
+
+  // ---------- B: AGAIN x4 ----------
+  S[1].style.background = C.ink;
+  const words = ['AGAIN.', 'AGAIN.', 'AGAIN.', 'AND AGAIN.'].map((w, i) => el('div', { position: 'absolute', left: '7vw', right: '7vw', top: '50vh',
+    font: `400 19vmin ${DISPLAY}`, lineHeight: 0.86, color: i === 3 ? C.orange : C.cream, whiteSpace: 'nowrap', textAlign: 'left' }, S[1], w));
+  el('div', { position: 'absolute', left: 0, right: 0, top: '84.5vh', height: '0.25vmin', background: 'rgba(243,237,226,0.25)' }, S[1]);
+  const dribble = makeBall(S[1], 13);
+
+  // ---------- C: 1,000 serves ----------
+  S[2].style.background = C.cream;
+  const ns = 'http://www.w3.org/2000/svg';
+  const ring = document.createElementNS(ns, 'svg'); ring.setAttribute('viewBox', '-100 -100 200 200');
+  Object.assign(ring.style, { position: 'absolute', left: '50vw', top: '50vh', width: '70vmin', height: '70vmin', marginLeft: '-35vmin', marginTop: '-35vmin', overflow: 'visible' });
+  ring.innerHTML = `<circle r="92" fill="none" stroke="rgba(10,16,32,0.12)" stroke-width="1.2"/>
+    <circle class="arc" r="92" fill="none" stroke="${C.orange}" stroke-width="3.2" stroke-linecap="round" transform="rotate(-90)"/>
+    ${Array.from({ length: 60 }, (_, i) => `<line x1="0" y1="-99" x2="0" y2="${i % 5 ? -96 : -94}" stroke="${C.ink}" stroke-width="${i % 5 ? 0.5 : 1}" transform="rotate(${i * 6})" opacity="0.5"/>`).join('')}`;
+  S[2].appendChild(ring);
+  const arc = ring.querySelector('.arc');
+  const serveN = el('div', { position: 'absolute', left: 0, right: 0, top: '33vh', textAlign: 'center', font: `400 22vmin ${DISPLAY}`, color: C.ink, lineHeight: 1 }, S[2], '0');
+  const serveL = el('div', { position: 'absolute', left: 0, right: 0, top: '57vh', textAlign: 'center', font: `700 2.6vmin ${TEXT}`,
+    letterSpacing: '0.55em', textIndent: '0.55em', color: C.ink }, S[2], 'SERVES A DAY');
+  const orbit = makeBall(S[2], 7);
+
+  // ---------- D: day 1 -> 365 ----------
+  S[3].style.background = C.ink;
+  const dayBox = el('div', { position: 'absolute', left: '7vw', top: '26vh', color: C.cream }, S[3]);
+  el('div', { font: `700 2.6vmin ${TEXT}`, letterSpacing: '0.55em', color: C.steel }, dayBox, 'DAY');
+  const dayN = el('div', { font: `400 30vmin ${DISPLAY}`, lineHeight: 0.95, color: C.cream }, dayBox, '1');
+  el('div', { font: `400 2.2vmin ${TEXT}`, letterSpacing: '0.08em', color: C.steel, marginTop: '1.5vmin' }, dayBox, 'No days off from the dream.');
+  const grid = el('div', { position: 'absolute', right: '7vw', top: '27vh', width: '46vw', display: 'grid',
+    gridTemplateColumns: 'repeat(25, 1fr)', gap: '0.75vmin' }, S[3]);
+  const dots = Array.from({ length: P.days }, () => el('div', { aspectRatio: '1', borderRadius: '50%', background: 'rgba(142,160,196,0.18)' }, grid));
+
+  const tag = chapterTag('04', 'THE GRIND', 0.25, 10.5);
+  addFinish({ grain: 0.07, vignette: 0.35 });
+
+  const fmt = (n) => Math.round(n).toLocaleString('en-US');
+  VM.onFrame((t) => {
+    // section visibility: each one wipes in with a skewed edge on its bar line
+    const reveal = (i, t0, dir) => { const p = VM.prog(t, t0 - 0.28, 0.28, 'inOutExpo');
+      S[i].style.clipPath = dir ? `polygon(${100 - p * 120}% 0, 120% 0, 120% 100%, ${100 - p * 120 + 12}% 100%)` : `polygon(-20% 0, ${p * 120}% 0, ${p * 120 - 12}% 100%, -20% 100%)`;
+      S[i].style.visibility = p > 0 ? 'visible' : 'hidden'; };
+    // A opens from the ball as a circle
+    const open = VM.prog(t, 0, 0.45, 'outExpo');
+    S[0].style.clipPath = `circle(${open * 120}% at 50% 72%)`;
+    reveal(1, bar, 0); reveal(2, 2 * bar, 1); reveal(3, 3 * bar, 0);
+    tag.style.color = t < bar - 0.1 ? C.ink : t > 2 * bar - 0.1 && t < 3 * bar - 0.1 ? C.ink : C.cream;
+
+    // A: clock flips 04:59 -> 05:00 on beat 1, slight pulse on every beat
+    const f = VM.prog(t, b - 0.12, 0.3, 'inOutExpo');
+    rolls.forEach((r, i) => (r.style.transform = `translateY(${-VM.prog(t, b - 0.12 + i * 0.03, 0.3, 'inOutExpo') * 50}%)`));
+    clock.style.transform = `scale(${1.08 - 0.08 * VM.prog(t, 0, 0.6, 'outExpo') + 0.03 * VM.pulse(t, 8)})`;
+    am.style.opacity = VM.prog(t, b + 0.1, 0.4, 'outCubic');
+    am.style.transform = `translateY(${(1 - VM.prog(t, b + 0.1, 0.5, 'outExpo')) * 2}vh)`;
+
+    // B: one AGAIN per beat; earlier ones step up and turn to outlines
+    words.forEach((w, i) => {
+      const t0 = bar + i * b, p = VM.prog(t, t0, 0.32, 'outExpo');
+      const steps = Math.max(0, Math.min(3, Math.floor((t - bar) / b))) - i;   // how many newer words exist
+      const up = steps > 0 ? VM.prog(t, t0 + b * steps, 0.3, 'outExpo') + steps - 1 : 0;
+      w.style.opacity = t < t0 ? 0 : 1 - VM.prog(t, t0 + 3 * b, 0.25);
+      w.style.transform = `translateY(${2 - up * 16}vh) scale(${1.35 - 0.35 * p}) skewX(${(1 - p) * -10}deg)`;
+      w.style.transformOrigin = '0 50%';
+      const old = steps > 0;
+      w.style.color = old ? 'transparent' : (i === 3 ? C.orange : C.cream);
+      w.style.webkitTextStroke = old ? `0.25vmin rgba(243,237,226,${0.55 - 0.15 * steps})` : '0';
+    });
+    // dribble: ball hits the floor on every beat, right side
+    const lt = t - bar, ph = ((lt % b) + b) % b / b;
+    dribble.set({ x: 80, y: 78 - 34 * 4 * ph * (1 - ph), rot: t * 300, sy: ph < 0.06 ? 0.82 : 1, sx: ph < 0.06 ? 1.15 : 1 });
+
+    // C: counter + ring + orbiting ball
+    const c0 = 2 * bar, cp = VM.prog(t, c0 + 0.1, bar - 0.6, 'outCubic');
+    serveN.textContent = fmt(cp * P.serves);
+    VM.draw(arc, cp);
+    ring.style.transform = `rotate(${(t - c0) * 12}deg) scale(${0.9 + 0.1 * VM.prog(t, c0 - 0.2, 0.7, 'outExpo')})`;
+    const a = -Math.PI / 2 + cp * Math.PI * 2, rr = 35 * 0.92;
+    const vmin = Math.min(innerWidth, innerHeight) / 100;
+    orbit.set({ x: 50 + Math.cos(a) * rr * vmin / innerWidth * 100, y: 50 + Math.sin(a) * rr * vmin / innerHeight * 100, rot: t * 400 });
+    serveL.style.opacity = VM.prog(t, c0 + 0.2, 0.4);
+
+    // D: day counter + calendar dots filling
+    const d0 = 3 * bar, dp = VM.prog(t, d0 + 0.05, bar - 0.75, 'inOutCubic');
+    const n = Math.max(1, Math.round(dp * P.days));
+    dayN.textContent = n;
+    dayN.style.color = n === P.days ? C.orange : C.cream;
+    dots.forEach((d, i) => { d.style.background = i < n ? (i === n - 1 ? C.cream : C.orange) : 'rgba(142,160,196,0.18)'; });
+    grid.style.transform = `translateX(${(1 - VM.prog(t, d0 - 0.1, 0.6, 'outExpo')) * 6}vw)`;
+    // out: everything pushes into an orange slash on the final beat
+    const ex = VM.prog(t, 4 * bar - 0.3, 0.3, 'inExpo');
+    stage.style.transform = `scale(${1 + ex * 0.15})`; stage.style.filter = `brightness(${1 + ex * 0.8})`;
+  });
+</script></body></html>

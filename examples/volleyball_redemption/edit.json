@@ -1,0 +1,49 @@
+{
+  "brief": {
+    "prompt": "A motion-design video about volleyball and the importance of perseverance in sport: a redemption journey.",
+    "logline": "A player loses on match point, nearly quits, grinds for a year, and wins the final from 19-24 down. The ball is the hero that carries every scene; at the end it rises like the sun.",
+    "audience": "athletes, teams, clubs; social + YouTube",
+    "duration_target": 49,
+    "style_frame": {
+      "adjectives": ["cinematic", "bold", "kinetic"],
+      "palette": {"ink": "#0a1020", "cream": "#f3ede2", "orange (accent)": "#ff6b2c", "gold": "#ffb547", "red (loss only)": "#e8473a", "steel (doubt)": "#8ea0c4"},
+      "type": "Anton (display, tight leading) + Montserrat (text, wide-tracked small caps)",
+      "grid": "7% / 9% safe margins, chapter tag top-left, centred hero",
+      "shape_language": "the ball (circle), court lines, rings, diagonal wipes; grain + vignette on every scene"
+    },
+    "storyboard": "STORYBOARD.md"
+  },
+  "output": {"path": "out/final.mp4", "width": 1920, "height": 1080, "fps": 30, "crf": 18},
+  "sources": {},
+  "timeline": [
+    {"id": "s1_dream",   "html": "scenes/s1_dream.html",   "duration": 6.0,   "label": "01 the dream"},
+    {"id": "s2_fall",    "html": "scenes/s2_fall.html",    "duration": 5.0,   "label": "02 the fall", "transition": {"type": "dip_black", "duration": 0.5, "sfx": "none"}},
+    {"id": "s3_doubt",   "html": "scenes/s3_silence.html", "duration": 5.0,   "label": "03 the doubt", "transition": {"type": "fade_grays", "duration": 0.6, "sfx": "none"}},
+    {"id": "s4_grind",   "html": "scenes/s4_grind.html",   "duration": 10.909, "label": "04 the grind"},
+    {"id": "s5_return",  "html": "scenes/s5_return.html",  "duration": 5.455, "label": "05 the return"},
+    {"id": "s6_spike",   "html": "scenes/s6_spike.html",   "duration": 5.455, "label": "06 the spike"},
+    {"id": "s7_lesson",  "html": "scenes/s7_lesson.html",  "duration": 10.909, "label": "07 the lesson"}
+  ],
+  "music": [
+    {"path": "music/fall.wav", "start": 0, "duration": 17.0, "volume": 0.9, "fade_in": 0.8, "fade_out": 1.4},
+    {"path": "music/rise.wav", "at_clip": "s4_grind", "offset": 0, "duration": 33.0, "volume": 0.95, "fade_in": 0.02, "fade_out": 2.2}
+  ],
+  "sfx": [
+    {"name": "tick",   "at_clip": "s2_fall", "offset": 1.3, "volume": 0.6},
+    {"name": "impact", "at_clip": "s2_fall", "offset": 2.45, "volume": 1.0},
+    {"name": "boom",   "at_clip": "s2_fall", "offset": 2.45, "volume": 0.8},
+    {"name": "reverse_swell", "at_clip": "s4_grind", "offset": 0, "volume": 0.8},
+    {"name": "impact", "at_clip": "s4_grind", "offset": 0, "volume": 0.7},
+    {"name": "tick",   "at_clip": "s4_grind", "offset": 0.56, "volume": 0.8},
+    {"name": "whoosh", "at_clip": "s4_grind", "offset": 2.6, "volume": 0.5},
+    {"name": "whoosh", "at_clip": "s4_grind", "offset": 5.33, "volume": 0.5},
+    {"name": "whoosh", "at_clip": "s4_grind", "offset": 8.06, "volume": 0.5},
+    {"name": "whoosh", "at_clip": "s5_return", "offset": -0.1, "volume": 0.6},
+    {"name": "riser",  "at_clip": "s6_spike", "offset": 2.7, "volume": 0.7},
+    {"name": "impact", "at_clip": "s6_spike", "offset": 2.727, "volume": 1.0},
+    {"name": "boom",   "at_clip": "s6_spike", "offset": 2.727, "volume": 0.9},
+    {"name": "whoosh", "at_clip": "s7_lesson", "offset": 5.4, "volume": 0.5},
+    {"name": "impact", "at_clip": "s7_lesson", "offset": 5.455, "volume": 0.5}
+  ],
+  "audio": {"loudness": -14}
+}
