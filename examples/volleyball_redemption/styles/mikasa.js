@@ -65,6 +65,88 @@ function v200wTexture(W = 2048, H = 1024, { blue = MIKASA.blue, yellow = MIKASA.
   return c;
 }
 
+
+// V200W matched to the reference photo (ref/v200w.jpg): golden-yellow ball crossed by a royal-blue band that
+// follows a tennis-ball seam curve (S-sweep across the front, splitting at the sides), dotted texture on the
+// blue, soft pillow seams of the 18 panels everywhere, white wordmark in the band.
+const V200W = { yellow: '#f6c300', blue: '#2140a6', seamY: '#c99a00', seamB: '#16307e', dot: '#4a63c4' };
+function v200wRefMaps(W = 2048, H = 1024, { wordmark = true, halfWidth = 0.205, lobe = 0.27 } = {}) {
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const Y = hex(V200W.yellow), B = hex(V200W.blue), SY = hex(V200W.seamY), SB = hex(V200W.seamB), D = hex(V200W.dot);
+  // seam curve samples (unit vectors)
+  const a = 1 - lobe, b = lobe, cz = 2 * Math.sqrt(a * b), N = 720, curve = new Float32Array(N * 3);
+  for (let k = 0; k < N; k++) { const t = (k / N) * Math.PI * 2;
+    let x = a * Math.cos(t) + b * Math.cos(3 * t), y = a * Math.sin(t) - b * Math.sin(3 * t), z = cz * Math.sin(2 * t);
+    const l = Math.hypot(x, y, z); curve[k * 3] = x / l; curve[k * 3 + 1] = y / l; curve[k * 3 + 2] = z / l; }
+  const dir = (i, j, w, h) => { const th = ((j + 0.5) / h) * Math.PI, ph = ((i + 0.5) / w) * Math.PI * 2, r = Math.sin(th);
+    return [-Math.cos(ph) * r, Math.cos(th), Math.sin(ph) * r]; };
+  // coarse angular distance field to the curve, upsampled bilinearly
+  const cw = 512, ch = 256, field = new Float32Array(cw * ch);
+  for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+    const [x, y, z] = dir(i, j, cw, ch); let best = -2;
+    for (let k = 0; k < N; k++) { const d = x * curve[k * 3] + y * curve[k * 3 + 1] + z * curve[k * 3 + 2]; if (d > best) best = d; }
+    field[j * cw + i] = Math.acos(Math.min(1, best));
+  }
+  const fieldAt = (u, v) => { const fx = u * cw - 0.5, fy = Math.min(ch - 1.001, Math.max(0, v * ch - 0.5));
+    const i0 = Math.floor(fx), j0 = Math.floor(fy), tx = fx - i0, ty = fy - j0, w = (i) => ((i % cw) + cw) % cw;
+    const g = (i, j) => field[j * cw + w(i)];
+    return (g(i0, j0) * (1 - tx) + g(i0 + 1, j0) * tx) * (1 - ty) + (g(i0, j0 + 1) * (1 - tx) + g(i0 + 1, j0 + 1) * tx) * ty; };
+  // wordmark: rendered once, mapped onto the band around the curve point t = 0 (local tangent frame)
+  let word = null, P0, T0, N0;
+  if (wordmark) {
+    word = document.createElement('canvas'); word.width = 1024; word.height = 256;
+    const wg = word.getContext('2d'); wg.fillStyle = '#fff'; wg.textAlign = 'center'; wg.textBaseline = 'middle';
+    wg.font = "700 150px 'Montserrat', 'Inter', sans-serif"; if ('letterSpacing' in wg) wg.letterSpacing = '6px'; wg.fillText('MIKASA', 512, 140);
+    wg.beginPath(); const sx = 300, sy = 52, R1 = 18, R2 = 7;   // the star above the first letters
+    for (let k = 0; k < 10; k++) { const r = k % 2 ? R2 : R1, an = -Math.PI / 2 + k * Math.PI / 5; wg.lineTo(sx + Math.cos(an) * r, sy + Math.sin(an) * r); }
+    wg.fill();
+    word = wg.getImageData(0, 0, 1024, 256).data;
+    P0 = [curve[0], curve[1], curve[2]];
+    const p1 = [curve[3], curve[4], curve[5]]; let tx = p1[0] - P0[0], ty = p1[1] - P0[1], tz = p1[2] - P0[2]; const tl = Math.hypot(tx, ty, tz);
+    T0 = [tx / tl, ty / tl, tz / tl];
+    N0 = [P0[1] * T0[2] - P0[2] * T0[1], P0[2] * T0[0] - P0[0] * T0[2], P0[0] * T0[1] - P0[1] * T0[0]];
+  }
+  const col = document.createElement('canvas'); col.width = W; col.height = H;
+  const bump = document.createElement('canvas'); bump.width = W; bump.height = H;
+  const cg = col.getContext('2d'), bg = bump.getContext('2d');
+  const ci = cg.createImageData(W, H), bi = bg.createImageData(W, H), cd = ci.data, bd = bi.data;
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const [x, y, z] = dir(i, j, W, H);
+    const dist = fieldAt((i + 0.5) / W, (j + 0.5) / H);
+    const blueK = Math.min(1, Math.max(0, (halfWidth - dist) / 0.006 + 0.5));        // anti-aliased band edge
+    // 18-panel pillow seams (cube faces x 3 strips)
+    const ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z); let u, v;
+    if (ax >= ay && ax >= az) { u = y / ax; v = z / ax; } else if (ay >= az) { u = z / ay; v = x / ay; } else { u = x / az; v = y / az; }
+    u = Math.atan(u) / (Math.PI / 4); v = Math.atan(v) / (Math.PI / 4);
+    const vw_ = v + 0.05 * Math.sin(u * Math.PI * 1.5), uw_ = u + 0.04 * Math.sin(v * Math.PI * 1.5);   // softly curved panels
+    const e = Math.min(1 - Math.abs(uw_), 1 - Math.abs(vw_), Math.abs(Math.abs(vw_) - 1 / 3));
+    const seam = Math.max(0, 1 - e / 0.014);
+    const pillow = Math.min(1, e / 0.12);                                              // panels bulge between seams
+    // dot texture (isotropic lattice in 3D), strong on the blue
+    const k = 150, dots = Math.max(0, Math.cos(k * x) * Math.cos(k * y) * Math.cos(k * z) - 0.45) / 0.55;
+    let r = Y[0] + (B[0] - Y[0]) * blueK, g = Y[1] + (B[1] - Y[1]) * blueK, bl = Y[2] + (B[2] - Y[2]) * blueK;
+    const sc = [SY[0] + (SB[0] - SY[0]) * blueK, SY[1] + (SB[1] - SY[1]) * blueK, SY[2] + (SB[2] - SY[2]) * blueK];
+    const dk = Math.min(1, dots * 1.6) * blueK * 0.85;
+    r += (D[0] - r) * dk; g += (D[1] - g) * dk; bl += (D[2] - bl) * dk;
+    const sk = seam * 0.32; r += (sc[0] - r) * sk; g += (sc[1] - g) * sk; bl += (sc[2] - bl) * sk;
+    if (word) {
+      const dp = x * P0[0] + y * P0[1] + z * P0[2];
+      if (dp > 0.7) {
+        const lu = x * T0[0] + y * T0[1] + z * T0[2], lv = x * N0[0] + y * N0[1] + z * N0[2];
+        const wu = Math.round(512 - lu / 0.62 * 512), wv = Math.round(128 + lv / 0.62 * 512);
+        if (wu >= 0 && wu < 1024 && wv >= 0 && wv < 256) { const wa = word[(wv * 1024 + wu) * 4 + 3] / 255 * 0.92;
+          r += (238 - r) * wa; g += (242 - g) * wa; bl += (250 - bl) * wa; }
+      }
+    }
+    const o = (j * W + i) * 4;
+    cd[o] = r; cd[o + 1] = g; cd[o + 2] = bl; cd[o + 3] = 255;
+    const h = 150 + pillow * 45 - seam * 60 - dots * (0.35 + 0.65 * blueK) * 40;
+    bd[o] = bd[o + 1] = bd[o + 2] = Math.max(0, Math.min(255, h)); bd[o + 3] = 255;
+  }
+  cg.putImageData(ci, 0, 0); bg.putImageData(bi, 0, 0);
+  return { color: col, bump };
+}
+
 // dimpled micro-texture used as a bump map
 function dimpleTexture(W = 1024, H = 512) {
   const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -88,11 +170,13 @@ async function createMikasa({ size = 60, look = 'studio', key = [-2.5, 3, 4], ke
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(20, 1, 0.1, 100); cam.position.set(0, 0, 6.1);
-  const tex = new THREE.CanvasTexture((pattern === 'v200w' ? v200wTexture : mikasaTexture)(2048, 1024, colors)); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-  const bump = new THREE.CanvasTexture(dimpleTexture());
+  let tex, bump;
+  if (pattern === 'v200w') { const m = v200wRefMaps(); tex = new THREE.CanvasTexture(m.color); bump = new THREE.CanvasTexture(m.bump); }
+  else { tex = new THREE.CanvasTexture(mikasaTexture(2048, 1024, colors)); bump = new THREE.CanvasTexture(dimpleTexture()); }
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
   const mat = look === 'flat'
     ? new THREE.MeshLambertMaterial({ map: tex })
-    : new THREE.MeshStandardMaterial({ map: tex, roughness: look === 'print' ? 0.9 : 0.42, metalness: 0, bumpMap: bump, bumpScale: 0.6 });
+    : new THREE.MeshStandardMaterial({ map: tex, roughness: look === 'print' ? 0.9 : 0.5, metalness: 0, bumpMap: bump, bumpScale: 1.4 });
   const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96), mat);
   ball.rotation.set(0.5, 0.3, 0.25);
   scene.add(ball);
