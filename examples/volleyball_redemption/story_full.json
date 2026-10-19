@@ -1,0 +1,210 @@
+{
+  "brief": {
+    "prompt": "Volleyball redemption: ONE YEAR AGO (grey, the dig that came too late, 24:26) -> TODAY, match point 25:24 -> the spike (anime/comic) -> 26:24 roar -> match cut to last year's ball -> NEVER GIVE UP end card"
+  },
+  "output": {
+    "path": "out/volleyball_redemption_final.mp4",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "crf": 16
+  },
+  "timeline": [
+    {
+      "id": "intro",
+      "html": "impact/story.html",
+      "duration": 8.2,
+      "params": {
+        "part": "intro"
+      }
+    },
+    {
+      "id": "spike",
+      "html": "impact/spike_seq.html",
+      "duration": 9.8
+    },
+    {
+      "id": "outro",
+      "html": "impact/story.html",
+      "duration": 7.6,
+      "params": {
+        "part": "outro"
+      }
+    }
+  ],
+  "music": [
+    {
+      "path": "music/fall.wav",
+      "start": 0,
+      "in": 0,
+      "duration": 5.45,
+      "volume": 0.55,
+      "fade_in": 0.6,
+      "fade_out": 0.15,
+      "filter": "lowpass=f=1600"
+    },
+    {
+      "path": "music/rise.wav",
+      "start": 5.42,
+      "in": 9.75,
+      "duration": 12.58,
+      "volume": 0.6,
+      "fade_in": 0.05,
+      "fade_out": 0.2
+    },
+    {
+      "path": "music/fall.wav",
+      "start": 18.0,
+      "in": 6.0,
+      "duration": 2.0,
+      "volume": 0.5,
+      "fade_in": 0.2,
+      "fade_out": 0.1,
+      "filter": "lowpass=f=1600"
+    },
+    {
+      "path": "music/rise.wav",
+      "start": 20.0,
+      "in": 24.33,
+      "duration": 5.6,
+      "volume": 0.6,
+      "fade_in": 0.05,
+      "fade_out": 1.4
+    }
+  ],
+  "sfx": [
+    {
+      "name": "reverse_swell",
+      "start": 2.22,
+      "volume": 0.45
+    },
+    {
+      "name": "impact",
+      "start": 2.22,
+      "volume": 0.6
+    },
+    {
+      "name": "boom",
+      "start": 3.3,
+      "volume": 0.55
+    },
+    {
+      "name": "riser",
+      "start": 5.42,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 5.42,
+      "volume": 0.9
+    },
+    {
+      "name": "tick",
+      "start": 5.95,
+      "volume": 0.5
+    },
+    {
+      "name": "whoosh",
+      "start": 6.95,
+      "volume": 0.4
+    },
+    {
+      "name": "boom",
+      "start": 7.05,
+      "volume": 0.7
+    },
+    {
+      "name": "whoosh",
+      "start": 9.1,
+      "volume": 0.35
+    },
+    {
+      "name": "riser",
+      "start": 10.02,
+      "volume": 0.5
+    },
+    {
+      "name": "impact",
+      "start": 10.02,
+      "volume": 0.7
+    },
+    {
+      "name": "boom",
+      "start": 10.02,
+      "volume": 0.6
+    },
+    {
+      "name": "whoosh",
+      "start": 10.4,
+      "volume": 0.4
+    },
+    {
+      "name": "whoosh",
+      "start": 11.15,
+      "volume": 0.3
+    },
+    {
+      "name": "reverse_swell",
+      "start": 12.06,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 12.06,
+      "volume": 1.0
+    },
+    {
+      "name": "boom",
+      "start": 12.06,
+      "volume": 0.9
+    },
+    {
+      "name": "whoosh",
+      "start": 13.25,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 13.7,
+      "volume": 1.0
+    },
+    {
+      "name": "boom",
+      "start": 13.7,
+      "volume": 1.0
+    },
+    {
+      "name": "glitch",
+      "start": 13.75,
+      "volume": 0.3
+    },
+    {
+      "name": "boom",
+      "start": 15.05,
+      "volume": 0.5
+    },
+    {
+      "name": "impact",
+      "start": 20.0,
+      "volume": 0.6
+    },
+    {
+      "name": "boom",
+      "start": 20.0,
+      "volume": 0.5
+    },
+    {
+      "name": "reverse_swell",
+      "start": 22.55,
+      "volume": 0.5
+    },
+    {
+      "name": "boom",
+      "start": 22.55,
+      "volume": 0.7
+    }
+  ],
+  "audio": {
+    "loudness": -14
+  }
+}

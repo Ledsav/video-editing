@@ -14,6 +14,8 @@ async function loadMocap(THREE, GLTFLoader, file) {
     if (cache.has(k)) return cache.get(k);
     mixer.setTime(k / 600); root.updateMatrixWorld(true);
     const P = {}; for (const n in nodes) P[n] = new THREE.Vector3().setFromMatrixPosition(nodes[n].matrixWorld);
+    // Head_end sits on the head joint in these captures: rebuild it 20 cm up the head's own axis so the head pitch survives
+    if (nodes.Head && P.Head_end && P.Head_end.distanceTo(P.Head) < 1e-4) P.Head_end = new THREE.Vector3(0, 0.2, 0).applyMatrix4(nodes.Head.matrixWorld);
     if (cache.size > 4000) cache.clear(); cache.set(k, P); return P;
   }
   // events: floor, takeoff, contact (highest right hand while airborne), landing

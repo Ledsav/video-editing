@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="vedit:kind" content="scene">
-<meta name="vedit:duration" content="12">
+<meta name="vedit:duration" content="9.8">
 <meta name="vedit:libs" content="three">
 <meta name="vedit:description" content="Spike as a shot sequence (male athlete): behind-the-hitter set, close-up, wide approach and jump, POV hand, comic-book impact frame, ball into the court, landing roar. Based on: 3-step approach, double-arm swing, load, takeoff, bow-and-arrow arch, arm whip and wrist snap at contact, follow-through, landing, roar. Speed ramps (near-freeze at contact), crane/punch-in/whip camera, sub-frame motion blur, V200W ball, net, court, flash, shockwave, sweat, ball trail.">
 <script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
@@ -10,11 +10,12 @@
 <script src="loadglb.js"></script>
 <script src="mocap.js"></script>
 <script src="ballpro.js"></script>
+<script src="stage.js"></script>
 <style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #04060c; } #stage { position: absolute; inset: 0; overflow: hidden; }
   canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }</style></head>
 <body><div id="stage"></div>
 <script type="module">
-  const P = VM.params({ smash: 'mocap/8-Smash-Take2.glb', win: 'mocap/12-Reaction_after_point_obtained-Take2.glb', model: 'anime_male.glb', subframes: 5, shutter: 0.5, cel: 0.75 });
+  const P = VM.params({ smash: 'mocap/8-Smash-Take2.glb', win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', model: 'anime_male.glb', subframes: 5, shutter: 0.5, cel: 0.75 });
   const stage = document.getElementById('stage');
   window.VM_READY = new Promise(async (resolve) => { try {
     const THREE = await import('three');
@@ -26,53 +27,7 @@
     renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.HalfFloatType });
-    const lensMat = new THREE.ShaderMaterial({
-      uniforms: { tDiffuse: { value: rt.texture }, k: { value: 0 }, ca: { value: 0.06 }, aspect: { value: W / H }, zoom: { value: 0 }, cel: { value: 0.75 }, px: { value: new THREE.Vector2(1 / W, 1 / H) }, center: { value: new THREE.Vector2(0.5, 0.5) } },
-      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float k; uniform float ca; uniform float aspect; uniform float zoom; uniform vec2 center; uniform float cel; uniform vec2 px; varying vec2 vUv;
-        vec2 warp(vec2 uv, float kk) {            // barrel: centre magnified, edges compressed, corners stay put
-          vec2 p = (uv - 0.5) * vec2(aspect, 1.0); float r2 = dot(p, p), rc2 = 0.25 * (aspect * aspect + 1.0);
-          return 0.5 + p * ((1.0 + kk * r2) / (1.0 + kk * rc2)) / vec2(aspect, 1.0); }
-        void main() {
-          vec4 g = vec4(0.0); float r = 0.0, b = 0.0;
-          if (zoom < 0.002) {
-            g = texture2D(tDiffuse, warp(vUv, k));
-            r = texture2D(tDiffuse, warp(vUv, k * (1.0 + ca))).r; b = texture2D(tDiffuse, warp(vUv, k * (1.0 - ca))).b;
-          } else {                                   // radial zoom blur towards the point of action: speed + power
-            for (int i = 0; i < 12; i++) {
-              vec2 u = center + (vUv - center) * (1.0 - zoom * float(i) / 11.0);
-              g += texture2D(tDiffuse, warp(u, k));
-              r += texture2D(tDiffuse, warp(u, k * (1.0 + ca * 2.0))).r; b += texture2D(tDiffuse, warp(u, k * (1.0 - ca * 2.0))).b;
-            }
-            g /= 12.0; r /= 12.0; b /= 12.0;
-          }
-          gl_FragColor = vec4(r, g.g, b, g.a);
-          #include <tonemapping_fragment>
-          #include <colorspace_fragment>
-          // ---- anime pass (display space): posterised tones, ink outlines, halftone shadows ----
-          if (cel > 0.0) {
-            vec3 c = gl_FragColor.rgb;
-            float l = dot(c, vec3(0.299, 0.587, 0.114));
-            float q = (floor(l * 4.0 + 0.5) / 4.0);                       // 4 tone bands
-            vec3 cq = c * (q + 0.04) / (l + 0.04);
-            float m = dot(cq, vec3(0.333)); cq = mix(vec3(m), cq, 1.25);  // a touch more saturation, like cel paint
-            // ink: luminance edges of the warped image (Sobel-ish cross)
-            vec2 o = px * 1.6;
-            float lx = dot(texture2D(tDiffuse, warp(vUv + vec2(o.x, 0.0), k)).rgb - texture2D(tDiffuse, warp(vUv - vec2(o.x, 0.0), k)).rgb, vec3(0.333));
-            float ly = dot(texture2D(tDiffuse, warp(vUv + vec2(0.0, o.y), k)).rgb - texture2D(tDiffuse, warp(vUv - vec2(0.0, o.y), k)).rgb, vec3(0.333));
-            float edge = smoothstep(0.06, 0.2, sqrt(lx * lx + ly * ly));
-            // halftone dots in the shadows (screen space)
-            vec2 g = fract(gl_FragCoord.xy / 7.0) - 0.5;
-            float dots = step(length(g), 0.5 * clamp((0.32 - l) / 0.32, 0.0, 1.0));
-            vec3 outc = mix(cq, cq * 0.55, dots * 0.6);
-            outc = mix(outc, vec3(0.04, 0.05, 0.1), edge * 0.85);
-            gl_FragColor.rgb = mix(c, outc, cel);
-          }
-        }`,
-      depthTest: false, depthWrite: false });
-    const postScene = new THREE.Scene(), postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), lensMat));
+    const { rt, lensMat, postScene, postCam } = makeAnimePost(THREE, W, H);
     const env = []; let bgTexRef = null;
     const comicBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });
     const out = document.createElement('canvas'); out.width = W; out.height = H; out.className = 'out'; stage.appendChild(out);
@@ -81,64 +36,17 @@
     const cam = new THREE.PerspectiveCamera(32, W / H, 0.05, 200);
 
     // ================= arena =================
-    { // screen-space background: dark arena with out-of-focus lights
-      const c = document.createElement('canvas'); c.width = 960; c.height = 540; const g = c.getContext('2d');
-      const gr = g.createLinearGradient(0, 0, 0, 540); gr.addColorStop(0, '#060a16'); gr.addColorStop(0.55, '#0d1630'); gr.addColorStop(1, '#070a12');
-      g.fillStyle = gr; g.fillRect(0, 0, 960, 540);
-      const R = VM.rand(31);
-      for (let i = 0; i < 70; i++) { const x = R() * 960, y = 60 + R() * 260, r = 4 + R() * 22, warm = R() > 0.55;
-        const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, warm ? 'rgba(255,214,140,0.55)' : 'rgba(140,170,255,0.4)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
-        g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2); }
-      for (let i = 0; i < 9; i++) { const x = 40 + i * 110 + R() * 30; const rg = g.createRadialGradient(x, 30, 0, x, 30, 60);
-        rg.addColorStop(0, 'rgba(255,245,220,0.9)'); rg.addColorStop(0.2, 'rgba(255,230,180,0.25)'); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(x - 60, 0, 120, 90); }
-      const bgTex = new THREE.CanvasTexture(c); bgTex.colorSpace = THREE.SRGBColorSpace; scene.background = bgTex; bgTexRef = bgTex;
-    }
-    const NETZ = 0.55;
-    { // court floor
-      const c = document.createElement('canvas'); c.width = 2048; c.height = 4096; const g = c.getContext('2d');
-      const S = 2048 / 14;                                  // px per metre: 14 m wide x 28 m long
-      g.fillStyle = '#0c1630'; g.fillRect(0, 0, 2048, 4096);
-      const cx = 1024, cz = 2048 - NETZ * S;                 // court origin (x = 0, z = net)
-      g.fillStyle = '#16306e'; g.fillRect(cx - 4.5 * S, cz - 9 * S, 9 * S, 18 * S);
-      g.strokeStyle = '#e9ecf2'; g.lineWidth = 0.05 * S;
-      g.strokeRect(cx - 4.5 * S, cz - 9 * S, 9 * S, 18 * S);
-      [0, -3, 3].forEach((dz) => { g.beginPath(); g.moveTo(cx - 4.5 * S, cz - dz * S); g.lineTo(cx + 4.5 * S, cz - dz * S); g.stroke(); });
-      const R = VM.rand(5); g.globalAlpha = 0.05;
-      for (let i = 0; i < 4000; i++) { g.fillStyle = R() > 0.5 ? '#fff' : '#000'; g.fillRect(R() * 2048, R() * 4096, 2, 2); }
-      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 28), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.68, metalness: 0.0 }));
-      floor.rotation.x = -Math.PI / 2; floor.position.z = 0; floor.receiveShadow = true; scene.add(floor); env.push(floor);
-      // the canvas is drawn with +z (towards the net) upwards; plane uv v grows towards -z after the rotation
-      tex.center.set(0.5, 0.5); tex.rotation = Math.PI; tex.repeat.set(-1, 1);
-    }
-    { // net: mesh texture, white tape, antennas, posts
-      const c = document.createElement('canvas'); c.width = 1900; c.height = 200; const g = c.getContext('2d');
-      g.strokeStyle = 'rgba(10,10,14,0.95)'; g.lineWidth = 2.2;
-      for (let x = 0; x <= 1900; x += 20) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 200); g.stroke(); }
-      for (let y = 0; y <= 200; y += 20) { g.beginPath(); g.moveTo(0, y); g.lineTo(1900, y); g.stroke(); }
-      g.fillStyle = '#f2f2f2'; g.fillRect(0, 0, 1900, 14); g.fillRect(0, 192, 1900, 8);
-      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-      const net = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 1.0), new THREE.MeshStandardMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, roughness: 0.8, alphaTest: 0.05 }));
-      net.position.set(0, 2.43 - 0.5, NETZ); scene.add(net); env.push(net);
-      for (const sx of [-1, 1]) {
-        const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.8, 8), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-        ant.position.set(sx * 4.5, 2.43, NETZ); scene.add(ant); env.push(ant);
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 16), new THREE.MeshStandardMaterial({ color: 0x1b2440, roughness: 0.4 }));
-        post.position.set(sx * 5.4, 1.3, NETZ); scene.add(post); env.push(post);
-      }
-    }
-    // light beams from the roof (additive cones)
-    const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff1d0, transparent: true, opacity: 0.006, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-    [[-1.2, 0.0], [1.8, -1.5], [-3.5, 2.5]].forEach(([x, z]) => { const b = new THREE.Mesh(new THREE.ConeGeometry(0.9, 14, 32, 1, true), beamMat); b.position.set(x, 7, z); scene.add(b); env.push(b); });
-
+    const { bgTex: bgTexRef0, NETZ } = buildArena(THREE, scene, env); bgTexRef = bgTexRef0;
     // lights
-    scene.add(new THREE.HemisphereLight(0x5070c0, 0x0a0c14, 0.55));
+    scene.add(new THREE.HemisphereLight(0x8a9cd0, 0x3a2016, 0.75));
     const keyL = new THREE.SpotLight(0xfff2da, 90, 30, 0.38, 0.7, 1.6); keyL.position.set(-2.5, 9, 2.5); keyL.target.position.set(0, 1, 0);
     keyL.castShadow = true; keyL.shadow.mapSize.set(2048, 2048); keyL.shadow.bias = -0.0004; scene.add(keyL, keyL.target);
-    const rimW = new THREE.DirectionalLight(0xffcf7a, 6); rimW.position.set(4, 4, 3); scene.add(rimW);
-    const rimB = new THREE.DirectionalLight(0x6f9cff, 4.5); rimB.position.set(3, 2, -4); scene.add(rimB);
+    const rimW = new THREE.DirectionalLight(0xffc062, 9); rimW.position.set(4, 4, 3); scene.add(rimW);
+    const rimW2 = new THREE.DirectionalLight(0xffb24a, 7); rimW2.position.set(-4, 3.5, -4); scene.add(rimW2);
+    const rimB = new THREE.DirectionalLight(0x6f9cff, 2.5); rimB.position.set(3, 2, -4); scene.add(rimB);
     const fill = new THREE.DirectionalLight(0x9db4ff, 0.6); fill.position.set(-4, 1.5, 1); scene.add(fill);
     const hitLight = new THREE.PointLight(0xfff0c0, 0, 6, 1.5); scene.add(hitLight);
+    const camFill = new THREE.DirectionalLight(0xfff1e2, 1.4); scene.add(camFill, camFill.target);
 
     // ================= athlete =================
     const gltf = await loadGLB(GLTFLoader, P.model);
@@ -148,7 +56,7 @@
     const kitMat = new THREE.MeshStandardMaterial({ color: 0x2140a6, roughness: 0.4, metalness: 0.1 });
     const toonSkin = new THREE.MeshToonMaterial({ color: 0xe6e8ee }), toonKit = new THREE.MeshToonMaterial({ color: 0x2b4fc4 });
     const bodyMeshes = [];
-    const ramp = (() => { const d = new Uint8Array([70, 150, 255]); const t = new THREE.DataTexture(d, 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
+    const ramp = (() => { const d = new Uint8Array([125, 190, 255]); const t = new THREE.DataTexture(d, 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
     const KIT = { Wolf3D_Outfit_Top: 0x2140a6, Wolf3D_Outfit_Bottom: 0x0f1d4a, Wolf3D_Outfit_Footwear: 0xf2f2f2,
                   N00_007_01_Tops_01_CLOTH: 0x2140a6, N00_001_02_Bottoms_01_CLOTH: 0x0f1d4a, N00_004_01_Shoes_01_CLOTH: 0xf4f4f4 };   // Mikasa kit
     model.traverse((o) => { if (o.isMesh && o.material && o.material.name === 'Wolf3D_Headwear') o.visible = false; });   // no hat on court
@@ -158,7 +66,8 @@
         const m = o.material.clone(); m.roughness = Math.max(0.45, m.roughness ?? 0.6); m.metalness = 0;
         const kk = KIT[o.name] ?? KIT[o.material.name];
         if (kk !== undefined) { m.color = new THREE.Color(kk); m.map = null; }
-        o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? 0xffffff, map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, gradientMap: ramp });
+        const skin = /_(SKIN|FACE)$/.test(o.material.name);   // lit skin over-exposes the unlit textures: pull it down a stop
+        o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? (skin ? 0xc9bdb6 : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp });   // keep double-sided: the face is culled otherwise
         o.userData.std = P.cel > 0 ? o.userData.toon : m;      // anime: the player is cel-shaded in every shot
       }
       o.material = o.userData.std; });
@@ -181,7 +90,7 @@
     const T_OFF = 0.74, T_CONTACT = 1.12, T_LAND = 1.86;
     const smash = await loadMocap(THREE, GLTFLoader, P.smash), win = await loadMocap(THREE, GLTFLoader, P.win);
     const retarget = makeRetarget(THREE, model, bone);
-    const TK = [[-0.45, Math.max(0, smash.takeoff - 1.25)], [T_OFF, smash.takeoff], [T_CONTACT, smash.contact], [T_LAND, smash.land]];
+    const TK = [[-0.65, Math.max(0, smash.takeoff - 1.42)], [T_OFF, smash.takeoff], [T_CONTACT, smash.contact], [T_LAND, smash.land]];
     const tauAt = (t) => { let i = 0; while (i < TK.length - 2 && t > TK[i + 1][0]) i++;
       const [a, ta] = TK[i], [b, tb] = TK[i + 1]; return t <= TK[0][0] ? TK[0][1] : ta + (tb - ta) * (t - a) / (b - a); };
     // scale: leg length of the character vs the capture
@@ -201,12 +110,31 @@
     const yawOf = (M) => { const d = M.LShoulder.clone().sub(M.RShoulder); return Math.atan2(d.x, d.z); };
     const align = { from: Mb.Hip.clone().setY(0), to: Ma.Hip.clone().setY(0), yaw: yawOf(Ma) - yawOf(Mb) };
     // the roar is its own shot (a cut): pure won-point capture, on the landing spot, turned to his own team (-z)
-    const ROAR_T = 1.95, ROAR_FROM = 0.75;
-    const Mland = smash.sample(smash.land), Mw0 = win.sample(ROAR_FROM);
-    const dW = Mw0.LShoulder.clone().sub(Mw0.RShoulder);
+    const ROAR_T = 1.95, ROAR_FROM = 1.25, ROAR_PEAK = 2.05;   // Take 3: arms flung wide around 1.8-2.3 s
+    const Mland = smash.sample(smash.land), Mw0 = win.sample(ROAR_FROM), Mpk = win.sample(ROAR_PEAK);
+    const dW = Mpk.LShoulder.clone().sub(Mpk.RShoulder);          // facing measured at the peak, so the release opens towards the camera
     const roarAlign = { from: Mw0.Hip.clone().setY(0), to: Mland.Hip.clone().setY(0), yaw: -Math.PI / 2 - 0.35 - Math.atan2(dW.x, dW.z) };
+    // additive layer on the celebration: both arms up and out in a V, chest open, head back, then back into the capture
+    const VEE = { L: V3(-0.55, 0.82, -0.18).normalize(), R: V3(0.55, 0.82, -0.18).normalize() };   // he faces -z: his left is -x
+    function raiseArms(M, w) {
+      if (w <= 0) return M;
+      const out = Object.assign({}, M);
+      const swing = (a, b, dir, kids) => { const len = M[b].distanceTo(M[a]); const cur = M[b].clone().sub(M[a]).normalize();
+        const nb = out[a].clone().add(cur.lerp(dir, w).normalize().multiplyScalar(len)); const d = nb.clone().sub(M[b]);
+        out[b] = nb; for (const k of kids) out[k] = (out[k] || M[k]).clone().add(d); };
+      for (const side of ['L', 'R']) {
+        const F = side === 'L' ? 'Left' : 'Right', fingers = Object.keys(M).filter((n) => n.startsWith(F + 'Finger'));
+        swing(side + 'Shoulder', side + 'Forearm', VEE[side], [side + 'Hand', ...fingers]);
+        const fore = VEE[side].clone().add(V3(0, 0.6, 0)).normalize();
+        swing(side + 'Forearm', side + 'Hand', fore, fingers);
+      }
+      const up = V3(0, 1, P.headTilt ?? 0.25).normalize();                             // head tipped back (behind = +z)
+      swing('Head', 'Head_end', up, []);
+      return out;
+    }
+    const roarW = (t) => { const x = t - ROAR_T; return VM.ease.inOutSine(Math.min(1, Math.max(0, (x - 0.35) / 0.3))) * (1 - VM.ease.inOutSine(Math.min(1, Math.max(0, (x - 1.75) / 0.45)))); };
     const mocapAt = (t) => {
-      if (t >= ROAR_T) return blendMocap(THREE, win.sample(ROAR_FROM + t - ROAR_T), win.sample(ROAR_FROM + t - ROAR_T), 1, roarAlign);
+      if (t >= ROAR_T) return raiseArms(blendMocap(THREE, win.sample(ROAR_FROM + t - ROAR_T), win.sample(ROAR_FROM + t - ROAR_T), 1, roarAlign), roarW(t));
       const tau = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND);
       const A = smash.sample(Math.min(tau, smash.dur));
       if (tau <= BLEND_AT) return A;
@@ -296,30 +224,31 @@
     const hipPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Hips').matrixWorld);
     const orbit = (c, r, h, a) => [c.x + Math.sin(a) * r, h, c.z + Math.cos(a) * r];   // a = 0: in front of him (+z), PI: behind
     const SHOTS = [
-      { name: 'runup', T: [0, 2.6], t: [-0.45, 0.69], ease: 'inQuad', lens: 0.35,       // dolly-orbit from behind him round to his side as he accelerates
+      { name: 'runup', T: [0, 1.45], t: [-0.62, 0.6], ease: 'linear', lens: 0.35,         // dolly-orbit from behind him round to his side as he accelerates (real speed)
         cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.92 - 0.45 * VM.ease.inOutSine(u)), r = 3.4 + 0.8 * u;
           return { p: orbit(h, r, 0.55 + 0.45 * u, a), look: [h.x, 1.0 + 0.3 * u, h.z + 0.9], fov: 44 - 4 * u, roll: 0.08 * Math.sin(u * Math.PI) }; } },
-      { name: 'liftoff', T: [2.6, 3.5], t: [0.69, 0.80], ease: 'inOutSine', lens: 0.85,    // ground level, close: the explosion off the floor, crane up with him
+      { name: 'liftoff', T: [1.45, 2.2], t: [0.6, 0.86], lens: 0.85,                       // ground level: fast into the plant, slow on the explosion, then up
+        keys: [[0, 0.6], [0.32, 0.705], [0.55, 0.745], [1, 0.86]],
         cam: (t, u) => { const f = LIFT; return { p: [f.x - 1.45, 0.95 + 0.6 * u, f.z + 1.15], look: [f.x, 0.3 + 1.7 * VM.ease.inCubic(u), f.z - 0.1], fov: 60, roll: 0.1 }; } },
-      { name: 'rise', T: [3.5, 4.7], t: [0.80, 1.06], ease: 'outExpo', lens: 0.3,          // sweeping orbit + push-in as he climbs above the net into the arch
+      { name: 'rise', T: [2.2, 2.95], t: [0.86, 0.99], ease: 'outQuad', lens: 0.3,          // sweeping orbit as he climbs above the net, arms driving up
         cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.72 - 0.14 * u), r = 4.4 - 1.0 * u;
           return { p: orbit(h, r, 1.6 + 0.8 * u, a), look: [h.x, h.y + 0.5, h.z], fov: 32 - 3 * u, roll: -0.1 + 0.06 * u }; } },
-      { name: 'pov', T: [4.7, 5.35], t: [1.06, 1.092], ease: 'inCubic', lens: 0.75,        // first person: the ball, the hand coming through
-        cam: (t, u) => { const h = headPos(), b = ballAt(t); return { p: [h.x - 0.4, h.y + 0.3, h.z - 0.8], look: [b.x, b.y - 0.1, b.z], fov: 58, roll: 0.1 }; } },   // over his shoulder: the ball, the hand coming through
-      { name: 'comic', T: [5.35, 7.25], t: [1.092, 1.24], comic: true, lens: 0.9,           // the impact frame: slow into contact, hold, then the arm whips all the way down
-        keys: [[0, 1.092], [0.3, 1.114], [0.55, 1.124], [1, 1.24]],
-        cam: (t, u) => ({ p: [C.x - 1.9 + 0.3 * u, C.y - 0.45, C.z + 0.95 - 0.35 * u], look: [C.x + 0.05, C.y - 0.45 - 0.25 * u, C.z - 0.05], fov: 52 - 8 * u, roll: -0.12 + 0.2 * u }) },
-      { name: 'smash', T: [7.25, 7.75], t: [1.24, 1.24], ease: 'linear', lens: 0.5,         // tracking the ball over the net (t is set below from the flight)
+      { name: 'pov', T: [2.95, 3.3], t: [0.99, 1.02], ease: 'linear', lens: 0.6,            // over his shoulder: the ball dropping onto him
+        cam: (t, u) => { const h = headPos(), b = ballAt(t); return { p: [h.x - 0.4, h.y + 0.3, h.z - 0.8], look: [b.x, b.y - 0.1, b.z], fov: 58, roll: 0.1 }; } },
+      { name: 'comic', T: [3.3, 5.05], t: [1.02, 1.33], comic: true, lens: 0.75,            // side on: bow drawn back (slow), the whip, HOLD at contact, arm all the way down
+        keys: [[0, 1.03], [0.2, 1.075], [0.32, 1.12], [1, 1.33]],
+        cam: (t, u) => ({ p: [C.x - 2.45 + 0.25 * u, C.y - 0.35 - 0.2 * u, C.z - 0.25], look: [C.x, C.y - 0.38 - 0.4 * u, C.z - 0.15], fov: 52 - 6 * u, roll: -0.08 + 0.14 * u }) },
+      { name: 'smash', T: [5.05, 5.35], t: [1.125, 1.2], ease: 'linear', lens: 0.5,         // the ball's flight again, near real speed (anime overlap)
         cam: (t, u) => { const b = ballAt(t); return { p: [b.x - 1.3, b.y + 0.7, b.z - 1.6], look: [b.x, b.y, b.z + 0.6], fov: 50, roll: 0.12 }; } },
-      { name: 'floor', T: [7.75, 9.1], t: [0, 0], lens: 0.6,                                 // low by the impact: hit-stop, crush, BAM, then the bounce
+      { name: 'floor', T: [5.35, 6.6], t: [0, 0], lens: 0.6,                                  // low by the impact: hit-stop, crush, BAM, then the bounce
         keys: [[0, 0], [1, 0]],
         cam: (t, u) => { const a = 2.2 + 0.35 * u; return { p: orbit(hitPoint, 1.9 - 0.3 * u, 0.32 + 0.1 * u, a), look: [hitPoint.x, 0.12, hitPoint.z], fov: 46, roll: 0.1 - 0.12 * u }; } },
-      { name: 'roar', T: [9.1, 12], t: [1.95, 4.85], ease: 'linear', lens: 0.35,          // landing and the roar: slow circle around him
-        cam: (t, u) => { const h = hipPos(); return { p: [h.x - 0.8 + 0.25 * u, 1.45, h.z - 2.9 + 0.5 * u], look: [h.x, 1.3, h.z], fov: 40 - 6 * u, roll: 0.05 }; } },   // in front of him, on his side: face and the double fist pump
+      { name: 'roar', T: [6.6, 9.8], t: [1.95, 4.15], ease: 'linear', lens: 0.35,            // the release: arms flung wide, chest up (slowed to 0.6x)
+        cam: (t, u) => { const h = hipPos(); return { p: [h.x - 0.35 + 0.15 * u, 0.95, h.z - 3.3 + 0.9 * u], look: [h.x, 1.4, h.z], fov: 44 - 8 * u, roll: 0.04 }; } },   // low, frontal, slow push-in
     ];
     // flight and floor timing depend on tFloor: fill them in now
     { const sm = SHOTS.find((x) => x.name === 'smash'), fl = SHOTS.find((x) => x.name === 'floor'), tf = T_CONTACT + tFloor;
-      sm.t = [1.24, tf - 0.004];
+      sm.t = [1.125, tf - 0.004];
       fl.keys = [[0, tf - 0.004], [0.12, tf], [0.7, tf + HITSTOP * 0.9], [1, tf + HITSTOP + 0.22]]; fl.t = [tf - 0.004, tf + HITSTOP + 0.22]; }
     const shotAt = (T) => SHOTS.find((s) => T < s.T[1]) || SHOTS[SHOTS.length - 1];
     const warp = (keys, u) => { let i = 0; while (i < keys.length - 2 && u > keys[i + 1][0]) i++;
@@ -359,7 +288,7 @@
     addFinish({ grain: 0.06, vignette: 0.5 });
     const credit = el('div', { position: 'absolute', left: '7vw', bottom: '5vh', font: `500 1.3vmin ${TEXT}`, letterSpacing: '0.12em', color: 'rgba(243,237,226,0.7)', opacity: 0, zIndex: 60 }, document.body,
       'CHARACTER: "RIGGED ANIME MALE CHARACTER-1" BY RET.OUCHS (SKETCHFAB) · CC BY-SA 4.0');
-    VM.onFrame((T) => { credit.style.opacity = VM.prog(T, 10.6, 0.5); });
+    VM.onFrame((T) => { credit.style.opacity = shotAt(T).name === 'roar' ? VM.prog(T, shotBy('roar').T[1] - 1.5, 0.5) : 0; });
 
     // ================= frame =================
     let comicMode = null;
@@ -421,8 +350,10 @@
       cam.rotateZ((c.roll || 0) + (T > T_FLOOR_VIDEO ? 0.05 * Math.exp(-(T - T_FLOOR_VIDEO) * 5) * Math.sin((T - T_FLOOR_VIDEO) * 40) : 0));
       const shakeK = (T > T_TAKEOFF ? Math.exp(-(T - T_TAKEOFF) * 5) * 0.06 : 0) + (T > T_HIT_VIDEO ? Math.exp(-(T - T_HIT_VIDEO) * 6) * 0.08 : 0) + (T > T_FLOOR_VIDEO ? Math.exp(-(T - T_FLOOR_VIDEO) * 7) * 0.12 : 0);
       cam.position.x += VM.noise(T * 50, 1) * shakeK; cam.position.y += VM.noise(T * 50, 2) * shakeK;
+      camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(hipPos()); camFill.intensity = shot.name === 'roar' ? 2.6 : 1.4;
       lensMat.uniforms.k.value = (shot.lens || 0) + (T > T_HIT_VIDEO ? 0.45 * Math.exp(-(T - T_HIT_VIDEO) * 6) : 0);
-      lensMat.uniforms.zoom.value = HOLDING ? 0 : zoomAt(T) + smearAt(T);       // impact frames are crisp drawings lensMat.uniforms.cel.value = shot.comic ? 0.35 : P.cel;
+      lensMat.uniforms.zoom.value = HOLDING ? 0 : zoomAt(T) + smearAt(T);       // impact frames are crisp drawings
+      lensMat.uniforms.cel.value = shot.comic ? 0.35 : P.cel;
       { const f = (shot.name === 'smash' && T > T_FLOOR_VIDEO - 0.2) ? hitPoint : (T > T_HIT_VIDEO - 0.7 && T < T_FLOOR_VIDEO + 0.5) ? (shot.name === 'smash' ? ball.position : C) : hipPos();
         cam.updateMatrixWorld(); const pf = f.clone().project(cam); lensMat.uniforms.center.value.set((pf.x + 1) / 2, (pf.y + 1) / 2); }
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
@@ -438,7 +369,8 @@
     const speed = el('canvas', { position: 'absolute', inset: 0, width: '100vw', height: '100vh', pointerEvents: 'none', mixBlendMode: 'screen' });
     speed.width = W; speed.height = H; const sg = speed.getContext('2d');
     const linesAt = (T) => { const n = shotAt(T).name;
-      return n === 'liftoff' ? (T > T_TAKEOFF ? 1 : 0.25) : n === 'rise' ? 0.7 * (1 - VM.prog(T, 4.0, 0.7)) : n === 'runup' ? 0.3 * VM.prog(T, 1.2, 1.4) : n === 'floor' ? (T > T_FLOOR_VIDEO ? 1 : 0.3) : n === 'pov' ? 0.9 : n === 'smash' ? 1 : n === 'feet' ? 0.35 : 0; };
+      const sh = shotAt(T), u = (T - sh.T[0]) / (sh.T[1] - sh.T[0]);
+      return n === 'liftoff' ? (T > T_TAKEOFF ? 1 : 0.25) : n === 'rise' ? 0.7 * (1 - u) : n === 'runup' ? 0.35 * u : n === 'floor' ? (T > T_FLOOR_VIDEO ? 1 : 0.3) : n === 'pov' ? 0.9 : n === 'smash' ? 1 : n === 'feet' ? 0.35 : 0; };
     function drawSpeed(T, fx, fy) {
       sg.clearRect(0, 0, W, H); const a = linesAt(T); if (a <= 0) return;
       const R = VM.rand(1 + Math.floor(T * 12)), diag = Math.hypot(W, H);
@@ -486,8 +418,9 @@
       cam.updateMatrixWorld(); const pc = C.clone().project(cam);
       flash.style.setProperty('--x', `${(pc.x + 1) * 50}%`); flash.style.setProperty('--y', `${(1 - pc.y) * 50}%`);
       flash.style.opacity = T > T_HIT_VIDEO ? 0.9 * Math.exp(-(T - T_HIT_VIDEO) * 9) : 0;
-      kicker.style.opacity = VM.env(T, 0.3, 5.2, 0.5, 0.4);
-      const sc = VM.prog(T, T_FLOOR_VIDEO + 0.5, 0.5, 'outExpo'); score.style.opacity = sc; score.style.bottom = shot.name === 'roar' ? '74vh' : '9vh'; score.style.transform = `translateY(${(1 - sc) * 4}vh)`;
+      kicker.style.opacity = VM.env(T, 0.2, T_HIT_VIDEO - 0.2, 0.4, 0.3);
+      const sc = shot.name === 'roar' ? VM.prog(T, shot.T[0] + 0.25, 0.35, 'outBack') : 0;   // the scoreboard lands with the roar
+      score.style.opacity = Math.min(1, sc); score.style.bottom = '74vh'; score.style.transform = `scale(${1.6 - 0.6 * sc})`; score.style.transformOrigin = '100% 0';
     });
     console.error('SPIKE_TIMES ' + JSON.stringify(window.SPIKE_TIMES));
     resolve();

@@ -13,7 +13,7 @@
     {
       "id": "spike",
       "html": "impact/spike_seq.html",
-      "duration": 12
+      "duration": 9.8
     }
   ],
   "music": [
@@ -21,7 +21,7 @@
       "path": "music/rise.wav",
       "start": 0,
       "in": 0,
-      "duration": 12,
+      "duration": 9.8,
       "volume": 0.5,
       "fade_in": 0.5,
       "fade_out": 1.5

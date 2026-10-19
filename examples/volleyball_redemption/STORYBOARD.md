@@ -55,3 +55,31 @@ cd projects/volleyball_redemption
 ../../bin/vedit synth-music --mood epic --duration 36 --seed 11 --out music/rise.wav
 ../../bin/vedit render edit.json                # -> out/final.mp4 (~48 s)
 ```
+
+---
+
+# Final cut: THE SAME POINT (anime spike, ~26 s)
+
+`story_full.json` replaces the first version above. It uses one 3D arena and one character
+(the anime male, retargeted Motion Cast captures) all the way through. Then is grey, now is in colour.
+The scoring follows volleyball rules: sets 1–4 go to 25 with a two-point lead, so last year's set 4 ended 24:26 and this year's ends 26:24.
+
+| # | Time | Shot | Picture | Copy | Sound |
+|---|---|---|---|---|---|
+| 1 | 0:00–0:00.7 | Title | black | ONE YEAR AGO | muffled `fall.wav` (lowpass) |
+| 2 | 0:00.7–0:03 | The dig (grey) | wide broadcast angle; he waits in the back court, the opponent's spike lands a hand beyond his reach as he drops to a knee; inverted impact frame on the floor | ONE YEAR AGO · FINAL · SET 4 · 24 : 25 | reverse swell + impact |
+| 3 | 0:03–0:04.35 | Floor (grey) | low on the floor: kneeling, the ball bouncing away | **24 : 26** · FINAL LOST | boom |
+| 4 | 0:04.35–0:05.5 | Kneel (grey) | his face, hand to his chest | *He never forgot that point.* | |
+| 5 | 0:05.5–0:06.95 | Eyes (colour) | white flash to colour, extreme close-up on his eyes | TODAY · FINAL · SET 4 → **MATCH POINT 25 : 24** | riser + impact into `rise.wav` |
+| 6 | 0:06.95–0:08.2 | The set | the ball rising from the setter into the lights | **THIS TIME, HE ATTACKS.** | whoosh + boom |
+| 7 | 0:08.2–0:18 | The spike | `spike_seq.html`: run-up, ground-level liftoff with an impact frame, rise, POV, comic impact frame (arm all the way through), ball flight, floor hit-stop + BAM, roar with arms in a V | 26 : 24 | riser, impact/boom on takeoff, contact and floor (contact on a downbeat) |
+| 8 | 0:18–0:20 | Last year (grey) | low on the floor: last year's ball rolls to a stop in front of the kneeling player | *He lost this point once.* | muffled `fall.wav` |
+| 9 | 0:20–0:22.2 | Today (colour) | match cut, same lens: today's ball in the cracked floor, then a tilt up to him roaring | *He never stopped coming back.* | impact + boom, `rise.wav` returns |
+| 10 | 0:22.2–0:25.6 | End card | the Mikasa ball turning on navy | **NEVER GIVE UP.** / EVERY SET · EVERY POINT · EVERY DAY / credits | reverse swell + boom, fade to black |
+
+Files: `impact/story.html` (`part`: `intro` | `outro`), `impact/spike_seq.html`, shared `impact/stage.js` (arena + anime post pass),
+`impact/mocap.js` (retarget), `tools/c4d_anim.py` (C4D → glTF). Licensed assets (mocap, ball model, character) are not committed.
+
+```bash
+cd projects/volleyball_redemption && ../../bin/vedit render story_full.json   # -> out/volleyball_redemption_final.mp4
+```

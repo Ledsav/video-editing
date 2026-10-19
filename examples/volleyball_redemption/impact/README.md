@@ -32,3 +32,16 @@ by mirroring Z (chosen by minimising foot slide over all 96 order/sign/handednes
 `impact/glb_check.html` draws the converted skeleton as a stick-figure contact sheet for verification.
 Tested on the Motion Cast "Volley-ball" pack (Cinema 4D 2024); geometry/materials are not extracted.
 The mocap and ball model are licensed assets and are not committed.
+
+## Story bookends (final cut)
+
+`story.html` reuses the arena, the anime post pass (`stage.js`, shared with `spike_seq.html`), the character and the retarget:
+`part: "intro"` is last year's lost point in grey (`3-Dig in front with one knee on the ground`) and today's eyes (`1-IDLE`);
+`part: "outro"` is the match cut from last year's ball to today's, with the roar (`12-Reaction after point obtained-Take3`) and the end card.
+`story_full.json` assembles intro + spike + outro with music and sound effects.
+`mocap_probe.html` prints a clip's detected events and the hip/hand path (debugging helper).
+
+Retarget notes: the retarget takes bone directions from the capture itself. To turn a clip, rotate the capture's points
+(`placer(...).rot` in `story.html`); turning only the root offset leaves the body facing the captured way.
+In the converted Motion Cast clips `Head_end` sits on the head joint. `loadMocap` rebuilds it along the head's own axis so the head pitch carries over.
+The toon materials keep the source `side`. The face mesh is double-sided, and with front faces only the dark mouth interior shows through it.
