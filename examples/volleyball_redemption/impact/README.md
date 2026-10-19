@@ -15,3 +15,7 @@ done
 `spike_seq.html` is the spike as a shot sequence (male athlete, Xbot): behind-the-hitter set, feet, wide jump,
 POV, comic-book impact frame, ball into the court, roar. Render with `bin/vedit render spike_seq.json`.
 The ball (`styles/mikasa.js`, `v200wRefMaps`) is matched to a V200W product photo.
+
+Player model (default in `spike_seq.html`): "RIGGED ANIME MALE CHARACTER-1" by Ret.ouchs (Sketchfab), CC BY-SA 4.0.
+Not committed: download it from Sketchfab and save it as `impact/anime_male.glb`. The scene credits it on screen.
+`intro_ngu.html` is the NEVER GIVE UP intro; `spike_full.json` assembles intro + rendered spike + outro (same template, faster params).

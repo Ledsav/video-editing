@@ -1,0 +1,105 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="5">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Intro: NEVER / GIVE / UP. slam in on comic bursts (Mikasa yellow/blue), the V200W ball rockets in behind UP., lockup, then the camera dives into the ball and flashes white into the spike.">
+<script src="../scenes/common.js"></script>
+<script src="../styles/mikasa.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #05070d; } #stage { position: absolute; inset: 0; overflow: hidden; }
+  .word { position: absolute; left: 0; right: 0; top: 50%; text-align: center; line-height: 0.82; white-space: nowrap; will-change: transform; }</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ words: ['NEVER', 'GIVE', 'UP.'], beats: [0.35, 1.25, 2.15], lock: 2.9, dive: 4.3, fadeOut: 99, kicker: 'MATCH POINT &nbsp;·&nbsp; 24 : 24', sub: 'ONE MORE POINT' });
+  const Y = V200W.yellow, B = V200W.blue, INK = '#05070d', CR = '#f4f1ea';
+  const stage = document.getElementById('stage'), W = innerWidth, H = innerHeight;
+  // background colour field (flips on each slam) + comic burst + halftone
+  const bg = el('div', { position: 'absolute', inset: 0, background: INK });
+  const ns = 'http://www.w3.org/2000/svg';
+  const burst = document.createElementNS(ns, 'svg'); burst.setAttribute('viewBox', '-960 -540 1920 1080'); burst.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+  Object.assign(burst.style, { position: 'absolute', inset: 0, width: '100%', height: '100%' }); stage.appendChild(burst);
+  const R0 = VM.rand(7); let rays = '';
+  for (let i = 0; i < 44; i++) { const a = (i / 44) * Math.PI * 2 + R0() * 0.04, w = 0.025 + R0() * 0.05, L = 2400;
+    rays += `<path d="M0 0 L${Math.cos(a - w) * L} ${Math.sin(a - w) * L} L${Math.cos(a + w) * L} ${Math.sin(a + w) * L}Z"/>`; }
+  burst.innerHTML = `<g class="r">${rays}</g>`; const raysG = burst.querySelector('.r');
+  const half = el('div', { position: 'absolute', inset: 0, mixBlendMode: 'multiply', opacity: 0.35,
+    backgroundImage: 'radial-gradient(circle, rgba(5,7,13,0.9) 0.3vmin, transparent 0.34vmin)', backgroundSize: '1.05vmin 1.05vmin' });
+  // speed lines (canvas)
+  const sl = el('canvas', { position: 'absolute', inset: 0, width: '100vw', height: '100vh', mixBlendMode: 'screen' }); sl.width = W; sl.height = H; const sg = sl.getContext('2d');
+  // the ball (3D, behind the type)
+  const ballBox = el('div', { position: 'absolute', left: 0, top: 0, width: '100vw', height: '100vh' });
+  // words
+  const size = Math.min(W * 0.9 / 3.1, H * 0.62);
+  const words = P.words.map((w) => el('div', { font: `400 ${size}px ${DISPLAY}`, letterSpacing: '0.01em', opacity: 0 }, stage, w));
+  words.forEach((d) => (d.className = 'word'));
+  const lock = el('div', { position: 'absolute', left: 0, right: 0, top: '50%', textAlign: 'center', opacity: 0 });
+  P.words.forEach((w, i) => el('div', { font: `400 ${size * 0.42}px ${DISPLAY}`, lineHeight: 0.86, color: i === 1 ? Y : CR,
+    WebkitTextStroke: i === 1 ? '0' : '0', textShadow: '0.8vmin 0.8vmin 0 rgba(5,7,13,0.85)' }, lock, w));
+  const kick = el('div', { position: 'absolute', left: 0, right: 0, top: '9vh', textAlign: 'center', font: `600 1.9vmin ${TEXT}`, letterSpacing: '0.55em', textIndent: '0.55em', color: Y, opacity: 0 }, stage, P.kicker);
+  const sub = el('div', { position: 'absolute', left: 0, right: 0, bottom: '11vh', textAlign: 'center', font: `600 1.9vmin ${TEXT}`, letterSpacing: '0.55em', textIndent: '0.55em', color: CR, opacity: 0 }, stage, P.sub);
+  const black = el('div', { position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 41 });
+  const flash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 40 });
+  addFinish({ grain: 0.07, vignette: 0.45 });
+
+  // look of each slam: [background, ray colour, word colour, word outline]
+  const LOOKS = [[Y, 'rgba(255,255,255,0.35)', B, INK], [B, 'rgba(255,210,31,0.35)', Y, INK], [CR, 'rgba(33,64,166,0.22)', B, INK]];
+  function drawLines(t, amt, fx, fy) {
+    sg.clearRect(0, 0, W, H); if (amt <= 0) return;
+    const R = VM.rand(3 + Math.floor(t * 24)), diag = Math.hypot(W, H);
+    for (let i = 0; i < 80; i++) { const a = R() * Math.PI * 2, r0 = diag * (0.2 + R() * 0.25), r1 = diag * (0.75 + R() * 0.3);
+      sg.strokeStyle = `rgba(255,248,230,${(0.15 + R() * 0.5) * amt})`; sg.lineWidth = 0.8 + R() * 3;
+      sg.beginPath(); sg.moveTo(fx + Math.cos(a) * r0, fy + Math.sin(a) * r0); sg.lineTo(fx + Math.cos(a) * r1, fy + Math.sin(a) * r1); sg.stroke(); }
+  }
+
+  window.VM_READY = (async () => {
+    const m = await createMikasa({ size: 70, key: [-2, 3, 4], rim: 0xffd21f, rimI: 1.4 });
+    m.canvas.style.left = 'calc(50vw - 35vmin)'; m.canvas.style.top = 'calc(50vh - 35vmin)'; ballBox.appendChild(m.canvas);
+    VM.onFrame((t) => {
+      const k = P.beats.filter((b) => t >= b).length - 1;              // current slam
+      const locked = t >= P.lock;
+      // background, burst
+      if (k >= 0 && !locked) { const L = LOOKS[k]; bg.style.background = L[0]; raysG.setAttribute('fill', L[1]); }
+      if (locked) { bg.style.background = B; raysG.setAttribute('fill', 'rgba(255,210,31,0.3)'); }
+      burst.style.opacity = k >= 0 ? 1 : 0;
+      raysG.setAttribute('transform', `rotate(${(k % 2 ? -1 : 1) * t * 14}) scale(${1 + 0.06 * Math.sin(t * 3)})`);
+      half.style.opacity = k >= 0 ? 0.35 : 0;
+      // words: slam in big, settle, get knocked out by the next one
+      words.forEach((d, i) => {
+        const t0 = P.beats[i], t1 = i < 2 ? P.beats[i + 1] : P.lock;
+        const p = VM.prog(t, t0, 0.22, 'outBack'), out = VM.prog(t, t1 - 0.06, 0.12, 'inExpo');
+        d.style.opacity = t >= t0 && t < t1 ? 1 : 0;
+        d.style.color = LOOKS[i][2]; d.style.webkitTextStroke = `0.5vmin ${LOOKS[i][3]}`;
+        d.style.textShadow = `1.4vmin 1.4vmin 0 ${LOOKS[i][3]}`;
+        const sk = (1 - p) * -14 + out * 20;
+        d.style.transform = `translateY(-50%) scale(${2.4 - 1.4 * p + out * 1.5}) skewX(${sk}deg) rotate(${(i - 1) * -3}deg)`;
+        d.style.filter = `blur(${(1 - Math.min(1, p * 1.3)) * 1.2 + out * 1.5}vmin)`;
+      });
+      // the ball: rockets in behind UP. from bottom-right, squashes, then spins in the lockup; finally the camera dives into it
+      const bt = P.beats[2] - 0.12, bp = VM.prog(t, bt, 0.22, 'outExpo');
+      const hitK = t > bt + 0.2 ? Math.exp(-(t - bt - 0.2) * 9) : 0;
+      const dive = VM.prog(t, P.dive, 0.7, 'inExpo');
+      const bx = VM.lerp(70, 0, bp), by = VM.lerp(60, 0, bp);
+      const scale = (locked ? 1.0 : 0.85) * (1 + dive * 9);
+      m.canvas.style.opacity = t >= bt ? 1 : 0;
+      m.canvas.style.transform = `translate(${bx}vw, ${by}vh) scale(${scale * (1 + 0.18 * hitK)}, ${scale * (1 - 0.18 * hitK)})`;
+      m.canvas.style.filter = dive > 0 ? `blur(${dive * 1.2}vmin)` : 'none';
+      ballBox.style.zIndex = locked ? 0 : 0;
+      m.render({ rx: 0.2 + t * 0.6, ry: -1.4 + t * 2.4, rz: -0.2 });
+      // lockup
+      const lp = VM.prog(t, P.lock, 0.35, 'outBack');
+      lock.style.opacity = locked ? 1 - dive : 0;
+      lock.style.transform = `translateY(-50%) scale(${(1.5 - 0.5 * lp) * (1 + dive * 2)})`;
+      kick.style.opacity = VM.env(t, 0.05, P.dive + 0.2, 0.3, 0.2);
+      sub.style.opacity = VM.prog(t, P.lock + 0.4, 0.4) * (1 - dive);
+      sub.style.letterSpacing = `${0.55 + 0.3 * (1 - VM.prog(t, P.lock + 0.4, 1.2, 'outExpo'))}em`;
+      // power: shake on every slam, one inverted impact frame, speed lines, white flash into the next scene
+      const last = Math.max(...P.beats.filter((b) => t >= b), -9), since = t - last;
+      const sh = since >= 0 && since < 0.5 ? Math.exp(-since * 10) * 2.2 : 0;
+      stage.style.transform = `translate(${VM.noise(t * 60, 1) * sh}vmin, ${VM.noise(t * 60, 2) * sh}vmin)`;
+      stage.style.filter = since >= 0 && since < 1 / 30 ? 'invert(1) grayscale(1) contrast(3)' : 'none';
+      drawLines(t, (t < P.beats[0] ? VM.prog(t, 0, 0.3) : 0.6) + dive, W / 2, H / 2);
+      black.style.opacity = VM.prog(t, P.fadeOut, 0.5, 'inOutSine');
+      flash.style.opacity = Math.max(VM.prog(t, P.dive + 0.45, 0.25), since >= 0 && since < 0.12 ? 0.5 * (1 - since / 0.12) : 0);
+    });
+  })();
+</script></body></html>

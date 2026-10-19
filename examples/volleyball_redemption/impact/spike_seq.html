@@ -12,7 +12,7 @@
   canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }</style></head>
 <body><div id="stage"></div>
 <script type="module">
-  const P = VM.params({ model: 'Xbot.glb', subframes: 5, shutter: 0.5 });
+  const P = VM.params({ model: 'anime_male.glb', subframes: 5, shutter: 0.5 });
   const stage = document.getElementById('stage');
   window.VM_READY = new Promise(async (resolve) => { try {
     const THREE = await import('three');
@@ -24,6 +24,34 @@
     renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.HalfFloatType });
+    const lensMat = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: rt.texture }, k: { value: 0 }, ca: { value: 0.06 }, aspect: { value: W / H }, zoom: { value: 0 }, center: { value: new THREE.Vector2(0.5, 0.5) } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float k; uniform float ca; uniform float aspect; uniform float zoom; uniform vec2 center; varying vec2 vUv;
+        vec2 warp(vec2 uv, float kk) {            // barrel: centre magnified, edges compressed, corners stay put
+          vec2 p = (uv - 0.5) * vec2(aspect, 1.0); float r2 = dot(p, p), rc2 = 0.25 * (aspect * aspect + 1.0);
+          return 0.5 + p * ((1.0 + kk * r2) / (1.0 + kk * rc2)) / vec2(aspect, 1.0); }
+        void main() {
+          vec4 g = vec4(0.0); float r = 0.0, b = 0.0;
+          if (zoom < 0.002) {
+            g = texture2D(tDiffuse, warp(vUv, k));
+            r = texture2D(tDiffuse, warp(vUv, k * (1.0 + ca))).r; b = texture2D(tDiffuse, warp(vUv, k * (1.0 - ca))).b;
+          } else {                                   // radial zoom blur towards the point of action: speed + power
+            for (int i = 0; i < 12; i++) {
+              vec2 u = center + (vUv - center) * (1.0 - zoom * float(i) / 11.0);
+              g += texture2D(tDiffuse, warp(u, k));
+              r += texture2D(tDiffuse, warp(u, k * (1.0 + ca * 2.0))).r; b += texture2D(tDiffuse, warp(u, k * (1.0 - ca * 2.0))).b;
+            }
+            g /= 12.0; r /= 12.0; b /= 12.0;
+          }
+          gl_FragColor = vec4(r, g.g, b, g.a);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+      depthTest: false, depthWrite: false });
+    const postScene = new THREE.Scene(), postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), lensMat));
     const env = []; let bgTexRef = null;
     const comicBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });
     const out = document.createElement('canvas'); out.width = W; out.height = H; out.className = 'out'; stage.appendChild(out);
@@ -79,7 +107,7 @@
       }
     }
     // light beams from the roof (additive cones)
-    const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff1d0, transparent: true, opacity: 0.018, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff1d0, transparent: true, opacity: 0.006, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     [[-1.2, 0.0], [1.8, -1.5], [-3.5, 2.5]].forEach(([x, z]) => { const b = new THREE.Mesh(new THREE.ConeGeometry(0.9, 14, 32, 1, true), beamMat); b.position.set(x, 7, z); scene.add(b); env.push(b); });
 
     // lights
@@ -94,14 +122,33 @@
     // ================= athlete =================
     const gltf = await loadGLB(GLTFLoader, P.model);
     const model = gltf.scene; scene.add(model);
+    const bones0 = new Map(); model.traverse((o) => { if (o.isBone) bones0.set(o.name, o); });
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xd4d8e0, roughness: 0.45, metalness: 0.05 });
     const kitMat = new THREE.MeshStandardMaterial({ color: 0x2140a6, roughness: 0.4, metalness: 0.1 });
     const toonSkin = new THREE.MeshToonMaterial({ color: 0xe6e8ee }), toonKit = new THREE.MeshToonMaterial({ color: 0x2b4fc4 });
     const bodyMeshes = [];
-    model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; bodyMeshes.push(o);
-      o.userData.std = o.name.includes('Joints') ? kitMat : skinMat; o.userData.toon = o.name.includes('Joints') ? toonKit : toonSkin; o.material = o.userData.std; } });
-    { const box = new THREE.Box3().setFromObject(model); model.scale.multiplyScalar(1.92 / (box.max.y - box.min.y)); }
-    const bone = (n) => model.getObjectByName('mixamorig' + n) || model.getObjectByName('mixamorig:' + n);
+    const KIT = { Wolf3D_Outfit_Top: 0x2140a6, Wolf3D_Outfit_Bottom: 0x0f1d4a, Wolf3D_Outfit_Footwear: 0xf2f2f2,
+                  N00_007_01_Tops_01_CLOTH: 0x2140a6, N00_001_02_Bottoms_01_CLOTH: 0x0f1d4a, N00_004_01_Shoes_01_CLOTH: 0xf4f4f4 };   // Mikasa kit
+    model.traverse((o) => { if (o.isMesh && o.material && o.material.name === 'Wolf3D_Headwear') o.visible = false; });   // no hat on court
+    model.traverse((o) => { if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false; bodyMeshes.push(o);
+      if (P.model.startsWith('Xbot')) { o.userData.std = o.name.includes('Joints') ? kitMat : skinMat; o.userData.toon = o.name.includes('Joints') ? toonKit : toonSkin; }
+      else {
+        const m = o.material.clone(); m.roughness = Math.max(0.45, m.roughness ?? 0.6); m.metalness = 0;
+        const kk = KIT[o.name] ?? KIT[o.material.name];
+        if (kk !== undefined) { m.color = new THREE.Color(kk); m.map = null; }
+        o.userData.std = m; o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? 0xffffff, map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest });
+      }
+      o.material = o.userData.std; });
+    { model.updateMatrixWorld(true);
+      const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
+      const Pw = (b) => new THREE.Vector3().setFromMatrixPosition(b.matrixWorld);
+      const top = find(/HeadTop_End/), toe = find(/LeftToe_End/) || find(/LeftToeBase/), foot = find(/LeftFoot(_\d+)?$/);
+      const h = top && toe ? Pw(top).y - Pw(toe).y : new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()).y;
+      if (foot && toe && Pw(toe).z < Pw(foot).z) model.rotation.y = Math.PI;      // make the athlete face +z
+      model.scale.multiplyScalar(1.92 / h); model.updateMatrixWorld(true); }
+    const boneRe = (n) => new RegExp('^(mixamorig:?)?' + n + '(_\\d+)?$');                      // Mixamo, Ready Player Me, Sketchfab exports ("mixamorigHips_103")
+    const boneCache = new Map();
+    const bone = (n) => { if (!boneCache.has(n)) { let f = null; const re = boneRe(n); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); boneCache.set(n, f); } return boneCache.get(n); };
     const bones = []; model.traverse((o) => { if (o.isBone) bones.push(o); });
     const rest = new Map(bones.map((b) => [b, b.quaternion.clone()]));
 
@@ -109,8 +156,8 @@
     const L = (side, a) => a.map(([b, c, d]) => [b.replace('$', side), c.replace('$', side), d]);
     const mirror = (d) => [-d[0], d[1], d[2]];
     function pose({ hips = [0, 1, 0.1], s = [[0, 1, 0.1], [0, 1, 0.1], [0, 1, 0.1]], neck = [0, 1, 0.1], head = [0, 1, 0],
-                    rSh = [-1, 0.1, 0], rA, rF, rH, lSh = [1, 0.1, 0], lA, lF, lH, rT, rS, rFt = [0, -0.6, 0.8], lT, lS, lFt = [0, -0.6, 0.8] }) {
-      const p = [['Hips', 'Spine', hips], ['Spine', 'Spine1', s[0]], ['Spine1', 'Spine2', s[1]], ['Spine2', 'Neck', s[2]], ['Neck', 'Head', neck], ['Head', 'HeadTop_End', head],
+                    rSh = [-1, 0.1, 0], rA, rF, rH, lSh = [1, 0.1, 0], lA, lF, lH, rT, rS, rFt = [0, -0.6, 0.8], lT, lS, lFt = [0, -0.6, 0.8], twist = 0 }) {
+      const p = [['Hips', 'Spine', hips], ['Spine', 'Spine1', s[0]], ['Spine1', 'Spine2', s[1]], ['Spine2', 'Neck', s[2]], ['TWIST', 'Spine2', twist], ['Neck', 'Head', neck], ['Head', 'HeadTop_End', head],
         ['RightShoulder', 'RightArm', rSh], ['RightArm', 'RightForeArm', rA], ['RightForeArm', 'RightHand', rF],
         ['LeftShoulder', 'LeftArm', lSh], ['LeftArm', 'LeftForeArm', lA], ['LeftForeArm', 'LeftHand', lF],
         ['RightUpLeg', 'RightLeg', rT], ['RightLeg', 'RightFoot', rS], ['RightFoot', 'RightToeBase', rFt],
@@ -125,48 +172,66 @@
         rT: [-0.2, -0.85, 0.4], rS: [-0.05, -1, -0.15], lT: [0.2, -0.85, 0.4], lS: [0.05, -1, -0.15], rFt: [0, -0.2, 1], lFt: [0, -0.2, 1] });
     const KEYS = [
       [-1.6, READY], [-0.45, READY],
-      [0.00, pose({ hips: [0, 1, 0.3], s: [[0, 1, 0.35], [0, 1, 0.35], [0, 1, 0.3]], neck: [0, 1, 0.3], head: [0, 1, 0.15],      // approach stride, right foot back
-        rA: [-0.15, -0.85, -0.45], rF: [-0.05, -0.4, 0.6], lA: [0.15, -0.85, 0.45], lF: [0, 0.3, 1],
-        lT: [0.05, -0.8, 0.6], lS: [0, -1, 0.15], rT: [-0.05, -0.92, -0.35], rS: [0, -0.45, -0.9], rFt: [0, -0.7, -0.4] })],
-      [0.28, pose({ hips: [0, 1, 0.4], s: [[0, 1, 0.5], [0, 1, 0.5], [0, 1, 0.4]], neck: [0, 1, 0.3], head: [0, 0.9, 0.35],      // penultimate: long right step, arms going back
-        rA: [-0.2, -0.55, -0.8], rF: [-0.1, -0.3, -0.95], lA: [0.2, -0.55, -0.8], lF: [0.1, -0.3, -0.95],
-        rT: [-0.05, -0.7, 0.72], rS: [0, -1, 0.25], lT: [0.05, -0.85, -0.5], lS: [0, -0.3, -0.95], lFt: [0, -0.8, -0.4] })],
-      [0.52, pose({ hips: [0, 1, 0.55], s: [[0, 1, 0.75], [0, 1, 0.65], [0, 1, 0.5]], neck: [0, 1, 0.4], head: [0, 0.85, 0.55],  // plant + load: deep squat, arms fully back
-        rA: [-0.2, 0.25, -1], rF: [-0.05, 0.4, -1], lA: [0.2, 0.25, -1], lF: [0.05, 0.4, -1],
-        rT: [-0.15, -0.5, 0.86], rS: [0, -1, -0.28], lT: [0.15, -0.5, 0.86], lS: [0, -1, -0.28], rFt: [0, -0.2, 1], lFt: [0, -0.2, 1] })],
-      [0.70, pose({ hips: [0, 1, 0.1], s: [[0, 1, 0.1], [0, 1, 0.05], [0, 1, 0.05]], neck: [0, 1, 0.1], head: [0, 0.95, -0.2],   // takeoff: legs drive, arms swing up
-        rA: [-0.1, 0.75, 0.65], rF: [-0.05, 1, 0.35], lA: [0.1, 0.75, 0.65], lF: [0.05, 1, 0.35],
-        rT: [-0.1, -1, 0.12], rS: [0, -1, -0.08], lT: [0.1, -1, 0.15], lS: [0, -1, -0.05], rFt: [0, -0.85, -0.5], lFt: [0, -0.85, -0.5] })],
-      [0.94, pose({ hips: [0, 1, -0.1], s: [[0, 1, -0.2], [0, 1, -0.28], [0, 1, -0.12]], neck: [0, 1, 0.15], head: [0, 0.8, -0.6], // bow and arrow: arch, elbow drawn back, left points at the ball
-        rSh: [-0.8, 0.35, -0.5], rA: [-0.5, 0.3, -0.8], rF: [0.2, 0.97, 0.05],
-        lSh: [1, 0.35, 0.2], lA: [0.12, 0.92, 0.42], lF: [0.05, 0.95, 0.5],
-        rT: [-0.1, -0.95, 0.2], rS: [0, -0.3, -0.95], lT: [0.12, -0.95, 0.3], lS: [0, -0.4, -0.92], rFt: [0, -0.7, -0.7], lFt: [0, -0.7, -0.7] })],
-      [1.05, pose({ hips: [0, 1, -0.15], s: [[0, 1, -0.28], [0, 1, -0.35], [0, 1, -0.15]], neck: [0, 1, 0.1], head: [0, 0.75, -0.65], // full cock, max arch: the arm lags behind the body
-        rSh: [-0.75, 0.4, -0.55], rA: [-0.42, 0.38, -0.82], rF: [0.25, 0.9, -0.3], rH: [0.1, 0.3, -0.95],
-        lSh: [1, 0.2, 0.25], lA: [0.2, 0.55, 0.8], lF: [0.1, 0.4, 0.9],
-        rT: [-0.1, -0.95, 0.15], rS: [0, -0.2, -0.98], lT: [0.12, -0.95, 0.25], lS: [0, -0.25, -0.97], rFt: [0, -0.6, -0.8], lFt: [0, -0.6, -0.8] })],
-      [1.09, pose({ hips: [0, 1, 0.0], s: [[0, 1, -0.05], [0, 1, 0.0], [0, 1, 0.05]], neck: [0, 1, 0.12], head: [0, 0.85, -0.45],  // whip: elbow leads, forearm lags
-        rSh: [-0.95, 0.5, -0.15], rA: [-0.25, 0.9, 0.05], rF: [0.1, 0.55, -0.83], rH: [0, 0.2, -1],
-        lSh: [1, 0.05, 0.15], lA: [0.25, -0.2, 0.95], lF: [-0.3, -0.2, 0.9],
-        rT: [-0.1, -0.9, 0.35], rS: [0, -0.55, -0.83], lT: [0.12, -0.88, 0.45], lS: [0, -0.6, -0.8], rFt: [0, -0.7, -0.6], lFt: [0, -0.7, -0.6] })],
-      [1.12, pose({ hips: [0, 1, 0.1], s: [[0, 1, 0.15], [0, 1, 0.25], [0, 1, 0.22]], neck: [0, 1, 0.15], head: [0, 0.95, -0.25],  // CONTACT: full extension, wrist snap, left arm pulled down
-        rSh: [-1, 0.55, 0.05], rA: [-0.12, 0.95, 0.38], rF: [-0.08, 0.9, 0.5], rH: [0, 0.55, 0.85],
-        lSh: [1, -0.1, 0.1], lA: [0.25, -0.75, 0.6], lF: [-0.55, -0.25, 0.6],
-        rT: [-0.1, -0.85, 0.5], rS: [0, -0.85, -0.4], lT: [0.12, -0.8, 0.58], lS: [0, -0.8, -0.45], rFt: [0, -0.8, -0.3], lFt: [0, -0.8, -0.3] })],
-      [1.28, pose({ hips: [0, 1, 0.3], s: [[0, 1, 0.45], [0, 1, 0.45], [0, 1, 0.35]], neck: [0, 1, 0.35], head: [0, 0.9, 0.45],    // follow-through: pike, arm across the body
-        rSh: [-1, -0.2, 0.2], rA: [0.25, -0.45, 0.85], rF: [0.65, -0.65, 0.3], rH: [0.6, -0.8, 0],
+      [0.00, pose({ hips: [0, 1, 0.45], s: [[0, 1, 0.5], [0, 1, 0.45], [0, 1, 0.35]], neck: [0, 1, 0.3], head: [0, 0.95, 0.2],    // approach stride, arms swinging
+        rA: [-0.15, -0.8, -0.55], rF: [-0.05, -0.5, 0.5], lA: [0.15, -0.75, 0.6], lF: [0, 0.25, 1],
+        lT: [0.05, -0.75, 0.65], lS: [0, -1, 0.15], rT: [-0.05, -0.9, -0.4], rS: [0, -0.45, -0.9], rFt: [0, -0.7, -0.4] })],
+      [0.28, pose({ hips: [0, 1, 1.0], s: [[0, 1, 1.1], [0, 1, 1.0], [0, 1, 0.75]], neck: [0, 1, 0.45], head: [0, 0.9, 0.45],    // penultimate: long step, torso low, arms thrown back
+        rA: [-0.15, 0.35, -1], rF: [-0.1, 0.45, -1], lA: [0.15, 0.35, -1], lF: [0.1, 0.45, -1],
+        rT: [-0.05, -0.65, 0.76], rS: [0, -1, 0.3], lT: [0.05, -0.8, -0.6], lS: [0, -0.25, -0.97], lFt: [0, -0.8, -0.4] })],
+      [0.50, pose({ hips: [0, 1, 1.3], s: [[0, 1, 1.35], [0, 1, 1.15], [0, 1, 0.85]], neck: [0, 1, 0.5], head: [0, 0.9, 0.5],     // plant: deepest load, ~45 deg lean, arms high behind
+        rA: [-0.12, 0.9, -0.6], rF: [-0.05, 0.95, -0.5], lA: [0.12, 0.9, -0.6], lF: [0.05, 0.95, -0.5],
+        rT: [-0.18, -0.3, 0.95], rS: [0, -1, -0.45], lT: [0.18, -0.3, 0.95], lS: [0, -1, -0.45], rFt: [0, -0.2, 1], lFt: [0, -0.2, 1] })],
+      [0.66, pose({ hips: [0, 1, 0.45], s: [[0, 1, 0.45], [0, 1, 0.35], [0, 1, 0.25]], neck: [0, 1, 0.2], head: [0, 0.95, -0.1],  // drive: arms whip forward-down past the hips
+        rA: [-0.12, -0.75, 0.65], rF: [-0.05, -0.3, 0.95], lA: [0.12, -0.75, 0.65], lF: [0.05, -0.3, 0.95],
+        rT: [-0.12, -0.75, 0.65], rS: [0, -1, -0.15], lT: [0.12, -0.75, 0.65], lS: [0, -1, -0.15], rFt: [0, -0.4, 0.9], lFt: [0, -0.4, 0.9] })],
+      [0.74, pose({ hips: [0, 1, 0.2], s: [[0, 1, 0.25], [0, 1, 0.15], [0, 1, 0.1]], neck: [0, 1, 0.1], head: [0, 0.95, -0.3],   // takeoff: legs extend, both arms drive up in front
+        rA: [-0.1, 0.7, 0.7], rF: [-0.05, 0.9, 0.45], lA: [0.1, 0.7, 0.7], lF: [0.05, 0.9, 0.45],
+        rT: [-0.1, -1, 0.05], rS: [0, -1, -0.12], lT: [0.1, -1, 0.1], lS: [0, -1, -0.1], rFt: [0, -0.85, -0.5], lFt: [0, -0.85, -0.5] })],
+      [0.86, pose({ hips: [0, 1, -0.05], s: [[0, 1, -0.12], [0, 1, -0.18], [0, 1, -0.05]], neck: [0, 1, 0.1], head: [0, 0.85, -0.5], twist: -0.45, // rising: chest starts to open, knees begin to bend back
+        rSh: [-0.9, 0.4, -0.3], rA: [-0.65, 0.4, -0.6], rF: [0.1, 0.98, -0.1],
+        lSh: [1, 0.3, 0.1], lA: [0.12, 0.85, 0.5], lF: [0.05, 0.85, 0.55],
+        rT: [-0.15, -0.97, 0.1], rS: [-0.05, -0.5, -0.86], lT: [0.15, -0.95, 0.25], lS: [0.05, -0.7, -0.7], rFt: [0, -0.6, -0.8], lFt: [0, -0.7, -0.7] })],
+      [0.98, pose({ hips: [0, 1, -0.15], s: [[0, 1, -0.28], [0, 1, -0.32], [0, 1, -0.1]], neck: [0, 1, 0.12], head: [0, 0.82, -0.57], twist: -0.85, // BOW (as in the photo): chest open, back extended, knees bent back, legs apart
+        rSh: [-0.75, 0.4, -0.5], rA: [-0.55, 0.22, -0.8], rF: [0.25, 0.97, 0.0], rH: [0.15, 0.6, -0.75],
+        lSh: [1, 0.35, 0.25], lA: [0.1, 0.8, 0.6], lF: [0.05, 0.78, 0.63],
+        rT: [-0.18, -0.95, -0.05], rS: [-0.05, -0.15, -0.99], lT: [0.2, -0.9, 0.35], lS: [0.08, -0.55, -0.83], rFt: [0, -0.45, -0.9], lFt: [0, -0.7, -0.7] })],
+      [1.05, pose({ hips: [0, 1, -0.2], s: [[0, 1, -0.35], [0, 1, -0.38], [0, 1, -0.12]], neck: [0, 1, 0.1], head: [0, 0.8, -0.6], twist: -1.0, // fully loaded, still human: no more than ~25 deg of back extension
+        rSh: [-0.7, 0.4, -0.6], rA: [-0.5, 0.25, -0.83], rF: [0.3, 0.92, -0.25], rH: [0.15, 0.3, -0.95],
+        lSh: [1, 0.3, 0.25], lA: [0.12, 0.6, 0.79], lF: [0.05, 0.5, 0.86],
+        rT: [-0.18, -0.93, -0.1], rS: [-0.05, -0.05, -1], lT: [0.2, -0.9, 0.3], lS: [0.08, -0.45, -0.89], rFt: [0, -0.35, -0.94], lFt: [0, -0.6, -0.8] })],
+      [1.09, pose({ hips: [0, 1, 0.05], s: [[0, 1, 0.0], [0, 1, 0.1], [0, 1, 0.1]], neck: [0, 1, 0.12], head: [0, 0.85, -0.45], twist: -0.1, // whip: the bow releases, legs start to snap forward, elbow leads
+        rSh: [-0.95, 0.5, -0.15], rA: [-0.3, 0.9, 0.1], rF: [0.15, 0.6, -0.78], rH: [0, 0.2, -1],
+        lSh: [1, 0.05, 0.15], lA: [0.25, -0.15, 0.95], lF: [-0.3, -0.25, 0.9],
+        rT: [-0.12, -0.95, 0.2], rS: [0, -0.3, -0.95], lT: [0.12, -0.92, 0.3], lS: [0, -0.35, -0.94], rFt: [0, -0.5, -0.85], lFt: [0, -0.5, -0.85] })],
+      [1.12, pose({ hips: [0, 1, 0.2], s: [[0, 1, 0.25], [0, 1, 0.3], [0, 1, 0.2]], neck: [0, 1, 0.1], head: [0, 0.95, -0.3], twist: 0.55, // CONTACT at full reach: shoulder elevated, arm straight up, wrist snaps, legs jackknife
+        rSh: [-0.75, 0.85, 0.1], rA: [-0.06, 0.98, 0.2], rF: [-0.04, 0.97, 0.25], rH: [0, 0.6, 0.8],
+        lSh: [1, -0.15, 0.1], lA: [0.25, -0.75, 0.6], lF: [-0.55, -0.25, 0.6],
+        rT: [-0.1, -0.6, 0.8], rS: [0, -0.9, -0.2], lT: [0.12, -0.55, 0.83], lS: [0, -0.88, -0.25], rFt: [0, -0.8, 0.2], lFt: [0, -0.8, 0.2] })],
+      [1.28, pose({ hips: [0, 1, 0.45], s: [[0, 1, 0.6], [0, 1, 0.55], [0, 1, 0.45]], neck: [0, 1, 0.4], head: [0, 0.92, 0.4], twist: 0.6, // close like a book: torso folds forward over the hips, legs come forward to meet it
+        rSh: [-1, -0.2, 0.25], rA: [0.25, -0.5, 0.82], rF: [0.65, -0.7, 0.25], rH: [0.6, -0.8, 0],
         lA: [0.3, -0.9, -0.25], lF: [0.1, -1, 0.1],
-        rT: [-0.1, -0.7, 0.72], rS: [0, -0.95, -0.15], lT: [0.12, -0.72, 0.7], lS: [0, -0.95, -0.2] })],
-      [1.74, pose({ hips: [0, 1, 0.4], s: [[0, 1, 0.5], [0, 1, 0.45], [0, 1, 0.35]], neck: [0, 1, 0.3], head: [0, 0.95, 0.3],      // landing: two feet, knees absorb
-        rA: [-0.25, -0.6, 0.75], rF: [-0.1, -0.15, 1], lA: [0.25, -0.6, 0.75], lF: [0.1, -0.15, 1],
-        rT: [-0.17, -0.6, 0.78], rS: [0, -1, -0.3], lT: [0.17, -0.6, 0.78], lS: [0, -1, -0.3], rFt: [0, -0.1, 1], lFt: [0, -0.1, 1] })],
-      [2.30, pose({ hips: [0, 1, -0.05], s: [[0, 1, -0.1], [0, 1, -0.15], [0, 1, -0.05]], neck: [0, 1, 0], head: [0, 0.9, -0.45],  // roar: chest out, fists clenched
-        rSh: [-1, 0.15, 0], rA: [-0.85, -0.45, 0.15], rF: [-0.25, 0.95, 0.15], lSh: [1, 0.15, 0], lA: [0.85, -0.45, 0.15], lF: [0.25, 0.95, 0.15],
-        rT: [-0.12, -1, 0.15], rS: [0, -1, -0.05], lT: [0.12, -1, 0.15], lS: [0, -1, -0.05], rFt: [0, -0.1, 1], lFt: [0, -0.1, 1] })],
-      [2.90, null],
+        rT: [-0.12, -0.7, 0.7], rS: [0, -0.97, -0.15], lT: [0.12, -0.72, 0.68], lS: [0, -0.97, -0.2] })],
+      [1.55, pose({ hips: [0, 1, 0.25], s: [[0, 1, 0.3], [0, 1, 0.3], [0, 1, 0.25]], neck: [0, 1, 0.2], head: [0, 0.95, 0.15], twist: 0.2,    // descending: legs reach for the floor, arms out for balance
+        rA: [-0.5, -0.65, 0.55], rF: [-0.3, -0.35, 0.9], lA: [0.5, -0.65, 0.55], lF: [0.3, -0.35, 0.9],
+        rT: [-0.15, -0.95, 0.3], rS: [0, -1, -0.05], lT: [0.15, -0.95, 0.3], lS: [0, -1, -0.05], rFt: [0, -0.7, 0.7], lFt: [0, -0.7, 0.7] })],
+      [1.80, pose({ hips: [0, 1, 1.0], s: [[0, 1, 1.0], [0, 1, 0.85], [0, 1, 0.6]], neck: [0, 1, 0.35], head: [0, 0.95, 0.3],      // landing: two feet, knees absorb deep, torso forward, arms forward
+        rA: [-0.3, -0.55, 0.78], rF: [-0.1, -0.2, 1], lA: [0.3, -0.55, 0.78], lF: [0.1, -0.2, 1],
+        rT: [-0.22, -0.3, 0.93], rS: [0, -1, -0.42], lT: [0.22, -0.3, 0.93], lS: [0, -1, -0.42], rFt: [0, -0.15, 1], lFt: [0, -0.15, 1] })],
+      [2.15, pose({ hips: [0, 1, 0.35], s: [[0, 1, 0.35], [0, 1, 0.3], [0, 1, 0.25]], neck: [0, 1, 0.2], head: [0, 0.95, 0.0],       // recover, half up, turning to the bench
+        rA: [-0.3, -0.9, 0.25], rF: [-0.1, -0.6, 0.8], lA: [0.3, -0.9, 0.25], lF: [0.1, -0.6, 0.8],
+        rT: [-0.15, -0.8, 0.55], rS: [0, -1, -0.15], lT: [0.15, -0.8, 0.55], lS: [0, -1, -0.15], rFt: [0, -0.1, 1], lFt: [0, -0.1, 1] })],
+      [2.45, pose({ hips: [0, 1, 0.3], s: [[0, 1, 0.35], [0, 1, 0.3], [0, 1, 0.2]], neck: [0, 1, 0.1], head: [0, 0.9, -0.3], twist: -0.2, // FIST PUMP: right fist pulled down hard, shout
+        rSh: [-1, -0.1, 0], rA: [-0.55, -0.75, 0.35], rF: [-0.05, 0.85, 0.5], rH: [0, 0.9, 0.4],
+        lA: [0.4, -0.85, 0.3], lF: [0.15, -0.4, 0.9],
+        rT: [-0.2, -0.75, 0.6], rS: [0, -1, -0.2], lT: [0.2, -0.75, 0.6], lS: [0, -1, -0.2], rFt: [0, -0.1, 1], lFt: [0, -0.1, 1] })],
+      [2.75, pose({ hips: [0, 1, 0.2], s: [[0, 1, 0.2], [0, 1, 0.15], [0, 1, 0.05]], neck: [0, 1, 0.05], head: [0, 0.85, -0.5], twist: 0.1, // second pump, chest up, roar
+        rSh: [-1, 0.0, 0], rA: [-0.5, -0.6, 0.6], rF: [-0.1, 0.95, 0.3], rH: [0, 1, 0.2],
+        lA: [0.5, -0.8, 0.3], lF: [0.25, -0.2, 0.95],
+        rT: [-0.18, -0.85, 0.45], rS: [0, -1, -0.1], lT: [0.18, -0.85, 0.45], lS: [0, -1, -0.1], rFt: [0, -0.1, 1], lFt: [0, -0.1, 1] })],
+      [3.10, null],
     ];
     KEYS[KEYS.length - 1][1] = KEYS[KEYS.length - 2][1];
-    const T_CONTACT = KEYS[9][0];
+    const T_CONTACT = KEYS.find((k) => k[0] === 1.12)[0];
 
     // bake each key pose into local bone quaternions
     const tmpA = V3(0, 0, 0), tmpB = V3(0, 0, 0);
@@ -174,11 +239,18 @@
       bones.forEach((b) => b.quaternion.copy(rest.get(b)));
       model.position.set(0, 0, 0); model.updateMatrixWorld(true);
       for (const [bn, cn, d] of list) {
+        if (bn === 'TWIST') {                       // rotate the chest about the vertical: opens / closes the shoulders
+          const b = bone(cn); model.updateMatrixWorld(true);
+          const q = new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), d);
+          const pq = new THREE.Quaternion(); b.parent.getWorldQuaternion(pq);
+          const bq = new THREE.Quaternion(); b.getWorldQuaternion(bq);
+          b.quaternion.copy(pq.invert().multiply(q.multiply(bq))); continue;
+        }
         const b = bone(bn), c = bone(cn); if (!b || !c) continue;
         model.updateMatrixWorld(true);
         tmpA.setFromMatrixPosition(b.matrixWorld); tmpB.setFromMatrixPosition(c.matrixWorld);
         const cur = tmpB.sub(tmpA).normalize();
-        const want = V3(...d).normalize().applyQuaternion(model.quaternion);
+        const want = V3(...d).normalize();                     // athlete space = world: forward +z (the root is already turned to face +z)
         const q = new THREE.Quaternion().setFromUnitVectors(cur, want);
         const pq = new THREE.Quaternion(); b.parent.getWorldQuaternion(pq);
         const bq = new THREE.Quaternion(); b.getWorldQuaternion(bq);
@@ -206,8 +278,8 @@
       }
     }
     // root motion: forward travel + feet on the ground, ballistic flight between takeoff and landing
-    const T_OFF = 0.72, T_LAND = 1.72, JUMP = 0.78;
-    const zKeys = [[-1.6, -3.1], [-0.45, -3.05], [0, -2.7], [0.28, -1.75], [0.52, -0.75], [0.72, -0.5], [T_CONTACT, -0.22], [T_LAND, 0.02], [2.3, 0.1], [2.9, 0.1]];
+    const T_OFF = 0.74, T_LAND = 1.86, JUMP = 1.75, T_PEAK = 1.15;   // stylised: chest and shoulders clear the tape
+    const zKeys = [[-1.6, -3.1], [-0.45, -3.05], [0, -2.7], [0.28, -1.75], [0.5, -0.8], [0.74, -0.55], [T_CONTACT, -0.22], [T_LAND, 0.05], [2.15, 0.15], [2.9, 0.15]];
     const zAt = (t) => { let i = 0; while (i < zKeys.length - 2 && t > zKeys[i + 1][0]) i++;
       const [a, za] = zKeys[i], [b, zb] = zKeys[i + 1], u = Math.min(1, Math.max(0, (t - a) / (b - a)));
       return za + (zb - za) * (u * u * (3 - 2 * u) * 0.35 + u * 0.65); };
@@ -217,7 +289,9 @@
       model.position.set(0, 0, zAt(t)); model.updateMatrixWorld(true);
       let low = Infinity; for (const b of lowNames) low = Math.min(low, tmpA.setFromMatrixPosition(b.matrixWorld).y);
       let target = 0.02;
-      if (t > T_OFF && t < T_LAND) { const u = (t - T_OFF) / (T_LAND - T_OFF); target += 4 * JUMP * u * (1 - u); }
+      if (t > T_OFF && t < T_LAND) {                 // fast rise, peak at the hit, gravity fall
+        if (t < T_PEAK) { const u = (t - T_OFF) / (T_PEAK - T_OFF); target += JUMP * (1 - (1 - u) * (1 - u)); }
+        else { const u = (t - T_PEAK) / (T_LAND - T_PEAK); target += JUMP * (1 - u * u); } }
       else if (t <= T_OFF && t > 0) target += 0.03 * Math.abs(Math.sin(t / 0.28 * Math.PI));     // running bounce
       model.position.y = target - low; model.updateMatrixWorld(true);
     }
@@ -249,6 +323,31 @@
     // trail behind the spiked ball
     const trailMat = new THREE.MeshBasicMaterial({ color: 0xffe7a8, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
     let trail = null;
+    // ---- liftoff power: where the feet leave the floor ----
+    placeAthlete(T_OFF - 0.005);
+    const LIFT = (() => { const a = V3(0, 0, 0).setFromMatrixPosition(bone('LeftToeBase').matrixWorld), b = V3(0, 0, 0).setFromMatrixPosition(bone('RightToeBase').matrixWorld); return a.add(b).multiplyScalar(0.5).setY(0); })();
+    const crackTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 1024; const g = c.getContext('2d'), R = VM.rand(91);
+      g.strokeStyle = 'rgba(255,236,190,1)'; g.lineCap = 'round'; g.shadowColor = 'rgba(255,200,120,0.9)'; g.shadowBlur = 18;
+      for (let i = 0; i < 22; i++) { let x = 512, y = 512, a = (i / 22) * Math.PI * 2 + R() * 0.2, w = 22;
+        g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 7; k++) { a += (R() - 0.5) * 0.7; const L = 30 + R() * 60; x += Math.cos(a) * L; y += Math.sin(a) * L; g.lineWidth = w; g.lineTo(x, y); w *= 0.75; }
+        g.stroke(); }
+      const rg = g.createRadialGradient(512, 512, 0, 512, 512, 140); rg.addColorStop(0, 'rgba(255,230,170,0.9)'); rg.addColorStop(1, 'rgba(255,200,120,0)');
+      g.fillStyle = rg; g.fillRect(0, 0, 1024, 1024);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+    const crack = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshBasicMaterial({ map: crackTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    crack.rotation.x = -Math.PI / 2; crack.position.copy(LIFT).setY(0.006); scene.add(crack);
+    const liftRing = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 96), new THREE.MeshBasicMaterial({ color: 0xffe9b8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    liftRing.rotation.x = -Math.PI / 2; liftRing.position.copy(LIFT).setY(0.02); scene.add(liftRing);
+    const column = (() => { const c = document.createElement('canvas'); c.width = 8; c.height = 256; const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 256, 0, 0);
+      gr.addColorStop(0, 'rgba(255,236,180,1)'); gr.addColorStop(1, 'rgba(255,236,180,0)'); g.fillStyle = gr; g.fillRect(0, 0, 8, 256);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.35, 3, 48, 1, true), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      m.position.copy(LIFT).setY(1.5); m.visible = false; scene.add(m); return m; })();   // light column: off (read as a solid pillar)
+    const ND = 260, dr = VM.rand(55), dv = [];
+    const dGeo = new THREE.BufferGeometry(); dGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ND * 3), 3));
+    for (let i = 0; i < ND; i++) { const a = dr() * Math.PI * 2, sp = 0.8 + dr() * 2.6, up = 0.3 + dr() * 1.8; dv.push(V3(Math.cos(a) * sp, up, Math.sin(a) * sp)); }
+    const dust = new THREE.Points(dGeo, new THREE.PointsMaterial({ color: 0xf6e7cc, size: 0.055, transparent: true, depthWrite: false }));
+    scene.add(dust);
     // floor impact ring
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 64), new THREE.MeshBasicMaterial({ color: 0xfff0c8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2; ring.position.copy(hitPoint).setY(0.01); scene.add(ring);
@@ -268,20 +367,24 @@
     const headPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Head').matrixWorld);
     const hipPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Hips').matrixWorld);
     const SHOTS = [
-      { name: 'set', T: [0, 1.7], t: [-1.6, -0.5], ease: 'linear',                      // behind the hitter, ball rises from the setter
+      { name: 'set', T: [0, 1.7], t: [-1.6, -0.5], ease: 'linear', lens: 0.25,                      // behind the hitter, ball rises from the setter
         cam: (t, u) => { const h = headPos(), b = ballAt(t); return { p: [h.x - 0.6, h.y + 0.15, h.z - 1.35 - 0.25 * u], look: [b.x, b.y - 0.2, b.z], fov: 50 }; } },
-      { name: 'feet', T: [1.7, 2.5], t: [-0.25, 0.3], ease: 'linear',                   // floor level: the first steps of the approach
-        cam: (t, u) => { const h = headPos(); const hp = hipPos(); return { p: [hp.x - 1.1, 0.14, -2.1], look: [hp.x, 0.55, hp.z + 0.4], fov: 40 }; } },
-      { name: 'jump', T: [2.5, 5.3], t: [0.3, 1.0], ease: 'outCubic',                   // wide side: approach, takeoff, slow into the arch
-        cam: (t, u) => ({ p: [-6.4, 1.5 + 0.5 * u, -1.6 + 1.2 * u], look: [0, 1.5 + 0.9 * u, -1.2 + 1.0 * u], fov: 38 - 4 * u }) },
-      { name: 'pov', T: [5.3, 6.15], t: [1.0, 1.085], ease: 'linear',                    // first person: the ball, the net below, the hand coming through
-        cam: (t, u) => { const h = headPos(), b = ballAt(t); return { p: [h.x + 0.12, h.y + 0.12, h.z + 0.1], look: [b.x - 0.2, b.y - 0.75, b.z + 0.7], fov: 78 }; } },
-      { name: 'comic', T: [6.15, 7.55], t: [1.085, 1.16], ease: 'inOutSine', comic: true, // the impact frame: palm slams towards the lens
-        cam: (t, u) => { const p = C.clone().add(D.clone().multiplyScalar(0.36 - 0.06 * u)).add(V3(-0.32, -0.02, 0)); return { p: [p.x, p.y, p.z], look: [C.x + 0.05, C.y - 0.45, C.z - 0.3], fov: 92 - 8 * u }; } },
-      { name: 'smash', T: [7.55, 8.8], t: [1.16, 1.62], ease: 'linear',                  // over the net: into the court
-        cam: (t, u) => ({ p: [-2.2, 3.1, 0.0], look: [hitPoint.x * 0.6, 0.6, hitPoint.z * 0.8 + 0.4], fov: 42 }) },
-      { name: 'roar', T: [8.8, 11], t: [1.62, 2.75], ease: 'outCubic',                    // landing and the roar
-        cam: (t, u) => { const h = hipPos(); return { p: [-3.6 + 0.4 * u, 1.0, 0.42], look: [h.x, 1.15, h.z], fov: 40 - 5 * u }; } },
+      { name: 'feet', T: [1.7, 2.5], t: [-0.25, 0.3], ease: 'linear', lens: 0.65,                   // floor level: the first steps of the approach
+        cam: (t, u) => { const h = headPos(); const hp = hipPos(); return { p: [hp.x - 1.1, 0.12, -2.1], look: [hp.x, 0.6, hp.z + 0.4], fov: 44, roll: 0.14 }; } },
+      { name: 'jump', T: [2.5, 3.45], t: [0.3, 0.69], ease: 'linear', lens: 0.3,                    // wide side: run-up and the load
+        cam: (t, u) => ({ p: [8.0, 1.3, -2.2 + 0.2 * u], look: [0, 1.2, -1.5 + 0.4 * u], fov: 33, roll: -0.14 }) },
+      { name: 'liftoff', T: [3.45, 4.35], t: [0.69, 0.80], ease: 'inOutSine', lens: 0.85,           // ground level, close: the explosion off the floor
+        cam: (t, u) => { const f = LIFT; return { p: [f.x - 1.45, 0.95, f.z + 1.15], look: [f.x, 0.3 + 1.5 * VM.ease.inCubic(u), f.z - 0.1], fov: 60, roll: 0.1 }; } },
+      { name: 'jump', T: [4.35, 5.5], t: [0.80, 1.06], ease: 'outExpo', lens: 0.3,                  // wide again: rising above the net into the arch
+        cam: (t, u) => ({ p: [8.0, 1.8 + 0.3 * u, -1.8 + 0.2 * u], look: [0, 2.3 + 0.3 * u, -0.5 + 0.2 * u], fov: 30 - 3 * u, roll: -0.08 + 0.04 * u }) },
+      { name: 'pov', T: [5.5, 6.15], t: [1.06, 1.092], ease: 'inCubic', lens: 0.75,                    // first person: the ball, the net below, the hand coming through
+        cam: (t, u) => { const h = headPos(), b = ballAt(t); return { p: [h.x + 0.12, h.y + 0.15, h.z + 0.12], look: [b.x, b.y - 0.55, b.z + 0.35], fov: 82, roll: 0.15 }; } },
+      { name: 'comic', T: [6.15, 7.55], t: [1.092, 1.16], ease: 'inOutExpo', comic: true, lens: 0.9, // the impact frame: palm slams towards the lens
+        cam: (t, u) => { const p = C.clone().add(D.clone().multiplyScalar(0.36 - 0.06 * u)).add(V3(-0.32, -0.02, 0)); return { p: [p.x, p.y, p.z], look: [C.x + 0.05, C.y - 0.2, C.z - 0.25], fov: 96 - 8 * u, roll: -0.22 + 0.35 * u }; } },
+      { name: 'smash', T: [7.55, 8.8], t: [1.16, 1.62], ease: 'outCubic', lens: 0.5,                  // over the net: into the court
+        cam: (t, u) => ({ p: [-2.2, 3.1, 0.0], look: [hitPoint.x * 0.6, 0.6, hitPoint.z * 0.8 + 0.4], fov: 46 - 8 * u, roll: 0.16 }) },
+      { name: 'roar', T: [8.8, 11], t: [1.62, 2.85], ease: 'outCubic', lens: 0.35,                    // landing and the roar
+        cam: (t, u) => { const h = hipPos(); return { p: [-4.6 + 0.5 * u, 1.05, 0.4], look: [h.x, 1.0, h.z + 0.75], fov: 38 - 6 * u, roll: -0.08 }; } },
     ];
     const shotAt = (T) => SHOTS.find((s) => T < s.T[1]) || SHOTS[SHOTS.length - 1];
     const actionAt = (T) => { const s = shotAt(T), u = Math.min(1, Math.max(0, (T - s.T[0]) / (s.T[1] - s.T[0])));
@@ -314,6 +417,9 @@
     const score = el('div', { position: 'absolute', right: '7vw', bottom: '9vh', textAlign: 'right', font: `400 17vmin ${DISPLAY}`, lineHeight: 0.85, color: '#f3ede2', opacity: 0, textShadow: '0 1vmin 4vmin rgba(0,0,0,0.5)' }, stage,
       `25<span style="opacity:.35"> : </span>24`);
     addFinish({ grain: 0.06, vignette: 0.5 });
+    const credit = el('div', { position: 'absolute', left: '7vw', bottom: '5vh', font: `500 1.3vmin ${TEXT}`, letterSpacing: '0.12em', color: 'rgba(243,237,226,0.7)', opacity: 0, zIndex: 60 }, document.body,
+      'CHARACTER: "RIGGED ANIME MALE CHARACTER-1" BY RET.OUCHS (SKETCHFAB) · CC BY-SA 4.0');
+    VM.onFrame((T) => { credit.style.opacity = VM.prog(T, 9.6, 0.5); });
 
     // ================= frame =================
     let comicMode = null;
@@ -335,7 +441,8 @@
       ball.rotation.set(t < T_CONTACT ? t * 3 : 3 * T_CONTACT + s * 90, 0.4, 0.2);
       const sq = s >= 0 && s < 0.02 ? Math.sin(s / 0.02 * Math.PI) : 0;
       if (sq > 0) { ball.lookAt(ball.position.clone().add(D)); }
-      ball.scale.set(1 + 0.12 * sq, 1 + 0.12 * sq, 1 - 0.28 * sq);
+      ball.scale.set(1 + 0.2 * sq, 1 + 0.2 * sq, 1 - 0.4 * sq);
+      if (s >= 0.02 && s < 0.25) { const st = Math.exp(-(s - 0.02) * 14); ball.lookAt(ball.position.clone().add(D)); ball.scale.set(1 - 0.22 * st, 1 - 0.22 * st, 1 + 0.75 * st); }
       if (trail) { scene.remove(trail); trail.geometry.dispose(); trail = null; }
       if (!shot.comic && s > 0.004 && s < tFloor + 0.25) {
         const pts = []; for (let k = 0; k <= 12; k++) pts.push(ballAt(Math.max(T_CONTACT, t - (k / 12) * 0.05)));
@@ -344,28 +451,60 @@
       }
       const sh = s >= 0 ? Math.min(1, s / 0.06) : 0;
       shock.visible = !shot.comic; shock.scale.setScalar(0.05 + sh * 1.1); shock.material.opacity = s >= 0 ? (1 - sh) * 0.9 : 0;
-      hitLight.position.copy(C); hitLight.intensity = s >= 0 ? 60 * Math.exp(-s * 40) : 0;
+      hitLight.position.copy(C); hitLight.intensity = s >= 0 ? (shot.comic ? 8 : 60) * Math.exp(-s * 40) : 0;
       const pos = pGeo.attributes.position.array;
       for (let i = 0; i < NP; i++) { const v = pv[i], ss = Math.max(0, s) * 0.6;
         pos[i * 3] = C.x + v.x * ss; pos[i * 3 + 1] = C.y + v.y * ss - 4.9 * ss * ss; pos[i * 3 + 2] = C.z + v.z * ss; }
       pGeo.attributes.position.needsUpdate = true; spray.visible = !shot.comic; spray.material.opacity = s > 0 ? Math.max(0, 1 - s / 0.5) : 0;
+      { const lo = t - T_OFF, lp = lo > 0 ? Math.min(1, lo / 0.25) : 0;
+        crack.material.opacity = lo > 0 ? Math.min(1, lo / 0.02) * (1 - VM.prog(t, T_OFF + 0.9, 0.6)) : 0; crack.scale.setScalar(0.3 + 0.7 * Math.min(1, Math.max(0, lo) / 0.06));
+        liftRing.scale.setScalar(0.1 + lp * 2.6); liftRing.material.opacity = lo > 0 ? (1 - lp) : 0;
+        column.material.opacity = lo > 0 ? 0.28 * Math.exp(-lo * 14) : 0; column.scale.set(0.6 + lp * 0.5, 0.3 + lp, 0.6 + lp * 0.5);
+        const dp = dGeo.attributes.position.array, ss = Math.max(0, lo);
+        for (let i = 0; i < ND; i++) { const v = dv[i]; dp[i * 3] = LIFT.x + v.x * ss; dp[i * 3 + 1] = Math.max(0.01, v.y * ss - 4.9 * ss * ss); dp[i * 3 + 2] = LIFT.z + v.z * ss; }
+        dGeo.attributes.position.needsUpdate = true; dust.material.opacity = lo > 0 ? Math.max(0, 1 - lo / 0.7) : 0; dust.visible = !shot.comic; }
       const sf = s - tFloor, rf = sf > 0 ? Math.min(1, sf / 0.35) : 0;
       ring.scale.setScalar(0.1 + rf * 1.6); ring.material.opacity = sf > 0 ? (1 - rf) * 0.9 : 0;
       const u = Math.min(1, Math.max(0, (T - shot.T[0]) / (shot.T[1] - shot.T[0])));
       const c = shot.cam(t, u);
-      cam.position.set(...c.p); cam.fov = c.fov; cam.updateProjectionMatrix(); cam.lookAt(...c.look);
-      const shakeK = (T > T_HIT_VIDEO ? Math.exp(-(T - T_HIT_VIDEO) * 7) * 0.03 : 0) + (T > T_FLOOR_VIDEO ? Math.exp(-(T - T_FLOOR_VIDEO) * 8) * 0.05 : 0);
+      const punch = T > T_HIT_VIDEO ? 22 * Math.exp(-(T - T_HIT_VIDEO) * 9) * (shot.comic ? 1 : 0.5) : 0;
+      cam.position.set(...c.p); cam.fov = Math.max(12, c.fov * (1 + 0.35 * (shot.lens || 0)) - punch); cam.updateProjectionMatrix(); cam.lookAt(...c.look);
+      cam.rotateZ((c.roll || 0) + (T > T_FLOOR_VIDEO ? 0.05 * Math.exp(-(T - T_FLOOR_VIDEO) * 5) * Math.sin((T - T_FLOOR_VIDEO) * 40) : 0));
+      const shakeK = (T > T_TAKEOFF ? Math.exp(-(T - T_TAKEOFF) * 5) * 0.06 : 0) + (T > T_HIT_VIDEO ? Math.exp(-(T - T_HIT_VIDEO) * 6) * 0.08 : 0) + (T > T_FLOOR_VIDEO ? Math.exp(-(T - T_FLOOR_VIDEO) * 7) * 0.12 : 0);
       cam.position.x += VM.noise(T * 50, 1) * shakeK; cam.position.y += VM.noise(T * 50, 2) * shakeK;
-      renderer.render(scene, cam);
+      lensMat.uniforms.k.value = (shot.lens || 0) + (T > T_HIT_VIDEO ? 0.45 * Math.exp(-(T - T_HIT_VIDEO) * 6) : 0);
+      lensMat.uniforms.zoom.value = zoomAt(T);
+      { const f = (shot.name === 'smash' && T > T_FLOOR_VIDEO - 0.2) ? hitPoint : (T > T_HIT_VIDEO - 0.7 && T < T_FLOOR_VIDEO + 0.5) ? (shot.name === 'smash' ? ball.position : C) : hipPos();
+        cam.updateMatrixWorld(); const pf = f.clone().project(cam); lensMat.uniforms.center.value.set((pf.x + 1) / 2, (pf.y + 1) / 2); }
+      renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
+      renderer.setRenderTarget(null); renderer.clear(); renderer.render(postScene, postCam);
     }
     const dt = 1 / (VEDIT.fps || 30);
+    const T_TAKEOFF = (() => { const s = shotBy('liftoff'); let lo = s.T[0], hi = s.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_OFF) lo = m; else hi = m; } return lo; })();
+    const pulse = (T, at, amp, decay) => (T >= at ? amp * Math.exp(-(T - at) * decay) : 0);
+    // zoom blur: takeoff, the whip building into contact, the hit, the floor
+    const zoomAt = (T) => pulse(T, T_TAKEOFF, 0.22, 6) + (shotAt(T).name === 'pov' ? 0.01 : 0)
+      + pulse(T, T_HIT_VIDEO, 0.3, 4.5) + pulse(T, T_FLOOR_VIDEO, 0.22, 5) + (shotAt(T).name === 'smash' ? 0.05 : 0);
+    // speed lines (anime): density per shot, focus follows the action
+    const speed = el('canvas', { position: 'absolute', inset: 0, width: '100vw', height: '100vh', pointerEvents: 'none', mixBlendMode: 'screen' });
+    speed.width = W; speed.height = H; const sg = speed.getContext('2d');
+    const linesAt = (T) => { const n = shotAt(T).name;
+      return n === 'liftoff' ? (T > T_TAKEOFF ? 1 : 0.25) : n === 'jump' ? 0.85 * VM.env(T, T_TAKEOFF - 0.05, T_TAKEOFF + 1.4, 0.08, 0.6) : n === 'pov' ? 0.9 : n === 'smash' ? 1 : n === 'feet' ? 0.35 : 0; };
+    function drawSpeed(T, fx, fy) {
+      sg.clearRect(0, 0, W, H); const a = linesAt(T); if (a <= 0) return;
+      const R = VM.rand(1 + Math.floor(T * 24)), diag = Math.hypot(W, H);
+      for (let i = 0; i < 90; i++) { const ang = R() * Math.PI * 2, r0 = diag * (0.22 + R() * 0.25), r1 = diag * (0.75 + R() * 0.3), w = 0.6 + R() * 3.2;
+        sg.strokeStyle = `rgba(255,248,230,${(0.12 + R() * 0.45) * a})`; sg.lineWidth = w;
+        sg.beginPath(); sg.moveTo(fx + Math.cos(ang) * r0, fy + Math.sin(ang) * r0); sg.lineTo(fx + Math.cos(ang) * r1, fy + Math.sin(ang) * r1); sg.stroke(); }
+    }
+    const shutterOf = (shot) => ({ jump: 0.85, liftoff: 0.45, pov: 0.15, smash: 0.95 }[shot.name] ?? P.shutter);
     VM.onFrame((T) => {
       const shot = shotAt(T);
       setComic(!!shot.comic);
       const n = shot.comic ? 1 : Math.max(1, P.subframes);
       og.clearRect(0, 0, W, H);
       for (let k = 0; k < n; k++) {
-        const Tk = Math.max(shot.T[0], T - dt * P.shutter * (k / n));   // never blur across a cut
+        const Tk = Math.max(shot.T[0], T - dt * shutterOf(shot) * (k / n));   // never blur across a cut
         renderAt(Tk, shot);
         og.globalAlpha = 1 / (k + 1); og.drawImage(renderer.domElement, 0, 0);
       }
@@ -376,6 +515,12 @@
         const w = T > T_HIT_VIDEO ? VM.prog(T, T_HIT_VIDEO, 0.18, 'outBack') : 0;
         comicWord.style.opacity = w > 0 ? 1 : 0; comicWord.style.transform = `rotate(-8deg) scale(${0.3 + 0.7 * w})`;
       } else comicWord.style.opacity = 0;
+      // speed lines around the point of action
+      { const c0 = lensMat.uniforms.center.value; drawSpeed(T, c0.x * W, (1 - c0.y) * H); }
+      // impact frames: 3 frames of inverted, high-contrast black/white on the hit and a hard one on the floor
+      const fi = Math.floor((T - T_HIT_VIDEO) * 30), ff = Math.floor((T - T_FLOOR_VIDEO) * 30);
+      const fl = Math.floor((T - T_TAKEOFF) * 30);
+      stage.style.filter = (fi >= 0 && fi < 3 && fi !== 1) || ff === 0 || fl === 0 ? 'invert(1) grayscale(1) contrast(3.5)' : 'none';
       cam.updateMatrixWorld(); const pc = C.clone().project(cam);
       flash.style.setProperty('--x', `${(pc.x + 1) * 50}%`); flash.style.setProperty('--y', `${(1 - pc.y) * 50}%`);
       flash.style.opacity = T > T_HIT_VIDEO ? 0.9 * Math.exp(-(T - T_HIT_VIDEO) * 9) : 0;

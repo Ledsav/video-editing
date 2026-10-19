@@ -1,20 +1,115 @@
 {
-  "brief": {"prompt": "Spike as a shot sequence (male athlete), after the reference Volleyball Spike - 3D Animation: set, feet, wide jump, POV, comic impact, smash, roar"},
-  "output": {"path": "out/spike_sequence.mp4", "width": 1920, "height": 1080, "fps": 30, "crf": 16},
-  "timeline": [{"id": "spike", "html": "impact/spike_seq.html", "duration": 11}],
-  "music": [{"path": "music/rise.wav", "start": 0, "in": 0, "duration": 11, "volume": 0.5, "fade_in": 0.5, "fade_out": 1.5}],
-  "sfx": [
-    {"name": "tick", "start": 0.15, "volume": 0.5},
-    {"name": "whoosh", "start": 1.7, "volume": 0.4},
-    {"name": "whoosh", "start": 2.5, "volume": 0.5},
-    {"name": "reverse_swell", "start": 5.3, "volume": 0.6},
-    {"name": "glitch", "start": 6.15, "volume": 0.5},
-    {"name": "riser", "start": 6.82, "volume": 0.6},
-    {"name": "impact", "start": 6.82, "volume": 1.0},
-    {"name": "boom", "start": 6.82, "volume": 0.8},
-    {"name": "whoosh", "start": 7.55, "volume": 0.6},
-    {"name": "impact", "start": 8.08, "volume": 0.8},
-    {"name": "boom", "start": 8.08, "volume": 0.6}
+  "brief": {
+    "prompt": "Spike as a shot sequence with the anime male (CC BY-SA 4.0, Ret.ouchs): set, feet, run-up, ground-level liftoff with power burst, rise, POV, comic impact, smash, landing and roar"
+  },
+  "output": {
+    "path": "out/spike_sequence.mp4",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "crf": 16
+  },
+  "timeline": [
+    {
+      "id": "spike",
+      "html": "impact/spike_seq.html",
+      "duration": 11
+    }
   ],
-  "audio": {"loudness": -14}
+  "music": [
+    {
+      "path": "music/rise.wav",
+      "start": 0,
+      "in": 0,
+      "duration": 11,
+      "volume": 0.5,
+      "fade_in": 0.5,
+      "fade_out": 1.5
+    }
+  ],
+  "sfx": [
+    {
+      "name": "tick",
+      "start": 0.15,
+      "volume": 0.5
+    },
+    {
+      "name": "whoosh",
+      "start": 1.7,
+      "volume": 0.4
+    },
+    {
+      "name": "whoosh",
+      "start": 2.5,
+      "volume": 0.45
+    },
+    {
+      "name": "whoosh",
+      "start": 3.45,
+      "volume": 0.5
+    },
+    {
+      "name": "riser",
+      "start": 3.87,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 3.87,
+      "volume": 1.0
+    },
+    {
+      "name": "boom",
+      "start": 3.87,
+      "volume": 0.9
+    },
+    {
+      "name": "whoosh",
+      "start": 4.35,
+      "volume": 0.55
+    },
+    {
+      "name": "reverse_swell",
+      "start": 5.5,
+      "volume": 0.6
+    },
+    {
+      "name": "glitch",
+      "start": 6.15,
+      "volume": 0.5
+    },
+    {
+      "name": "riser",
+      "start": 6.83,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 6.83,
+      "volume": 1.0
+    },
+    {
+      "name": "boom",
+      "start": 6.83,
+      "volume": 0.8
+    },
+    {
+      "name": "whoosh",
+      "start": 7.55,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 7.86,
+      "volume": 0.8
+    },
+    {
+      "name": "boom",
+      "start": 7.86,
+      "volume": 0.6
+    }
+  ],
+  "audio": {
+    "loudness": -14
+  }
 }
