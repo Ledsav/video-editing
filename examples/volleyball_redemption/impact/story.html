@@ -60,6 +60,10 @@
       if (foot && toe && Pw(toe).z < Pw(foot).z) model.rotation.y = Math.PI;      // rest pose faces +z (as in the spike)
       model.scale.multiplyScalar(1.92 / (Pw(top).y - Pw(toe).y)); model.updateMatrixWorld(true); }
     const boneCache = new Map();
+    // athlete's frame: the slim model has sloped, narrow shoulders (the sweater reads as a box). Lengthen the collarbones (move
+    // the arm roots outward, arms unscaled) so the shoulder line is broad; the mesh stretches with them
+    model.traverse((o) => { if (o.isBone && /(Left|Right)Arm(_\d+)?$/.test(o.name)) o.position.multiplyScalar(P.shoulderW ?? 1.3); });
+    model.updateMatrixWorld(true);
     const bone = (n) => { if (!boneCache.has(n)) { let f = null; const re = new RegExp('^(mixamorig:?)?' + n + '(_\\d+)?$'); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); boneCache.set(n, f); } return boneCache.get(n); };
     const wp = (n) => V3(0, 0, 0).setFromMatrixPosition(bone(n).matrixWorld);
     const retarget = makeRetarget(THREE, model, bone);

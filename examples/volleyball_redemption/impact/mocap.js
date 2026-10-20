@@ -156,7 +156,7 @@ function makeRetarget(THREE, model, bone) {
   }
   // the rig has no forearm twist bones: a wrist turned far from its rest roll collapses the skin ("candy wrapper").
   // Keep the hand's roll about its own long axis (towards the middle finger) within +-limit of rest.
-  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8, CLAVICLE_FOLLOW = 0.35;
+  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8, CLAVICLE_FOLLOW = 0.35, SHOULDER_DROP = (window.RT_FLAGS || {}).shoulderDrop ?? 0.38;
   // and keep the hand within MAX_WRIST_BEND of the forearm's line: past that the wrist reads as broken
   function limitBend(h, child, fore, limit) {
     h.updateMatrixWorld(true);
@@ -230,7 +230,14 @@ function makeRetarget(THREE, model, bone) {
       if (b.endsWith('Shoulder')) {                    // collarbones: the capture's are steep for this body (a shrug); follow a third of them
         const B = bone(b); B.updateMatrixWorld(true);
         const cur = wpos(bone(c)).sub(wpos(B)).normalize();
-        swing(B, bone(c), cur.lerp(D(M, f, t).normalize(), CLAVICLE_FOLLOW)); continue; }
+        const dir = cur.lerp(D(M, f, t).normalize(), CLAVICLE_FOLLOW).normalize();
+        // arm above the shoulder: this rig has no deltoid helpers, so the mesh rises to the ears; drop the shoulder point instead
+        // (the head stays clear of the shoulders, as a real neck does), up to 22 deg for an arm straight up
+        const s = b.startsWith('Left') ? 'L' : 'R', up = D(M, `${s}Shoulder`, `${s}Forearm`).normalize();
+        const elev = Math.acos(Math.max(-1, Math.min(1, -up.y)));                 // 0 = arm down, PI = straight up
+        const drop = Math.min(SHOULDER_DROP, Math.max(0, (elev - 1.4) * 0.45));
+        if (drop > 0) { const ax = V().crossVectors(dir, V().set(0, -1, 0)); if (ax.lengthSq() > 1e-6) dir.applyAxisAngle(ax.normalize(), drop); }
+        swing(B, bone(c), dir); continue; }
       swing(bone(b), bone(c), D(M, f, t)); }
     // directions alone lose contacts on a differently proportioned body (hands that should join, feet that should stay
     // planted): two-bone IK puts the ankles where the capture's are and the hands where the capture's are relative to the chest

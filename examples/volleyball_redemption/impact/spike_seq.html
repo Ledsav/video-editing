@@ -64,16 +64,95 @@
     model.traverse((o) => { if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false; bodyMeshes.push(o);
       if (P.model.startsWith('Xbot')) { o.userData.std = o.name.includes('Joints') ? kitMat : skinMat; o.userData.toon = o.name.includes('Joints') ? toonKit : toonSkin; }
       else {
+        o.userData.src = o.material.name;
         const m = o.material.clone(); m.roughness = Math.max(0.45, m.roughness ?? 0.6); m.metalness = 0;
         const kk = KIT[o.name] ?? KIT[o.material.name];
         if (kk !== undefined) { m.color = new THREE.Color(kk); m.map = null; }
         const skin = /_(SKIN|FACE)$/.test(o.material.name);   // lit skin over-exposes the unlit textures: pull it down a stop
         o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? (skin ? 0xbcb0aa : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp });   // keep double-sided: the face is culled otherwise
         // painted face details (eyes, brows, lashes, eye lines, mouth) stay unlit like the source: lit, the rim lights turn them orange
-        if (/_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(o.material.name)) o.userData.toon = new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite });
+        // (the eye white and iris are single-sided with inverted winding in this export: culled, the eyes rendered as empty holes)
+        if (/_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(o.material.name)) o.userData.toon = new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: /_EYE$/.test(o.material.name) ? THREE.DoubleSide : m.side, depthWrite: m.depthWrite });
         o.userData.std = P.cel > 0 ? o.userData.toon : m;      // anime: the player is cel-shaded in every shot
       }
       o.material = o.userData.std; });
+    // ---- rage expression, painted into the model's own face textures (it deforms and shades with the face) ----
+    // Face skin: the mouth line becomes a wide-open scream; brows: angled down hard at the centre; irises: shrunk to small pupils
+    const RAGE_TEX = new Map();
+    { const byMat = (re) => bodyMeshes.filter((o) => re.test(o.userData.src || ''));
+      const repaint = (meshes, paint) => { for (const o of meshes) { const src = o.userData.toon.map; if (!src || !src.image) continue;
+        const im = src.image, c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d');
+        paint(g, im, c.width, c.height);
+        const t = new THREE.CanvasTexture(c); t.flipY = src.flipY; t.colorSpace = src.colorSpace; t.wrapS = src.wrapS; t.wrapT = src.wrapT; t.needsUpdate = true;
+        RAGE_TEX.set(o, [src, t]); } };
+      // face skin: erase the closed mouth, paint the scream (dark cavity, upper/lower teeth, tongue, ink outline)
+      repaint(byMat(/Face_00_SKIN$/), (g, im, W, H) => {
+        g.drawImage(im, 0, 0);
+        const cx = 0.5 * W, cy = (P.mouthV ?? 0.775) * H, w = (P.mouthW ?? 0.16) * W, h = (P.mouthH ?? 0.12) * H;
+        g.fillStyle = g.getImageData(cx, cy - 0.04 * H, 1, 1).data.slice(0, 3).reduce((a, v, i) => a + (i ? ',' : '') + v, 'rgb(') + ')';
+        g.fillRect(cx - 0.06 * W, cy - 0.035 * H, 0.12 * W, 0.03 * H);              // the old mouth line
+        // the shout: upper lip pulled up in the middle, corners dragged down, a deep square jaw
+        const shape = () => { g.beginPath(); g.moveTo(cx - w / 2, cy - h * 0.18);
+          g.quadraticCurveTo(cx - w * 0.25, cy - h * 0.62, cx, cy - h * 0.6);
+          g.quadraticCurveTo(cx + w * 0.25, cy - h * 0.62, cx + w / 2, cy - h * 0.18);
+          g.lineTo(cx + w * 0.3, cy + h * 0.52);
+          g.quadraticCurveTo(cx, cy + h * 0.66, cx - w * 0.3, cy + h * 0.52);
+          g.closePath(); };
+        shape(); g.fillStyle = '#14030a'; g.fill();
+        g.save(); shape(); g.clip();
+        g.fillStyle = '#2a070e'; g.beginPath(); g.ellipse(cx, cy + h * 0.25, w * 0.3, h * 0.25, 0, 0, Math.PI * 2); g.fill();      // throat shade
+        g.fillStyle = '#6a1a26'; g.beginPath(); g.ellipse(cx, cy + h * 0.58, w * 0.2, h * 0.12, 0, 0, Math.PI * 2); g.fill();     // tongue
+        g.fillStyle = '#fbf6f2'; g.beginPath(); g.moveTo(cx - w / 2, cy - h * 0.7); g.lineTo(cx + w / 2, cy - h * 0.7);           // upper teeth
+        g.lineTo(cx + w * 0.4, cy - h * 0.3); g.quadraticCurveTo(cx, cy - h * 0.4, cx - w * 0.4, cy - h * 0.3); g.closePath(); g.fill();
+        g.fillStyle = '#f1e8e4'; g.beginPath(); g.moveTo(cx - w * 0.3, cy + h * 0.7); g.lineTo(cx + w * 0.3, cy + h * 0.7);       // lower teeth
+        g.lineTo(cx + w * 0.27, cy + h * 0.44); g.quadraticCurveTo(cx, cy + h * 0.5, cx - w * 0.27, cy + h * 0.44); g.closePath(); g.fill();
+        g.fillStyle = '#fbf6f2'; for (const sx of [-1, 1]) { g.beginPath(); g.moveTo(cx + sx * w * 0.3, cy - h * 0.34);              // canines
+          g.lineTo(cx + sx * w * 0.36, cy - h * 0.34); g.lineTo(cx + sx * w * 0.33, cy - h * 0.12); g.closePath(); g.fill(); }
+        g.restore();
+        shape(); g.lineWidth = Math.max(2, 0.006 * W); g.strokeStyle = '#2a0a0e'; g.lineJoin = 'round'; g.stroke();
+        g.strokeStyle = 'rgba(120,40,40,0.35)'; g.lineWidth = Math.max(1.5, 0.004 * W);                                         // strain lines at the corners
+        for (const sx of [-1, 1]) { g.beginPath(); g.moveTo(cx + sx * w * 0.56, cy - h * 0.1); g.lineTo(cx + sx * w * 0.66, cy + h * 0.12); g.stroke(); }
+      });
+      // brows: each brow redrawn rotated so its inner end drops (anger), slightly thicker
+      repaint(byMat(/FaceBrow/), (g, im, W, H) => {
+        for (const [x0, x1, sgn] of [[0, 0.5, 1], [0.5, 1, -1]]) {
+          const sx = x0 * im.width, sw = (x1 - x0) * im.width;
+          g.save(); g.translate(sx + sw / 2, H * 0.5); g.rotate(sgn * (P.browAng ?? 0.32)); g.scale(1, 1.6);
+          g.drawImage(im, sx, 0, sw, im.height, -sw / 2, -H * 0.5 + H * 0.06 * sgn * 0, sw, H); g.restore(); }
+      });
+      // upper eye lines and lashes: each side rotated so the inner end drops (the glare); this is what reads as anger under the fringe
+      const glare = (g, im, W, H, ang) => { for (const [x0, x1, sgn] of [[0, 0.5, 1], [0.5, 1, -1]]) {
+          const sx = x0 * im.width, sw = (x1 - x0) * im.width, pivx = sgn > 0 ? sx + sw * 0.8 : sx + sw * 0.2;
+          g.save(); g.translate(pivx, H * 0.5); g.rotate(sgn * ang); g.translate(-pivx, -H * 0.5); g.drawImage(im, sx, 0, sw, im.height, sx, 0, sw, H); g.restore(); } };
+      repaint(byMat(/FaceEyeline/), (g, im, W, H) => glare(g, im, W, H, P.lidAng ?? 0.28));
+      repaint(byMat(/FaceEyelash/), (g, im, W, H) => glare(g, im, W, H, P.lidAng ?? 0.28));
+      // the glare: the upper lid comes down, slanted towards the nose (skin over the top of the eye, an ink line on its edge);
+      // painted identically into the eye white and the iris disc, which share the same eye layout
+      const lid = (g, W, H) => { for (const x of [0.25, 0.75]) {
+        const cx = x * W, sw = W * 0.25, inner = (x < 0.5 ? 1 : -1) * (P.lidFlip ? -1 : 1), xo = cx - inner * sw, xi = cx + inner * sw;
+        const yo = (P.lidOuter ?? 0.22) * H, yi = (P.lidInner ?? 0.6) * H;
+        g.fillStyle = P.lidSkin || '#efc8ad'; g.beginPath(); g.moveTo(xo, 0); g.lineTo(xi, 0); g.lineTo(xi, yi); g.lineTo(xo, yo); g.closePath(); g.fill();
+        g.strokeStyle = '#1b0b09'; g.lineWidth = H * 0.04; g.lineCap = 'round'; g.beginPath(); g.moveTo(xo, yo); g.lineTo(xi, yi); g.stroke(); } };
+      repaint(byMat(/EyeWhite/), (g, im, W, H) => { g.drawImage(im, 0, 0); lid(g, W, H); });
+      // irises: small pupils on white
+      repaint(byMat(/EyeIris/), (g, im, W, H) => {
+        // the iris layer covers the whole eye opening (nothing white behind it): paint the white in, then a small pupil
+        const k = P.irisK ?? 0.62;
+        for (const x of [0.25, 0.75]) { const cx = x * W, cy = 0.5 * H, sw = W * 0.25, sh = H * 0.5;
+          const grd = g.createRadialGradient(cx, cy, 0, cx, cy, W * 0.16); grd.addColorStop(0, 'rgba(160,40,40,0)'); grd.addColorStop(1, 'rgba(160,40,40,0.25)');
+          g.fillStyle = grd; g.fillRect(cx - sw, cy - sh, 2 * sw, 2 * sh);                       // a hint of bloodshot at the rims
+          g.drawImage(im, cx - sw, cy - sh, 2 * sw, 2 * sh, cx - sw * k, cy - sh * k, 2 * sw * k, 2 * sh * k);
+          lid(g, W, H); }
+      });
+    }
+    if (P.dbgIris) { model.updateMatrixWorld(true); let hp = V3(0, 0, 0); model.traverse((o) => { if (/Head_40/.test(o.name)) hp = V3(0, 0, 0).setFromMatrixPosition(o.matrixWorld); });
+      for (const o of bodyMeshes) { const b = new THREE.Box3().setFromObject(o); const c = b.getCenter(V3(0, 0, 0)), sz = b.getSize(V3(0, 0, 0));
+        console.error(`MESH ${o.userData.src} skinned=${o.isSkinnedMesh} parent=${o.parent && o.parent.name} ctr-head=(${(c.x - hp.x).toFixed(2)},${(c.y - hp.y).toFixed(2)},${(c.z - hp.z).toFixed(2)}) size=(${sz.x.toFixed(2)},${sz.y.toFixed(2)},${sz.z.toFixed(2)}) vis=${o.visible} side=${o.material.side} transp=${o.material.transparent} dw=${o.material.depthWrite} order=${o.renderOrder}`); } }
+    if (P.dumpTex) for (const [o, [a, b]] of RAGE_TEX) console.error('TEX ' + o.userData.src + ' ' + b.image.toDataURL('image/png'));
+    let faceRage = null;
+    const highlights = bodyMeshes.filter((o) => /EyeHighlight/.test(o.userData.src || ''));
+    const setRageFace = (on) => { if (faceRage === on) return; faceRage = on; if (P.dbgIris) console.error('SETFACE ' + on + ' ' + [...RAGE_TEX.keys()].map((o) => o.userData.src.slice(10, 22) + '=' + (o.material.map === RAGE_TEX.get(o)[1]) + '/' + o.material.type + '/' + o.visible + '/' + (o.material === o.userData.toon)).join(' ')); highlights.forEach((o) => (o.visible = !on || !!P.keepHL));   // dead-eyed fury
+      for (const [o, [a, b]] of RAGE_TEX) for (const m of [o.userData.toon, o.userData.std]) if (m && m.map) { m.map = on ? b : a; m.needsUpdate = true; } };
     { model.updateMatrixWorld(true);
       const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
       const Pw = (b) => new THREE.Vector3().setFromMatrixPosition(b.matrixWorld);
@@ -83,6 +162,10 @@
       model.scale.multiplyScalar(1.92 / h); model.updateMatrixWorld(true); }
     const boneRe = (n) => new RegExp('^(mixamorig:?)?' + n + '(_\\d+)?$');                      // Mixamo, Ready Player Me, Sketchfab exports ("mixamorigHips_103")
     const boneCache = new Map();
+    // athlete's frame: the slim model has sloped, narrow shoulders (the sweater reads as a box). Lengthen the collarbones (move
+    // the arm roots outward, arms unscaled) so the shoulder line is broad; the mesh stretches with them
+    model.traverse((o) => { if (o.isBone && /(Left|Right)Arm(_\d+)?$/.test(o.name)) o.position.multiplyScalar(P.shoulderW ?? 1.3); });
+    model.updateMatrixWorld(true);
     const bone = (n) => { if (!boneCache.has(n)) { let f = null; const re = boneRe(n); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); boneCache.set(n, f); } return boneCache.get(n); };
     const bones = []; model.traverse((o) => { if (o.isBone) bones.push(o); });
     const rest = new Map(bones.map((b) => [b, b.quaternion.clone()]));
@@ -384,7 +467,8 @@
       rimW.color.set(on ? 0xff2a12 : 0xffc062); rimW2.color.set(on ? 0xff3a1a : 0xffb24a); camFill.color.set(on ? 0xff7a62 : 0xfff1e2);
     }
     function placeMouth(T, shot) {
-      if (!shot.rage) { mouth.style.opacity = 0; brows.style.opacity = 0; return; }
+      mouth.style.opacity = 0; brows.style.opacity = 0;
+      return;
       const h = headPos(), top = V3(0, 0, 0).setFromMatrixPosition(bone('HeadTop_End').matrixWorld), up = top.clone().sub(h).normalize(), f = faceDir();
       const side = V3(0, 0, 0).crossVectors(up, f).normalize();
       const m = h.clone().addScaledVector(up, P.mouthUp ?? 0.02).addScaledVector(f, P.mouthFwd ?? 0.085);
@@ -450,7 +534,7 @@
       lensMat.uniforms.k.value = (shot.lens || 0) + (T > T_HIT_VIDEO ? 0.45 * Math.exp(-(T - T_HIT_VIDEO) * 6) : 0);
       lensMat.uniforms.zoom.value = HOLDING ? 0 : zoomAt(T) + smearAt(T);       // impact frames are crisp drawings
       lensMat.uniforms.cel.value = shot.comic ? 0.35 : P.cel;
-      lensMat.uniforms.sat.value = shot.rage ? 0.15 : 1; lensMat.uniforms.tint.value.set(...(shot.rage ? [1.15, 0.2, 0.17] : [1, 1, 1]));   // rage: the world goes red
+      lensMat.uniforms.sat.value = 1; lensMat.uniforms.tint.value.set(...(shot.rage ? [1.08, 0.88, 0.86] : [1, 1, 1]));   // rage: the world goes red
       { const f = (shot.name === 'smash' && T > T_FLOOR_VIDEO - 0.2) ? hitPoint : (T > T_HIT_VIDEO - 0.7 && T < T_FLOOR_VIDEO + 0.5) ? (shot.name === 'smash' ? ball.position : C) : hipPos();
         cam.updateMatrixWorld(); const pf = f.clone().project(cam); lensMat.uniforms.center.value.set((pf.x + 1) / 2, (pf.y + 1) / 2); }
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
@@ -489,7 +573,7 @@
       const T = holdT(T0); HOLDING = inHold(T0);
       const shot = shotAt(T0);
       if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
-      setComic(!!shot.comic); setRage(!!shot.rage);
+      setComic(!!shot.comic); setRage(!!shot.rage); setRageFace(P.forceRage ?? (!!shot.rage && (T - shot.T[0]) > 0.1));
       const n = shot.comic ? 1 : Math.max(1, P.subframes);
       og.clearRect(0, 0, W, H);
       for (let k = 0; k < n; k++) {
