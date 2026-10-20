@@ -67,7 +67,9 @@
         const kk = KIT[o.name] ?? KIT[o.material.name];
         if (kk !== undefined) { m.color = new THREE.Color(kk); m.map = null; }
         const skin = /_(SKIN|FACE)$/.test(o.material.name);   // lit skin over-exposes the unlit textures: pull it down a stop
-        o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? (skin ? 0xc9bdb6 : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp });   // keep double-sided: the face is culled otherwise
+        o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? (skin ? 0xbcb0aa : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp });   // keep double-sided: the face is culled otherwise
+        // painted face details (eyes, brows, lashes, eye lines, mouth) stay unlit like the source: lit, the rim lights turn them orange
+        if (/_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(o.material.name)) o.userData.toon = new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite });
         o.userData.std = P.cel > 0 ? o.userData.toon : m;      // anime: the player is cel-shaded in every shot
       }
       o.material = o.userData.std; });
@@ -119,9 +121,7 @@
     function raiseArms(M, w) {
       if (w <= 0) return M;
       const out = Object.assign({}, M);
-      const swing = (a, b, dir, kids) => { const len = M[b].distanceTo(M[a]); const cur = M[b].clone().sub(M[a]).normalize();
-        const nb = out[a].clone().add(cur.lerp(dir, w).normalize().multiplyScalar(len)); const d = nb.clone().sub(M[b]);
-        out[b] = nb; for (const k of kids) out[k] = (out[k] || M[k]).clone().add(d); };
+      const swing = (a, b, dir, kids) => swingChain(THREE, out, a, b, dir, w, kids);   // rigid: the hand turns with the arm
       for (const side of ['L', 'R']) {
         const F = side === 'L' ? 'Left' : 'Right', fingers = Object.keys(M).filter((n) => n.startsWith(F + 'Finger'));
         swing(side + 'Shoulder', side + 'Forearm', VEE[side], [side + 'Hand', ...fingers]);
@@ -147,17 +147,28 @@
       const upper = cw >= fw ? dir(0.55, 0.45, -0.7) : dir(-0.35, -0.8, 0.45);
       const fore = cw >= fw ? dir(-0.4, 0.8, 0.05) : dir(-0.45, -0.9, 0.15);
       const out = Object.assign({}, M), fingers = Object.keys(M).filter((n) => n.startsWith('RightFinger'));
-      const swing = (a, b, d, kids) => { const len = M[b].distanceTo(M[a]); const cur = M[b].clone().sub(M[a]).normalize();
-        const nb = out[a].clone().add(cur.lerp(d, w).normalize().multiplyScalar(len)); const dd = nb.clone().sub(out[b]);
-        out[b] = nb; for (const k of kids) out[k] = out[k].clone().add(dd); };
+      const swing = (a, b, dir, kids) => swingChain(THREE, out, a, b, dir, w, kids);   // rigid: the hand turns with the arm
       swing('RShoulder', 'RForearm', upper, ['RHand', ...fingers]);
       swing('RForearm', 'RHand', fore, fingers);
       return out;
     }
+    // the hitting hand open and flat (the capture's fingers curl into a claw): each finger straightened along its knuckle line
+    function openHand(M, w) {
+      if (w <= 0) return M;
+      const out = Object.assign({}, M), h = M.RHand;
+      for (let i = 0; i < 5; i++) {
+        const j = [`RightFinger${i}`, `RightFinger${i}1`, `RightFinger${i}2`, `RightFinger${i}2_end`].filter((n) => M[n]);
+        const dir = M[j[0]].clone().sub(h).normalize();
+        for (let k = 1; k < j.length; k++) { const len = M[j[k]].distanceTo(M[j[k - 1]]);
+          out[j[k]] = out[j[k - 1]].clone().add(M[j[k]].clone().sub(M[j[k - 1]]).normalize().lerp(dir, w).normalize().multiplyScalar(len)); }
+      }
+      return out;
+    }
+    const openW = (tau) => rampW(tau, smash.takeoff, 0.15) * (1 - rampW(tau, smash.land, 0.3));
     const mocapAt = (t) => {
       if (t >= ROAR_T) return raiseArms(blendMocap(THREE, win.sample(ROAR_FROM + t - ROAR_T), win.sample(ROAR_FROM + t - ROAR_T), 1, roarAlign), roarW(t));
       const tau = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND);
-      const A = attackArm(smash.sample(Math.min(tau, smash.dur)), P.cock ?? cockW(tau), P.follow ?? followW(tau));
+      const A = openHand(attackArm(smash.sample(Math.min(tau, smash.dur)), P.cock ?? cockW(tau), P.follow ?? followW(tau)), openW(tau));
       if (tau <= BLEND_AT) return A;
       return blendMocap(THREE, A, win.sample(WIN_FROM + tau - BLEND_AT), VM.ease.inOutSine(Math.min(1, (tau - BLEND_AT) / BLEND)), align); };
     console.error('MOCAP events takeoff ' + smash.takeoff.toFixed(2) + ' contact ' + smash.contact.toFixed(2) + ' land ' + smash.land.toFixed(2) + ' scale ' + SC.toFixed(3));

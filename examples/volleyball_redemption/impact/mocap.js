@@ -91,6 +91,26 @@ function makeRetarget(THREE, model, bone) {
     const bq = Q(); b.getWorldQuaternion(bq); setWorldQ(b, d.multiply(bq));
   }
   const D = (M, a, b) => M[b].clone().sub(M[a]);
+  // the rig has no forearm twist bones: a wrist turned far from its rest roll collapses the skin ("candy wrapper").
+  // Keep the hand's roll about its own long axis (towards the middle finger) within +-limit of rest.
+  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8;
+  // and keep the hand within MAX_WRIST_BEND of the forearm's line: past that the wrist reads as broken
+  function limitBend(h, child, fore, limit) {
+    h.updateMatrixWorld(true);
+    const f = wpos(h).sub(wpos(fore)).normalize(), d = wpos(child).sub(wpos(h)).normalize(), a = f.angleTo(d);
+    if (a <= limit) return;
+    const axis = V().crossVectors(d, f); if (axis.lengthSq() < 1e-10) return;
+    const q = Q().setFromAxisAngle(axis.normalize(), a - limit), bq = Q(); h.getWorldQuaternion(bq); setWorldQ(h, q.multiply(bq));
+  }
+  function limitTwist(b, child, limit) {
+    const r = rest.get(b), q = b.quaternion, d = r.clone().invert().multiply(q);           // rotation since rest, in rest space
+    const axis = child.position.clone().normalize();                                         // long axis, in the bone's own space
+    let th = 2 * Math.atan2(V().set(d.x, d.y, d.z).dot(axis), d.w); if (th > Math.PI) th -= 2 * Math.PI; if (th < -Math.PI) th += 2 * Math.PI;
+    if (Math.abs(th) <= limit) return;
+    const swingQ = d.clone().multiply(Q().setFromAxisAngle(axis, th).invert());                // d = swing * twist
+    const keep = Q().setFromAxisAngle(axis, Math.sign(th) * limit);
+    b.quaternion.copy(r.clone().multiply(swingQ).multiply(keep)); b.updateMatrixWorld(true);
+  }
 
   // M: mocap world positions; xf(v) maps a mocap point into the scene (scale + offset)
   return function apply(M, xf) {
@@ -115,7 +135,8 @@ function makeRetarget(THREE, model, bone) {
         const s = b.startsWith('Left') ? 'Left' : 'Right', h = bone(`${s}Hand`);
         const mid = bone(`${s}HandMiddle1`), idx = bone(`${s}HandIndex1`), pk = bone(`${s}HandPinky1`);
         if (h && mid && idx && pk) { h.updateMatrixWorld(true);
-          twoVec(h, wpos(mid).sub(wpos(h)), wpos(idx).sub(wpos(pk)), D(M, `${s[0]}Hand`, `${s}Finger2`), D(M, `${s}Finger4`, `${s}Finger1`)); }
+          twoVec(h, wpos(mid).sub(wpos(h)), wpos(idx).sub(wpos(pk)), D(M, `${s[0]}Hand`, `${s}Finger2`), D(M, `${s}Finger4`, `${s}Finger1`));
+          limitTwist(h, mid, MAX_WRIST_TWIST); limitBend(h, mid, bone(`${s}ForeArm`), MAX_WRIST_BEND); }
       }
     }
     for (const [b, c, f, t] of FIN) swing(bone(b), bone(c), D(M, f, t));
@@ -132,4 +153,13 @@ function blendMocap(THREE, A, B, w, align) {
     out[n] = A[n].clone().lerp(b, w);
   }
   return out;
+}
+
+// additive pose layers on capture points: turn the segment a -> b towards dir (weight w) about a, carrying b and its
+// children rigidly with it, so the wrist and fingers keep their pose relative to the arm (no broken wrists)
+function swingChain(THREE, out, a, b, dir, w, kids) {
+  if (w <= 0) return;
+  const cur = out[b].clone().sub(out[a]).normalize(), tgt = cur.clone().lerp(dir, w).normalize();
+  const q = new THREE.Quaternion().setFromUnitVectors(cur, tgt), p = out[a];
+  for (const k of [b, ...kids]) if (out[k]) out[k] = out[k].clone().sub(p).applyQuaternion(q).add(p);
 }

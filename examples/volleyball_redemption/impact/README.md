@@ -51,3 +51,7 @@ Raw marker noise was about 1°/frame on the hands, with up to 14° palm spikes n
 where one captured frame spans up to 6 video frames.
 The spike adds an additive layer on the hitting arm (`attackArm`): a deeper bow-and-arrow cock before contact (elbow high and back)
 and a full follow-through after it (arm down across the body). Both are zero at contact, so the hand still meets the ball.
+Hands and face: `makeRetarget` limits the wrist's twist (±1 rad from rest) and its bend off the forearm line (0.8 rad). The rig has no twist bones,
+so past those limits the wrist skin collapses. Arm layers (`swingChain`) turn the hand and fingers rigidly with the arm.
+In the spike, `openHand` straightens the hitting hand's fingers through the attack, because the captured fingers curl into a claw.
+The painted face details (eyes, brows, lashes, eye lines, mouth) use unlit materials like the source; lit, the gold rim lights turned the brows into an orange band.

@@ -50,7 +50,9 @@
     const KIT = { N00_007_01_Tops_01_CLOTH: 0x2140a6, N00_001_02_Bottoms_01_CLOTH: 0x0f1d4a, N00_004_01_Shoes_01_CLOTH: 0xf4f4f4 };
     model.traverse((o) => { if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false;
       const m = o.material, kk = KIT[m.name], skin = /_(SKIN|FACE)$/.test(m.name);
-      o.material = new THREE.MeshToonMaterial({ color: kk ?? (skin ? 0xc9bdb6 : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp }); });
+      const flat = /_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(m.name);   // painted face details stay unlit, like the source
+      o.material = flat ? new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite })
+        : new THREE.MeshToonMaterial({ color: kk ?? (skin ? 0xbcb0aa : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp }); });
     { model.updateMatrixWorld(true);
       const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
       const Pw = (b) => V3(0, 0, 0).setFromMatrixPosition(b.matrixWorld);
@@ -80,9 +82,7 @@
       const VEE = { L: L.clone().multiplyScalar(0.55).addScaledVector(up, 0.82).addScaledVector(F, 0.18).normalize(),
                     R: L.clone().multiplyScalar(-0.55).addScaledVector(up, 0.82).addScaledVector(F, 0.18).normalize() };
       const out = Object.assign({}, M);
-      const swing = (a, b, dir, kids) => { const len = M[b].distanceTo(M[a]); const cur = M[b].clone().sub(M[a]).normalize();
-        const nb = out[a].clone().add(cur.lerp(dir, w).normalize().multiplyScalar(len)); const d = nb.clone().sub(M[b]);
-        out[b] = nb; for (const k of kids) out[k] = (out[k] || M[k]).clone().add(d); };
+      const swing = (a, b, dir, kids) => swingChain(THREE, out, a, b, dir, w, kids);   // rigid: the hand turns with the arm
       for (const side of ['L', 'R']) {
         const fingers = Object.keys(M).filter((n) => n.startsWith((side === 'L' ? 'Left' : 'Right') + 'Finger'));
         swing(side + 'Shoulder', side + 'Forearm', VEE[side], [side + 'Hand', ...fingers]);
