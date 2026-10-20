@@ -195,7 +195,7 @@
         { name: 'rolls', T: [0, 2.0], past: true, clip: 'dig', xf: digXf, keys: [[0, 3.0], [1, 3.6]], head: -0.35,
           ball: (c, u) => roll(u), spin: (u) => -1.8 * (1 - Math.pow(1 - Math.min(1, u / 0.8), 3)) / BR,
           cam: (u) => ({ p: CAMP, look: LOOK, fov: 38 - 2 * u }) },
-        { name: 'today', T: [2.0, 4.2], clip: 'win', xf: winXf, keys: [[0, 1.75], [1, 2.3]], crack: true, anchor: 2.05, arms: (u) => VM.ease.inOutSine(Math.min(1, u / 0.3)),
+        { name: 'today', T: [2.0, 4.2], clip: 'win', xf: winXf, keys: [[0, 1.75], [1, 2.3]], crack: true, anchor: 2.05,
           ball: () => REST.clone().setY(BR * 0.82), squash: 0.18,
           cam: (u) => ({ p: [CAMP[0], CAMP[1] + 0.1 * u, CAMP[2] + 0.4 * u], look: [LOOK[0], LOOK[1] + 0.6 * VM.ease.inOutSine(Math.min(1, u / 0.45)), LOOK[2]], fov: 40 }) },   // tilt up from the ball to him
         { name: 'card', T: [4.2, 7.6], card: true, noAthlete: true,

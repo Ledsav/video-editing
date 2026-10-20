@@ -200,27 +200,10 @@
     const yawOf = (M) => { const d = M.LShoulder.clone().sub(M.RShoulder); return Math.atan2(d.x, d.z); };
     const align = { from: Mb.Hip.clone().setY(0), to: Ma.Hip.clone().setY(0), yaw: yawOf(Ma) - yawOf(Mb) };
     // the roar is its own shot (a cut): pure won-point capture, on the landing spot, turned to his own team (-z)
-    const ROAR_T = 1.95, ROAR_FROM = 1.25, ROAR_PEAK = 2.05;   // Take 3: arms flung wide around 1.8-2.3 s
+    const ROAR_T = 1.95, ROAR_FROM = P.roarFrom ?? 1.25, ROAR_PEAK = P.roarPeak ?? 2.05;   // capture window of the celebration; facing measured at the peak
     const Mland = smash.sample(smash.land), Mw0 = win.sample(ROAR_FROM), Mpk = win.sample(ROAR_PEAK);
     const dW = Mpk.LShoulder.clone().sub(Mpk.RShoulder);          // facing measured at the peak, so the release opens towards the camera
     const roarAlign = { from: Mw0.Hip.clone().setY(0), to: Mland.Hip.clone().setY(0), yaw: -Math.PI / 2 - 0.35 - Math.atan2(dW.x, dW.z) };
-    // additive layer on the celebration: both arms up and out in a V, chest open, head back, then back into the capture
-    const VEE = { L: V3(-0.55, 0.82, -0.18).normalize(), R: V3(0.55, 0.82, -0.18).normalize() };   // he faces -z: his left is -x
-    function raiseArms(M, w) {
-      if (w <= 0) return M;
-      const out = Object.assign({}, M);
-      const swing = (a, b, dir, kids) => swingChain(THREE, out, a, b, dir, w, kids);   // rigid: the hand turns with the arm
-      for (const side of ['L', 'R']) {
-        const F = side === 'L' ? 'Left' : 'Right', fingers = Object.keys(M).filter((n) => n.startsWith(F + 'Finger'));
-        swing(side + 'Shoulder', side + 'Forearm', VEE[side], [side + 'Hand', ...fingers]);
-        const fore = VEE[side].clone().add(V3(0, 0.6, 0)).normalize();
-        swing(side + 'Forearm', side + 'Hand', fore, fingers);
-      }
-      const up = V3(0, 1, P.headTilt ?? 0.25).normalize();                             // head tipped back (behind = +z)
-      swing('Head', 'Head_end', up, []);
-      return out;
-    }
-    const roarW = (t) => { const x = t - ROAR_T; return VM.ease.inOutSine(Math.min(1, Math.max(0, (x - 0.35) / 0.3))) * (1 - VM.ease.inOutSine(Math.min(1, Math.max(0, (x - 1.75) / 0.45)))); };
     // additive layer on the hitting arm (in the chest's own frame): a deeper bow-and-arrow cock before contact
     // (elbow high and well back, hand by the ear) and a complete follow-through after it (arm all the way down, across the body)
     const rampW = (x, a, d) => VM.ease.inOutSine(Math.min(1, Math.max(0, (x - a) / d)));
@@ -274,7 +257,7 @@
     }
     const openW = (tau) => rampW(tau, smash.takeoff, 0.15) * (1 - rampW(tau, smash.land, 0.3));
     const mocapAt = (t) => {
-      if (t >= ROAR_T) return raiseArms(blendMocap(THREE, win.sample(ROAR_FROM + t - ROAR_T), win.sample(ROAR_FROM + t - ROAR_T), 1, roarAlign), roarW(t));
+      if (t >= ROAR_T) return blendMocap(THREE, win.sample(ROAR_FROM + t - ROAR_T), win.sample(ROAR_FROM + t - ROAR_T), 1, roarAlign);   // the celebration as captured
       const tau = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND);
       const A = openHand(attackArm(smash.sample(Math.min(tau, smash.dur)), tau), openW(tau));
       if (tau <= BLEND_AT) return A;
