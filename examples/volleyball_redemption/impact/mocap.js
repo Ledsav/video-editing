@@ -69,28 +69,44 @@ function makeRetarget(THREE, model, bone) {
   // vertices that bone mostly carries. A hand placed on the capture's hip lands inside a wider character: it is pushed back out.
   const VOL = [];
   { model.updateMatrixWorld(true);
-    const acc = new Map(), v = V();
+    const pts = new Map(), v = V();
     model.traverse((o) => { if (!o.isSkinnedMesh || !o.visible) return; const geo = o.geometry, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, pos = geo.attributes.position, bs = o.skeleton.bones;
-      for (let i = 0; i < pos.count; i += 2) { let best = 0, b = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > best) { best = w; b = si.getComponent(i, k); } }
-        const bn = bs[b]; if (best < 0.5 || !['Hips', 'Spine', 'Spine1', 'Spine2'].some((n) => bone(n) === bn)) continue;
+      for (let i = 0; i < pos.count; i++) { let best = 0, b = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > best) { best = w; b = si.getComponent(i, k); } }
+        const bn = bs[b]; if (best < 0.6 || !['Hips', 'Spine', 'Spine1', 'Spine2'].some((n) => bone(n) === bn)) continue;
         v.fromBufferAttribute(pos, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld);
-        const l = v.clone().applyMatrix4(new THREE.Matrix4().copy(bn.matrixWorld).invert());
-        const A = acc.get(bn) || { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9, z0: 1e9, z1: -1e9 }; acc.set(bn, A);
-        A.x0 = Math.min(A.x0, l.x); A.x1 = Math.max(A.x1, l.x); A.y0 = Math.min(A.y0, l.y); A.y1 = Math.max(A.y1, l.y); A.z0 = Math.min(A.z0, l.z); A.z1 = Math.max(A.z1, l.z); } });
-    for (const [b, A] of acc) VOL.push({ b, cx: (A.x0 + A.x1) / 2, cz: (A.z0 + A.z1) / 2, a: (A.x1 - A.x0) / 2, c: (A.z1 - A.z0) / 2, y0: A.y0, y1: A.y1 }); }
-  // keep a world point out of the torso volumes (+ margin); returns the corrected point or null when it was outside
+        const l = v.clone().applyMatrix4(new THREE.Matrix4().copy(bn.matrixWorld).invert()); if (!pts.has(bn)) pts.set(bn, []); pts.get(bn).push(l); } });
+    // per bone: slices along its y, each an ellipse from the 4th-96th percentile extents (drops the armpit / buttock flare)
+    const pct = (arr, q) => { const s = [...arr].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))]; };
+    for (const [b, P] of pts) { if (P.length < 50) continue;
+      const ys = P.map((q) => q.y), y0 = pct(ys, 0.02), y1 = pct(ys, 0.98), NS = 6, sl = [];
+      for (let k = 0; k < NS; k++) { const lo = y0 + (y1 - y0) * k / NS, hi = y0 + (y1 - y0) * (k + 1) / NS, S = P.filter((q) => q.y >= lo && q.y < hi);
+        if (S.length < 12) { sl.push(null); continue; }
+        const xs = S.map((q) => q.x), zs = S.map((q) => q.z), xa = pct(xs, 0.04), xb = pct(xs, 0.96), za = pct(zs, 0.04), zb = pct(zs, 0.96);
+        sl.push({ cx: (xa + xb) / 2, cz: (za + zb) / 2, a: (xb - xa) / 2, c: (zb - za) / 2 }); }
+      VOL.push({ b, y0, y1, sl }); } }
+  if (window.RT_VOLLOG) for (const T of VOL) console.error(`VOL ${T.b.name} y ${T.y0.toFixed(3)}..${T.y1.toFixed(3)} ` + T.sl.map((E) => E ? `${E.a.toFixed(3)}x${E.c.toFixed(3)}` : '-').join(' '));
+  const sliceAt = (T, y) => { const k = Math.min(T.sl.length - 1, Math.max(0, Math.floor((y - T.y0) / (T.y1 - T.y0) * T.sl.length))); return T.sl[k]; };
+  function insideDepth(p, radius) {
+    let worst = 0;
+    for (const T of VOL) {
+      const l = p.clone().applyMatrix4(new THREE.Matrix4().copy(T.b.matrixWorld).invert()), sc = V().setFromMatrixScale(T.b.matrixWorld).x, m = radius / sc;
+      if (l.y < T.y0 || l.y > T.y1) continue; const E = sliceAt(T, l.y); if (!E) continue;
+      const dx = l.x - E.cx, dz = l.z - E.cz, e = Math.sqrt((dx * dx) / ((E.a + m) * (E.a + m)) + (dz * dz) / ((E.c + m) * (E.c + m)));
+      if (e < 1) worst = Math.max(worst, (1 - e) * Math.min(E.a, E.c) * sc); }
+    return worst;
+  }
   // the nearest surface point the arm can still reach (root: shoulder joint, reach: arm length): a plain radial push can land
   // beyond reach (a hand crossing to the far hip), which would lock the arm straight and flip the elbow
   function pushOut(p, margin, root, reach) {
     let moved = null;
     for (const T of VOL) {
       const inv = new THREE.Matrix4().copy(T.b.matrixWorld).invert(), l = (moved || p).clone().applyMatrix4(inv), sc = V().setFromMatrixScale(T.b.matrixWorld).x, m = margin / sc;
-      if (l.y < T.y0 || l.y > T.y1) continue;
-      const dx = l.x - T.cx, dz = l.z - T.cz, a = T.a + m, c = T.c + m, e = (dx * dx) / (a * a) + (dz * dz) / (c * c);
+      if (l.y < T.y0 || l.y > T.y1) continue; const E = sliceAt(T, l.y); if (!E) continue;
+      const dx = l.x - E.cx, dz = l.z - E.cz, a = E.a + m, c = E.c + m, e = (dx * dx) / (a * a) + (dz * dz) / (c * c);
       if (e >= 1) continue;
       let best = null, bd = 1e9;
       for (let i = 0; i < 72; i++) {
-        const th = i / 72 * Math.PI * 2, q = V().set(T.cx + a * Math.cos(th), l.y, T.cz + c * Math.sin(th)).applyMatrix4(T.b.matrixWorld);
+        const th = i / 72 * Math.PI * 2, q = V().set(E.cx + a * Math.cos(th), l.y, E.cz + c * Math.sin(th)).applyMatrix4(T.b.matrixWorld);
         if (root && q.distanceTo(root) > reach * 0.96) continue;
         const d = q.distanceTo(moved || p); if (d < bd) { bd = d; best = q; } }
       if (best) moved = best;
@@ -209,6 +225,11 @@ function makeRetarget(THREE, model, bone) {
       const wb = ang(`${s}ForeArm`, `${s}Hand`, `${s}HandMiddle1`); if (wb > 1.22) out.push(`${s}wrist-bend ${deg(wb).toFixed(0)}`);
       for (const f of [`${s}Foot`, `${s}ToeBase`, `${s}Leg`]) { const y = wpos(bone(f)).y; if (y < -0.03) out.push(`${f}-below-floor ${(y * 100).toFixed(0)}cm`); }
       // hand inside the torso: distance to the hips -> neck segment
+      // arm segments (upper arm, forearm) inside the torso volumes: sample along each, arm radius ~4 cm
+      for (const [a, b, nm] of [[`${s}Arm`, `${s}ForeArm`, 'upperarm'], [`${s}ForeArm`, `${s}Hand`, 'forearm']]) {
+        let worst = 0; const A = wpos(bone(a)), B = wpos(bone(b));
+        for (let k = (nm === 'upperarm' ? 0.35 : 0); k <= 1.001; k += 0.08) { const q = A.clone().lerp(B, k); const d = insideDepth(q, 0); if (d > worst) worst = d; }   // the bone line itself inside the body (touching is not flagged)
+        if (worst > 0.015) out.push(`${s}${nm}-in-torso ${(worst * 100).toFixed(0)}cm`); }
       const h0 = wpos(bone('Hips')), h1 = wpos(bone('Neck')), p = wpos(bone(`${s}Hand`)), seg = h1.clone().sub(h0);
       const k = Math.min(1, Math.max(0, p.clone().sub(h0).dot(seg) / seg.lengthSq())), dist = p.distanceTo(h0.clone().add(seg.multiplyScalar(k)));
       if (dist < 0.07) out.push(`${s}hand-in-torso ${(dist * 100).toFixed(0)}cm`);

@@ -226,7 +226,7 @@
       if (shot.card) { ball.visible = true; ball.position.set(0, 30.3, 0); ball.scale.setScalar(2.2); ball.rotation.set(0.35, T * 1.1, -0.25); }
       crack.visible = !!shot.crack;
       env.forEach((m) => (m.visible = !shot.card && !shot.blank)); scene.background = shot.card || shot.blank ? null : arena.bgTex;
-      const k = shot.cam(u); cam.position.set(...k.p); cam.fov = k.fov; cam.updateProjectionMatrix(); cam.lookAt(...k.look); cam.rotateZ(k.roll || 0);
+      const k = P.dbgCam ? (() => { const h = hipW(); return { p: [h.x + P.dbgCam[0], h.y + P.dbgCam[1], h.z + P.dbgCam[2]], look: [h.x, h.y + (P.dbgCam[3] ?? 0.4), h.z], fov: P.dbgCam[4] ?? 35 }; })() : shot.cam(u); cam.position.set(...k.p); cam.fov = k.fov; cam.updateProjectionMatrix(); cam.lookAt(...k.look); cam.rotateZ(k.roll || 0);   // dbgCam: diagnostic view
       if (shot.name === 'dig' && T >= T_LAND) { const e = Math.exp(-(T - T_LAND) * 8) * 0.05; cam.position.x += VM.noise(T * 50, 1) * e; cam.position.y += VM.noise(T * 50, 2) * e; }
       camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(model.visible ? hipW() : ball.position);
       lensMat.uniforms.k.value = shot.card ? 0 : 0.3; lensMat.uniforms.zoom.value = 0;

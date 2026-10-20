@@ -17,7 +17,7 @@
 <body><div id="stage"></div>
 <script type="module">
   const P = VM.params({ smash: 'mocap/8-Smash-Take2.glb', win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', model: 'vrm/HairSample_Male.vrm', subframes: 5, shutter: 0.5, cel: 0.75 });
-  const stage = document.getElementById('stage'); if (P.rtFlags) window.RT_FLAGS = P.rtFlags; if (P.rtLog) window.RT_LOG = 1;   // debug: {ik: false} / {hinge: false}
+  const stage = document.getElementById('stage'); if (P.volLog) window.RT_VOLLOG = 1; if (P.rtFlags) window.RT_FLAGS = P.rtFlags; if (P.rtLog) window.RT_LOG = 1;   // debug: {ik: false} / {hinge: false}
   window.VM_READY = new Promise(async (resolve) => { try {
     const THREE = await import('three');
     const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
