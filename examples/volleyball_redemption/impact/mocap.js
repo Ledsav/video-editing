@@ -2,15 +2,29 @@
 // Limbs and fingers are aimed bone by bone (swing from the current pose, parents first); hips, chest and
 // hands are solved from two directions so the body faces and the palm turns like the capture.
 
+// BVH (Bandai Namco Research Motiondataset: a plain skeleton in cm, bones along their local x, no fingers) -> the capture's names
+const BVH_NAMES = { Hips: 'Hip', Spine: 'LowerSpine', Chest: 'Chest', Neck: 'Neck', Head: 'Head',
+  Shoulder_L: 'LClavicle', UpperArm_L: 'LShoulder', LowerArm_L: 'LForearm', Hand_L: 'LHand', Shoulder_R: 'RClavicle', UpperArm_R: 'RShoulder', LowerArm_R: 'RForearm', Hand_R: 'RHand',
+  UpperLeg_L: 'LThigh', LowerLeg_L: 'LShin', Foot_L: 'LFoot', Toes_L: 'LToe', UpperLeg_R: 'RThigh', LowerLeg_R: 'RShin', Foot_R: 'RFoot', Toes_R: 'RToe' };
+
 async function loadMocap(THREE, GLTFLoader, file) {
-  const g = await loadGLB(GLTFLoader, file);
-  const root = g.scene, clip = g.animations[0], mixer = new THREE.AnimationMixer(root);
+  const bvh = /\.bvh$/i.test(file);
+  let root, clip, dur;
+  if (bvh) {
+    const { BVHLoader } = await import(VEDIT.libs.three_addons + 'loaders/BVHLoader.js');
+    const r = new BVHLoader().parse(new TextDecoder().decode(await readBinary(file)));
+    root = new THREE.Group(); root.add(r.skeleton.bones[0]); clip = r.clip; dur = clip.duration;
+  } else { const g = await loadGLB(GLTFLoader, file); root = g.scene; clip = g.animations[0]; dur = clip.duration - 1 / 60; }   // GLB: the last key loops back to the first: drop it
+  const mixer = new THREE.AnimationMixer(root);
   mixer.clipAction(clip).play();
   const nodes = {}; root.traverse((o) => { if (o.name) nodes[o.name] = o; });
-  const dur = clip.duration - 1 / 60;                  // the last key loops back to the first: drop it
   function raw(t) {
     mixer.setTime(Math.min(Math.max(t, 0), dur)); root.updateMatrixWorld(true);
-    const P = {}; for (const n in nodes) P[n] = new THREE.Vector3().setFromMatrixPosition(nodes[n].matrixWorld);
+    let P = {}; for (const n in nodes) P[n] = new THREE.Vector3().setFromMatrixPosition(nodes[n].matrixWorld);
+    if (bvh) { const Q = {}; for (const n in BVH_NAMES) if (P[n]) Q[BVH_NAMES[n]] = P[n].multiplyScalar(0.01);
+      Q.MiddleSpine = Q.LowerSpine.clone().lerp(Q.Chest, 0.5);
+      Q.Head_end = new THREE.Vector3(20, 0, 0).applyMatrix4(nodes.Head.matrixWorld).multiplyScalar(0.01);   // 20 cm along the head's own axis
+      return Q; }
     // Head_end sits on the head joint in these captures: rebuild it 20 cm up the head's own axis so the head pitch survives
     if (nodes.Head && P.Head_end && P.Head_end.distanceTo(P.Head) < 1e-4) P.Head_end = new THREE.Vector3(0, 0.2, 0).applyMatrix4(nodes.Head.matrixWorld);
     return P;
@@ -52,7 +66,28 @@ async function loadMocap(THREE, GLTFLoader, file) {
   }
   let contact = best[0], hy = -1e9;
   for (let i = best[0]; i < best[1]; i++) { const y = F[i].RHand.y; if (y > hy) { hy = y; contact = i; } }
-  return { sample, dur, floor, takeoff: best[0] / fps, land: best[1] / fps, contact: contact / fps, airborne: best[1] > best[0] };
+  // a BVH take starts standing still: its own opening frames calibrate its skeleton against the rig's rest pose (see makeRetarget)
+  const stand = bvh ? measureStand(THREE, [0, 0.05, 0.1, 0.15, 0.2].map((t) => sample(t))) : null;
+  return { sample, dur, floor, takeoff: best[0] / fps, land: best[1] / fps, contact: contact / fps, airborne: best[1] > best[0], stand, bvh };
+}
+
+// a capture skeleton standing still, in the body's own frames (the calibration makeRetarget turns into this rig's rest pose):
+// segment pitches in deg (+ = forward of the hip -> neck line), foot pitch below horizontal, left collarbone in the chest frame
+function measureStand(THREE, samples) {
+  const V = () => new THREE.Vector3(), acc = {}, add = (k, v) => (acc[k] = (acc[k] || V()).add(v));
+  const frameOf = (L, R, lo, hi) => { const x = L.clone().sub(R).normalize(), z = V().crossVectors(x, hi.clone().sub(lo)).normalize(); return [x, V().crossVectors(z, x), z]; };
+  const loc = (d, F) => { d = d.clone().normalize(); return V().set(d.dot(F[0]), d.dot(F[1]), d.dot(F[2])); };
+  let foot = 0;
+  for (const M of samples) {
+    const Fp = frameOf(M.LThigh, M.RThigh, M.Hip, M.Neck), Fc = frameOf(M.LShoulder, M.RShoulder, M.Chest, M.Neck);
+    for (const [k, a, b] of [['pelvis', 'Hip', 'LowerSpine'], ['spine', 'LowerSpine', 'MiddleSpine'], ['spine1', 'MiddleSpine', 'Chest'], ['chest', 'Chest', 'Neck'], ['neck', 'Neck', 'Head'], ['head', 'Head', 'Head_end']])
+      add(k, loc(M[b].clone().sub(M[a]), Fp));
+    add('clav', loc(M.LShoulder.clone().sub(M.LClavicle), Fc));
+    for (const s of ['L', 'R']) { const d = M[s + 'Toe'].clone().sub(M[s + 'Foot']); foot += Math.atan2(-d.y, Math.hypot(d.x, d.z)) * 57.2958 / (2 * samples.length); }
+  }
+  const out = { foot };
+  for (const k in acc) { const v = acc[k].normalize(); out[k] = k === 'clav' ? v.toArray() : Math.atan2(v.z, v.y) * 57.2958; }
+  return out;
 }
 
 function makeRetarget(THREE, model, bone) {
@@ -132,20 +167,25 @@ function makeRetarget(THREE, model, bone) {
   // of the hip -> neck line; foot: deg below horizontal; clav: the left collarbone in the chest frame [left, up, front].
   const CAP_STAND = { pelvis: -24.2, spine: 11.5, spine1: -3.3, chest: 7.9, neck: 18.7, head: 9.7, foot: 21.5, clav: [0.912, 0.029, -0.410] };
   const frameOf = (L, R, lo, hi) => { const x = L.clone().sub(R).normalize(), z = V().crossVectors(x, hi.clone().sub(lo)).normalize(); return [x, V().crossVectors(z, x), z]; };
-  const FIX = {}, CLAV_FIX = {};
+  // the rig at rest, measured once here (later the model is posed): segment pitches, foot pitch, collarbones in the chest frame
+  const RIG = { pitch: {}, clav: {} };
   { model.updateMatrixWorld(true);
-    const F = frameOf(wpos(bone('LeftUpLeg')), wpos(bone('RightUpLeg')), wpos(bone('Hips')), wpos(bone('Neck'))), pitch = (a, b) => { const d = wpos(bone(b)).sub(wpos(bone(a))); return Math.atan2(d.dot(F[2]), d.dot(F[1])) * 57.2958; };
+    const F = frameOf(wpos(bone('LeftUpLeg')), wpos(bone('RightUpLeg')), wpos(bone('Hips')), wpos(bone('Neck')));
     for (const [k, a, b] of [['pelvis', 'Hips', 'Spine'], ['spine', 'Spine', 'Spine1'], ['spine1', 'Spine1', 'Spine2'], ['chest', 'Spine2', 'Neck'], ['neck', 'Neck', 'Head'], ['head', 'Head', 'HeadTop_End']])
-      if (bone(a) && bone(b)) FIX[k] = THREE.MathUtils.degToRad(pitch(a, b) - CAP_STAND[k]);
-    const ft = wpos(bone('LeftToeBase')).sub(wpos(bone('LeftFoot')));
-    FIX.foot = THREE.MathUtils.degToRad(Math.atan2(-ft.y, Math.hypot(ft.x, ft.z)) * 57.2958 - CAP_STAND.foot);
+      if (bone(a) && bone(b)) { const d = wpos(bone(b)).sub(wpos(bone(a))); RIG.pitch[k] = Math.atan2(d.dot(F[2]), d.dot(F[1])) * 57.2958; }
+    const ft = wpos(bone('LeftToeBase')).sub(wpos(bone('LeftFoot'))); RIG.foot = Math.atan2(-ft.y, Math.hypot(ft.x, ft.z)) * 57.2958;
     const C = frameOf(wpos(bone('LeftArm')), wpos(bone('RightArm')), wpos(bone('Spine2')), wpos(bone('Neck')));
-    for (const [s, sg] of [['Left', 1], ['Right', -1]]) {
-      const d = wpos(bone(`${s}Arm`)).sub(wpos(bone(`${s}Shoulder`))).normalize(), loc = V().set(d.dot(C[0]), d.dot(C[1]), d.dot(C[2]));
-      const cap = V().set(sg * CAP_STAND.clav[0], CAP_STAND.clav[1], CAP_STAND.clav[2]).normalize();
-      CLAV_FIX[s] = Q().setFromUnitVectors(cap, loc); }
-    if ((window.RT_FLAGS || {}).restCal === false) { for (const k in FIX) FIX[k] = 0; for (const s in CLAV_FIX) CLAV_FIX[s].identity(); }
-    if (window.RT_VOLLOG) console.error('RESTCAL ' + Object.entries(FIX).map(([k, v]) => `${k} ${(v * 57.3).toFixed(1)}`).join(' ') + ' clav ' + (2 * Math.acos(Math.min(1, CLAV_FIX.Left.w)) * 57.3).toFixed(1)); }
+    for (const s of ['Left', 'Right']) { const d = wpos(bone(`${s}Arm`)).sub(wpos(bone(`${s}Shoulder`))).normalize(); RIG.clav[s] = V().set(d.dot(C[0]), d.dot(C[1]), d.dot(C[2])); } }
+  const CALS = new Map();
+  function calib(stand) {
+    if (CALS.has(stand)) return CALS.get(stand);
+    const FIX = {}, CLAV_FIX = {}, off = (window.RT_FLAGS || {}).restCal === false;
+    for (const k in RIG.pitch) FIX[k] = off ? 0 : THREE.MathUtils.degToRad(RIG.pitch[k] - stand[k]);
+    FIX.foot = off ? 0 : THREE.MathUtils.degToRad(RIG.foot - stand.foot);
+    for (const [s, sg] of [['Left', 1], ['Right', -1]]) CLAV_FIX[s] = off ? Q() : Q().setFromUnitVectors(V().set(sg * stand.clav[0], stand.clav[1], stand.clav[2]).normalize(), RIG.clav[s]);
+    if (window.RT_VOLLOG) console.error('RESTCAL ' + Object.entries(FIX).map(([k, v]) => `${k} ${(v * 57.3).toFixed(1)}`).join(' ') + ' clav ' + (2 * Math.acos(Math.min(1, CLAV_FIX.Left.w)) * 57.3).toFixed(1));
+    const C2 = { FIX, CLAV_FIX }; CALS.set(stand, C2); return C2;
+  }
   const FING = { Thumb: 0, Index: 1, Middle: 2, Ring: 3, Pinky: 4 };
   // [anime bone, anime child, mocap from, mocap to]
   const chain = [['Spine', 'Spine1', 'LowerSpine', 'MiddleSpine'], ['Spine1', 'Spine2', 'MiddleSpine', 'Chest']];
@@ -278,7 +318,29 @@ function makeRetarget(THREE, model, bone) {
     }
   }
 
-  return function apply(M, xf) {
+  // fists, for takes without finger data (the rig's rest hand is flat and open): every finger bone turned about the knuckle
+  // line, into the palm (palm normal: straight down at rest, this rig's T-pose); the thumb wraps over them
+  const PALM = {};
+  { model.updateMatrixWorld(true);
+    for (const s of ['Left', 'Right']) { const h = bone(`${s}Hand`); if (!h) continue; const q = Q(); h.getWorldQuaternion(q); PALM[s] = V().set(0, -1, 0).applyQuaternion(q.invert()); } }
+  const FIST = [['Index', [80, 95, 60]], ['Middle', [85, 95, 60]], ['Ring', [88, 95, 60]], ['Pinky', [90, 95, 60]]];
+  function makeFists(w) {
+    for (const s of ['Left', 'Right']) {
+      const h = bone(`${s}Hand`), mid = bone(`${s}HandMiddle1`), th = bone(`${s}HandThumb1`); if (!h || !mid || !PALM[s]) continue;
+      h.updateMatrixWorld(true); const hq = Q(); h.getWorldQuaternion(hq); const n = PALM[s].clone().applyQuaternion(hq);
+      const k = V().crossVectors(wpos(mid).sub(wpos(h)), n).normalize();
+      for (const [f, angs] of FIST) for (let i = 1; i <= 3; i++) { const b = bone(`${s}Hand${f}${i}`); if (!b) continue;
+        const q = Q().setFromAxisAngle(k, THREE.MathUtils.degToRad(angs[i - 1] * w)), bq = Q(); b.getWorldQuaternion(bq); setWorldQ(b, q.multiply(bq)); }
+      // the thumb wraps over the curled fingers: its base aims at the index finger's middle joint, the tip at the middle finger's
+      const t1 = bone(`${s}HandThumb1`), t2 = bone(`${s}HandThumb2`), t3 = bone(`${s}HandThumb3`), i2 = bone(`${s}HandIndex2`), m2 = bone(`${s}HandMiddle2`);
+      if (t1 && t2 && t3 && i2 && m2) { const aim = (b, c, p) => { const cur = wpos(c).sub(wpos(b)), want = p.clone().sub(wpos(b)); swing(b, c, cur.normalize().lerp(want.normalize(), w)); };
+        const out = n.clone().multiplyScalar(-0.012);   // on the back of the curled fingers, not inside them
+        aim(t1, t2, wpos(i2).add(out)); aim(t2, t3, wpos(m2).add(out)); const t3c = t3.children.find((c) => c.isBone); if (t3c) aim(t3, t3c, wpos(m2).add(out).add(wpos(m2).sub(wpos(i2)))); }
+    }
+  }
+  // stand: the capture skeleton's standing calibration (clip.stand for a BVH take; the Motion Cast one by default)
+  return function apply(M, xf, stand) {
+    const { FIX, CLAV_FIX } = calib(stand || CAP_STAND);
     bones.forEach((b) => b.quaternion.copy(rest.get(b)));
     const hips = bone('Hips'); hips.position.copy(restHipLocal); model.updateMatrixWorld(true);
     // root position
@@ -346,11 +408,12 @@ function makeRetarget(THREE, model, bone) {
     }
     for (const s of ['Left', 'Right']) {                // hand: towards the middle finger, palm across index -> pinky
       const h = bone(`${s}Hand`), mid = bone(`${s}HandMiddle1`), idx = bone(`${s}HandIndex1`), pk = bone(`${s}HandPinky1`);
-      if (h && mid && idx && pk) { h.updateMatrixWorld(true);
+      if (h && mid && idx && pk && M[`${s}Finger2`]) { h.updateMatrixWorld(true);
         twoVec(h, wpos(mid).sub(wpos(h)), wpos(idx).sub(wpos(pk)), D(M, `${s[0]}Hand`, `${s}Finger2`), D(M, `${s}Finger4`, `${s}Finger1`));
         limitTwist(h, mid, MAX_WRIST_TWIST); limitBend(h, mid, bone(`${s}ForeArm`), MAX_WRIST_BEND); }
     }
-    for (const [b, c, f, t] of FIN) swing(bone(b), bone(c), D(M, f, t));
+    for (const [b, c, f, t] of FIN) if (M[f] && M[t]) swing(bone(b), bone(c), D(M, f, t));
+    if (xf.fist) makeFists(xf.fist);
     model.updateMatrixWorld(true);
     if (window.AUDIT) audit();
   };

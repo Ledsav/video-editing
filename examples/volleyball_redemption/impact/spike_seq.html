@@ -53,7 +53,7 @@
     // ================= athlete =================
     const gltf = await loadCharacter(THREE, GLTFLoader, P.model);
     const model = gltf.scene; scene.add(model);
-    if (gltf.isVRM) { await document.fonts.ready; paintKit(THREE, model, { number: '7', bakeK: P.bakeK }); }   // VRoid: volleyball kit painted on the body
+    if (gltf.isVRM) { await document.fonts.ready; paintKit(THREE, model, { number: '7', bakeK: P.bakeK, skin: P.skin }); }   // VRoid: volleyball kit painted on the body
     if (P.dumpKit) model.traverse((o) => { if (o.isMesh && /Body_00/.test(o.material.name)) { const c = o.material.map.image, n = o.material.normalMap && o.material.normalMap.image;
       const sm = (im) => { const k = document.createElement('canvas'); k.width = k.height = 1024; k.getContext('2d').drawImage(im, 0, 0, 1024, 1024); return k.toDataURL('image/jpeg', 0.85); };
       console.error('KITMAP ' + sm(c)); if (n) console.error('KITNRM ' + sm(n)); } });
@@ -73,7 +73,7 @@
         const m = o.material.clone(); m.roughness = Math.max(0.45, m.roughness ?? 0.6); m.metalness = 0;
         const kk = KIT[o.name] ?? KIT[o.material.name];
         if (kk !== undefined) { m.color = new THREE.Color(kk); m.map = null; }
-        const skin = /_(SKIN|FACE)$/.test(o.material.name) && !(gltf.isVRM && /Body_00/.test(o.material.name));   // lit skin over-exposes the unlit textures: pull it down a stop (not the kit)
+        const skin = /_(SKIN|FACE)$/.test(o.material.name) && !(gltf.isVRM && /(Body|Face)_00/.test(o.material.name));   // lit skin over-exposes the unlit textures: pull it down a stop (not the VRoid skin: tinted by paintKit, face and body alike)
         const hair = gltf.isVRM && /_HAIR$/.test(o.material.name);   // VRoid hair: keep it blue-black under the warm rims
         o.userData.toon = new THREE.MeshToonMaterial({ normalMap: P.relief === 0 ? null : m.normalMap, normalScale: m.normalScale, color: kk ?? (skin ? 0xbcb0aa : hair ? 0x55607a : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp });   // keep double-sided: the face is culled otherwise
         // painted face details (eyes, brows, lashes, eye lines, mouth) stay unlit like the source: lit, the rim lights turn them orange
@@ -204,6 +204,26 @@
     const Mland = smash.sample(smash.land), Mw0 = win.sample(ROAR_FROM), Mpk = win.sample(ROAR_PEAK);
     const dW = Mpk.LShoulder.clone().sub(Mpk.RShoulder);          // facing measured at the peak, so the release opens towards the camera
     const roarAlign = { from: Mw0.Hip.clone().setY(0), to: Mland.Hip.clone().setY(0), yaw: -Math.PI / 2 - 0.35 - Math.atan2(dW.x, dW.z) };
+    // the roar take (default: Bandai Namco Research Motiondataset-2, "raise up both hands", masculine, CC BY-NC 4.0): both fists
+    // thrown up into a V and held. Re-based onto the landing spot, scaled to the smash performer (leg length), turned to his own
+    // team like the won-point capture; P.roar = 'win' brings back the won-point reaction.
+    const roar = P.roar === 'win' ? null : await loadMocap(THREE, GLTFLoader, P.roar ?? 'mocap/bandai/dataset-2_raise-up-both-hands_masculine_007.bvh');
+    let roarRebase = null, ROAR_KEYS = null, ROAR_FOOT_DY = FOOT_DY;
+    if (roar) {
+      const R0 = roar.sample(0), legLen = (M) => M.LThigh.distanceTo(M.LShin) + M.LShin.distanceTo(M.LFoot), UP = V3(0, 1, 0);
+      const k = legLen(smash.sample(0)) / legLen(R0), dR = R0.LShoulder.clone().sub(R0.RShoulder), from = R0.Hip.clone().setY(0);
+      const yaw = -Math.PI / 2 - 0.35 - Math.atan2(dR.x, dR.z), to = V3(Mland.Hip.x, smash.floor, Mland.Hip.z);
+      roarRebase = (M) => { const out = {}; for (const n in M) { const v = M[n].clone().sub(from); v.y = M[n].y - roar.floor; out[n] = v.multiplyScalar(k).applyAxisAngle(UP, yaw).add(to); } return out; };
+      ROAR_FOOT_DY = FOOT_DY + xf(smash.sample(0).LFoot).y - xf(roarRebase(R0).LFoot).y;
+      // timing from the take itself: still, the throw up (near real speed), then the V held through the push-in
+      const hy = (c) => { const M = roar.sample(c); return Math.min(M.LHand.y, M.RHand.y) - M.Head.y; }, h0 = hy(0);
+      let hi = -1e9; for (let c = 0; c <= roar.dur; c += 1 / 60) hi = Math.max(hi, hy(c));
+      let start = null, up0 = null, up1 = 0;
+      for (let c = 0; c <= roar.dur; c += 1 / 60) { const h = hy(c); if (start === null && h > h0 + 0.1) start = c; if (h >= hi - 0.05) { if (up0 === null) up0 = c; up1 = c; } }
+      ROAR_KEYS = [[0, Math.max(0, start - 0.15)], [0.08, start], [0.25, up0], [1, up1]];
+      console.error('ROAR take ' + roar.dur.toFixed(2) + 's scale ' + k.toFixed(3) + ' keys ' + JSON.stringify(ROAR_KEYS.map(([u, c]) => [u, +c.toFixed(2)]))); }
+    const roarClipT = (t) => { const u = Math.min(1, Math.max(0, (t - ROAR_T) / 2.2)); let i = 0; while (i < ROAR_KEYS.length - 2 && u > ROAR_KEYS[i + 1][0]) i++;
+      const [a, ca] = ROAR_KEYS[i], [b, cb] = ROAR_KEYS[i + 1]; return ca + (cb - ca) * Math.min(1, Math.max(0, (u - a) / (b - a))); };
     // additive layer on the hitting arm (in the chest's own frame): a deeper bow-and-arrow cock before contact
     // (elbow high and well back, hand by the ear) and a complete follow-through after it (arm all the way down, across the body)
     const rampW = (x, a, d) => VM.ease.inOutSine(Math.min(1, Math.max(0, (x - a) / d)));
@@ -273,6 +293,7 @@
     }
     const openW = (tau) => rampW(tau, smash.takeoff, 0.15) * (1 - rampW(tau, smash.land, 0.3));
     const mocapAt = (t) => {
+      if (t >= ROAR_T && roar) return roarRebase(roar.sample(roarClipT(t)));
       if (t >= ROAR_T) return blendMocap(THREE, win.sample(ROAR_FROM + t - ROAR_T), win.sample(ROAR_FROM + t - ROAR_T), 1, roarAlign);   // the celebration as captured
       const tau = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND);
       const A = openHand(attackArm(smash.sample(Math.min(tau, smash.dur)), tau), openW(tau));
@@ -284,7 +305,8 @@
       if (tau <= smash.takeoff || tau >= smash.land) return 0;
       const u = (tau - smash.takeoff) / (smash.land - smash.takeoff), pc = (smash.contact - smash.takeoff) / (smash.land - smash.takeoff);
       return EXTRA * (u < pc ? Math.sin(Math.PI / 2 * u / pc) : Math.cos(Math.PI / 2 * (u - pc) / (1 - pc))); };
-    function placeAthlete(t) { window.AUDIT_TAU = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND); const up = liftAt(t), f = (v) => xf(v).add(V3(0, up, 0)); f.footDy = FOOT_DY; retarget(mocapAt(t), f); }
+    function placeAthlete(t) { window.AUDIT_TAU = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND); const up = liftAt(t), f = (v) => xf(v).add(V3(0, up, 0)); const roarOn = !!roar && t >= ROAR_T;
+      f.footDy = roarOn ? ROAR_FOOT_DY : FOOT_DY; f.fist = roarOn ? 1 : 0; retarget(mocapAt(t), f, roarOn ? roar.stand : null); }
 
     // ================= ball =================
     const BR = 0.105 * 1.15;
@@ -388,7 +410,7 @@
         keys: [[0, 0], [1, 0]],
         cam: (t, u) => { const a = 2.2 + 0.35 * u; return { p: orbit(hitPoint, 1.9 - 0.3 * u, 0.32 + 0.1 * u, a), look: [hitPoint.x, 0.12, hitPoint.z], fov: 46, roll: 0.1 - 0.12 * u }; } },
       { name: 'roar', T: [7.1, 10.3], t: [1.95, 4.15], ease: 'linear', lens: 0.35,            // the release: arms flung wide, chest up (slowed to 0.6x)
-        cam: (t, u) => { const h = hipPos(); return { p: [h.x - 0.35 + 0.15 * u, 0.95, h.z - 3.3 + 0.9 * u], look: [h.x, 1.4, h.z], fov: 44 - 8 * u, roll: 0.04 }; } },   // low, frontal, slow push-in
+        cam: (t, u) => { const h = hipPos(); return { p: [h.x - 0.35 + 0.15 * u, 0.95, h.z - 3.3 + 0.9 * u], look: [h.x, 1.4 + (roar ? 0.25 * u : 0), h.z], fov: 44 - (roar ? 4 : 8) * u, roll: 0.04 }; } },   // low, frontal, slow push-in (the V of fists stays in frame)
     ];
     // flight and floor timing depend on tFloor: fill them in now
     { const sm = SHOTS.find((x) => x.name === 'smash'), fl = SHOTS.find((x) => x.name === 'floor'), tf = T_CONTACT + tFloor;
@@ -434,7 +456,7 @@
     const hitFlash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 46, pointerEvents: 'none' }, document.body);
     const redOverlay = el('div', { position: 'absolute', inset: 0, background: '#e3121b', mixBlendMode: 'multiply', opacity: 0, zIndex: 45, pointerEvents: 'none' }, document.body);
     const credit = el('div', { position: 'absolute', left: '7vw', bottom: '5vh', font: `500 1.3vmin ${TEXT}`, letterSpacing: '0.12em', color: 'rgba(243,237,226,0.7)', opacity: 0, zIndex: 60 }, document.body,
-      'CHARACTER: VROID "HAIRSAMPLE_MALE" (PIXIV, CC0), KIT BY THE AUTHOR');
+      'CHARACTER: VROID "HAIRSAMPLE_MALE" (PIXIV, CC0), KIT BY THE AUTHOR' + (roar ? ' · ROAR MOTION: BANDAI NAMCO RESEARCH MOTIONDATASET-2 (CC BY-NC 4.0)' : ''));
     VM.onFrame((T) => { credit.style.opacity = shotAt(T).name === 'roar' ? VM.prog(T, shotBy('roar').T[1] - 1.5, 0.5) : 0; });
 
     // ================= frame =================
@@ -597,6 +619,8 @@
       const shot = shotAt(T0);
       if (P.auditAll) window.AUDIT_ALL = 1; if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
       setComic(!!shot.comic && !P.clean); setRage(!!shot.rage && !P.clean); setRageFace(P.forceRage ?? (!!shot.rage && (T - shot.T[0]) > 0.1));
+      if (shot.name === 'roar' && roar && gltf.isVRM && !P.forceRage) { const w = rampW((T - shot.T[0]) / (shot.T[1] - shot.T[0]), 0.1, 0.12);   // the shout opens as the fists go up
+        gltf.expr('angry', 0.55 * w); gltf.expr('a', w); }
       const swingSmear = shot.comic && T0 > T_HIT_VIDEO + HIT_HOLD && T0 < T_HIT_VIDEO + HIT_HOLD + 0.12;   // the 3 swing frames
       const n = swingSmear ? 6 : shot.comic ? 1 : Math.max(1, P.subframes);
       og.clearRect(0, 0, W, H);

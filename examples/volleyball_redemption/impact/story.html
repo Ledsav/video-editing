@@ -18,7 +18,7 @@
 <body><div id="stage"></div>
 <script type="module">
   const P = VM.params({ part: 'intro', model: 'vrm/HairSample_Male.vrm', dig: 'mocap/3-Dig_in_front_with_one_knee_on_the_ground.glb', idle: 'mocap/1-IDLE.glb',
-    win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', subframes: 3, shutter: 0.5, cel: 0.75 });
+    win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', today: 'mocap/bandai/dataset-2_raise-up-both-hands_masculine_002.bvh', subframes: 3, shutter: 0.5, cel: 0.75 });   // today: 'win' = the won-point reaction
   const INTRO = P.part === 'intro';
   const stage = document.getElementById('stage'); if (P.rtFlags) window.RT_FLAGS = P.rtFlags;   // debug: {restCal: false} ...
   window.VM_READY = new Promise(async (resolve) => { try {
@@ -47,13 +47,13 @@
 
     // ================= athlete (same materials as the spike) =================
     const gltf = await loadCharacter(THREE, GLTFLoader, P.model), model = gltf.scene; scene.add(model);
-    if (gltf.isVRM) { await document.fonts.ready; paintKit(THREE, model, { number: '7' }); }
+    if (gltf.isVRM) { await document.fonts.ready; paintKit(THREE, model, { number: '7', skin: P.skin }); }
     const ramp = (() => { const d = new Uint8Array([125, 190, 255]); const t = new THREE.DataTexture(d, 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
     const KIT = { N00_007_01_Tops_01_CLOTH: 0x2140a6, N00_001_02_Bottoms_01_CLOTH: 0x0f1d4a, N00_004_01_Shoes_01_CLOTH: 0xf4f4f4 };
     model.traverse((o) => { if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false;
       const m = o.material, kk = KIT[m.name]; let skin = /_(SKIN|FACE)$/.test(m.name);
       const flat = /_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(m.name);   // painted face details stay unlit, like the source
-      const hair = gltf.isVRM && /_HAIR$/.test(m.name); if (gltf.isVRM && /Body_00/.test(m.name)) skin = false;
+      const hair = gltf.isVRM && /_HAIR$/.test(m.name); if (gltf.isVRM && /(Body|Face)_00/.test(m.name)) skin = false;   // VRoid skin: tinted by paintKit, face and body alike
       o.material = flat ? new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: /_EYE$/.test(m.name) ? THREE.DoubleSide : m.side, depthWrite: m.depthWrite })
         : new THREE.MeshToonMaterial({ normalMap: m.normalMap, normalScale: m.normalScale, color: kk ?? (skin ? 0xbcb0aa : hair ? 0x55607a : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp }); });
     { model.updateMatrixWorld(true);
@@ -71,7 +71,7 @@
     const LEG = legOf([wp('LeftUpLeg'), wp('LeftLeg'), wp('LeftFoot')]);
     const ANKLE_REST = wp('LeftFoot').y - new THREE.Box3().setFromObject(model).min.y;
     const clips = {};
-    for (const k of INTRO ? ['dig', 'idle'] : ['dig', 'win']) clips[k] = await loadMocap(THREE, GLTFLoader, P[k]);
+    for (const k of INTRO ? ['dig', 'idle'] : ['dig', P.today === 'win' ? 'win' : 'today']) clips[k] = await loadMocap(THREE, GLTFLoader, P[k]);
     // place a clip: its hip at time c0 lands on (x, z), its facing turned by yaw (0 = as captured: towards the net, +z)
     const facing = (M) => M.LShoulder.clone().sub(M.RShoulder).cross(V3(0, 1, 0)).setY(0).normalize();   // his chest direction
     // the retarget takes its directions from the capture itself, so the yaw turns the capture's points; xf then scales and places them
@@ -101,7 +101,7 @@
       for (const n in R) M[n] = xf.rot(R[n].clone().add(A));                 // anchor: cancel the capture's travel
       if (opt.arms) M = raiseArms(M, opt.arms, facing(M));
       if (head) { const d = M.Head_end.clone().sub(M.Head), f = facing(M); M.Head_end = M.Head.clone().add(d.normalize().lerp(f, head).normalize().multiplyScalar(0.2)); }
-      retarget(M, xf.post); }
+      xf.post.fist = clip.bvh ? 1 : 0; retarget(M, xf.post, clip.stand); }
 
     // ================= balls =================
     const BR = 0.105 * 1.15;
@@ -139,7 +139,7 @@
     const cardTitle = el('div', { top: '57vh', font: `400 15vmin ${DISPLAY}`, letterSpacing: '0.01em', color: '#f3ede2', opacity: 0, zIndex: 5 }, stage, `NEVER GIVE <span style="color:${V200W.yellow}">UP.</span>`); cardTitle.className = 'line';
     const cardSub = el('div', { top: '78vh', font: T1(1.9), letterSpacing: '0.55em', textIndent: '0.55em', color: '#d9dde6', opacity: 0, zIndex: 5 }, stage, 'EVERY SET &nbsp;·&nbsp; EVERY POINT &nbsp;·&nbsp; EVERY DAY'); cardSub.className = 'line';
     const credit = el('div', { position: 'absolute', left: 0, right: 0, bottom: '4vh', textAlign: 'center', font: T1(1.2, 500), letterSpacing: '0.12em', color: 'rgba(243,237,226,0.6)', opacity: 0, zIndex: 5 }, stage,
-      'CHARACTER: VROID "HAIRSAMPLE_MALE" (PIXIV, CC0), KIT BY THE AUTHOR &nbsp;·&nbsp; MOTION CAPTURE: MOTION CAST');
+      'CHARACTER: VROID "HAIRSAMPLE_MALE" (PIXIV, CC0), KIT BY THE AUTHOR &nbsp;·&nbsp; MOTION CAPTURE: MOTION CAST' + (P.today === 'win' ? '' : ' &nbsp;·&nbsp; ROAR MOTION: BANDAI NAMCO RESEARCH MOTIONDATASET-2 (CC BY-NC 4.0)'));
     addFinish({ grain: 0.07, vignette: 0.5 });
     const flash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 50 }, document.body);
     const black = el('div', { position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 51 }, document.body);
@@ -186,16 +186,24 @@
       const K = digXf(clips.dig.sample(3.2).Hip).setY(0);                // where he knelt last year
       const REST = V3(K.x + 1.0, BR, K.z + 2.0);                          // where last year's ball rolled to a stop
       const CAMP = [K.x + 0.75, 0.2, K.z + 3.3], LOOK = [K.x + 0.1, 0.62, K.z];
-      const winM = clips.win.sample(2.05), fw = facing(winM);
       const toCam = V3(CAMP[0] - K.x, 0, CAMP[2] - K.z).normalize();
-      const winXf = placer(clips.win, 2.05, K.x, K.z, Math.atan2(toCam.x, toCam.z) - Math.atan2(fw.x, fw.z));
+      // today: both fists thrown up into a V (Bandai Namco Research Motiondataset-2, CC BY-NC 4.0), the callback to the spike's roar;
+      // the camera finds him as they go up, then the V is held. P.today = 'win' brings back the won-point reaction.
+      let TODAY;
+      if (clips.today) { const C = clips.today, hy = (c) => { const M = C.sample(c); return Math.min(M.LHand.y, M.RHand.y) - M.Head.y; }, h0 = hy(0);
+        let hi = -1e9; for (let c = 0; c <= C.dur; c += 1 / 60) hi = Math.max(hi, hy(c));
+        let start = null, up0 = null, up1 = 0; for (let c = 0; c <= C.dur; c += 1 / 60) { const h = hy(c); if (start === null && h > h0 + 0.1) start = c; if (h >= hi - 0.05) { if (up0 === null) up0 = c; up1 = c; } }
+        const fw = facing(C.sample(0));
+        TODAY = { clip: 'today', xf: placer(C, 0, K.x, K.z, Math.atan2(toCam.x, toCam.z) - Math.atan2(fw.x, fw.z)), anchor: 0, keys: [[0, Math.max(0, start - 0.1)], [0.3, start], [0.5, up0], [1, up1]] }; }
+      else { const fw = facing(clips.win.sample(2.05));
+        TODAY = { clip: 'win', xf: placer(clips.win, 2.05, K.x, K.z, Math.atan2(toCam.x, toCam.z) - Math.atan2(fw.x, fw.z)), anchor: 2.05, keys: [[0, 1.75], [1, 2.3]] }; }
       crack.position.copy(REST).setY(0.006);
       const roll = (u) => { const k = 1 - Math.pow(1 - Math.min(1, u / 0.8), 3); return REST.clone().add(V3(1.8 * (1 - k), 0, -0.4 * (1 - k))); };
       SHOTS = [
         { name: 'rolls', T: [0, 2.0], past: true, clip: 'dig', xf: digXf, keys: [[0, 3.0], [1, 3.6]], head: -0.35,
           ball: (c, u) => roll(u), spin: (u) => -1.8 * (1 - Math.pow(1 - Math.min(1, u / 0.8), 3)) / BR,
           cam: (u) => ({ p: CAMP, look: LOOK, fov: 38 - 2 * u }) },
-        { name: 'today', T: [2.0, 4.2], clip: 'win', xf: winXf, keys: [[0, 1.75], [1, 2.3]], crack: true, anchor: 2.05,
+        { name: 'today', T: [2.0, 4.2], ...TODAY, crack: true,
           ball: () => REST.clone().setY(BR * 0.82), squash: 0.18,
           cam: (u) => ({ p: [CAMP[0], CAMP[1] + 0.1 * u, CAMP[2] + 0.4 * u], look: [LOOK[0], LOOK[1] + 0.6 * VM.ease.inOutSine(Math.min(1, u / 0.45)), LOOK[2]], fov: 40 }) },   // tilt up from the ball to him
         { name: 'card', T: [4.2, 7.6], card: true, noAthlete: true,
@@ -213,7 +221,7 @@
     window.STORY_TIMES = { land: T_LAND, cuts: SHOTS.map((s) => s.T[0]) };
 
     // faces (VRoid expressions): grief last year, quiet resolve today, joy in the answer
-    const FACE = { floor: { sorrow: 0.6 }, kneel: { sorrow: 0.9 }, rolls: { sorrow: 0.8 }, eyes: { angry: 0.35 }, today: { joy: 1, a: 0.5 } };
+    const FACE = { floor: { sorrow: 0.6 }, kneel: { sorrow: 0.9 }, rolls: { sorrow: 0.8 }, eyes: { angry: 0.35 }, today: P.today === 'win' ? { joy: 1, a: 0.5 } : { angry: 0.55, a: 1 } };
     let faceKey = null;
     function renderAt(T, shot) {
       const u = uOf(shot, T), c = clipT(shot, T);

@@ -31,7 +31,7 @@
     const bc = new Map();
     const bone = (n) => { if (!bc.has(n)) { let f = null; const re = new RegExp('^' + n + '$'); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); bc.set(n, f); } return bc.get(n); };
     const wp = (n) => Pw(bone(n));
-    if (P.noCal) window.RT_FLAGS = { restCal: false };
+    if (P.noCal) window.RT_FLAGS = { restCal: false }; if (P.volLog) window.RT_VOLLOG = 1;
     const retarget = makeRetarget(THREE, model, bone);
     const clip = await loadMocap(THREE, GLTFLoader, P.clip);
     const legOf = (p) => p[0].distanceTo(p[1]) + p[1].distanceTo(p[2]);
@@ -40,10 +40,10 @@
     const M0 = clip.sample(0), SC = LEG / legOf([M0.LThigh, M0.LShin, M0.LFoot]), piv = M0.Hip.clone().setY(0);
     const ankleRest = wp('LeftFoot').y - new THREE.Box3().setFromObject(model).min.y;
     const xf = (v) => v.clone().sub(piv).multiplyScalar(SC).add(V3(0, -clip.floor * SC + soleToToe, 0));
-    xf.footDy = ankleRest - xf(M0.LFoot).y;
+    xf.footDy = ankleRest - xf(M0.LFoot).y; xf.fist = P.fist ?? (clip.bvh ? 1 : 0);
     // capture mannequin: a capsule per link
-    const root = await loadGLB(GLTFLoader, P.clip);
-    const links = []; root.scene.traverse((o) => { if (o.parent && o.parent.name && o.parent.name !== 'mocap_root' && o.parent !== root.scene && !/Finger|_end/.test(o.name)) links.push([o.parent.name, o.name]); });
+    const links = [['Hip', 'LowerSpine'], ['LowerSpine', 'MiddleSpine'], ['MiddleSpine', 'Chest'], ['Chest', 'Neck'], ['Neck', 'Head']];
+    for (const s of ['L', 'R']) links.push(['Chest', s + 'Clavicle'], [s + 'Clavicle', s + 'Shoulder'], [s + 'Shoulder', s + 'Forearm'], [s + 'Forearm', s + 'Hand'], ['Hip', s + 'Thigh'], [s + 'Thigh', s + 'Shin'], [s + 'Shin', s + 'Foot'], [s + 'Foot', s + 'Toe']);
     const sideCol = (n) => /^L[A-Z]|^Left/.test(n) ? 0x2fae4a : /^R[A-Z]|^Right/.test(n) ? 0xe8782a : 0x8a8f9c;
     const man = new THREE.Group(); scene.add(man);
     const segs = links.map(([a, b]) => { const r = /Spine|Chest|Hip|Neck/.test(b) && !/Thigh/.test(b) ? 0.07 : /Head/.test(b) ? 0.09 : 0.045;
@@ -57,7 +57,7 @@
     const camDir = V3(Math.sin(P.camYaw / 57.3), 0, Math.cos(P.camYaw / 57.3));
     VM.onFrame((T) => {
       const M = clip.sample(T);
-      if (!P.restOnly) retarget(M, xf);
+      if (!P.restOnly) retarget(M, xf, clip.stand);
       for (const [a, b, m, s] of segs) { const A = xf(M[a]), B = xf(M[b]), d = B.clone().sub(A), L = d.length();
         m.position.copy(A).add(B).multiplyScalar(0.5); m.scale.set(1, Math.max(L, 1e-3), 1); m.quaternion.setFromUnitVectors(V3(0, 1, 0), d.normalize()); s.position.copy(B); }
       if (P.dump) { const f = (v) => `(${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)})`;
@@ -78,7 +78,7 @@
         man.visible = off === 0; model.visible = off === 1; const vw = P.solo ? W : W / 2; cam.aspect = vw / H; cam.updateProjectionMatrix();
         renderer.setViewport(vx, 0, vw, H); renderer.setScissor(vx, 0, vw, H);
         const cd = P.face ? (() => { const s = clip.sample(P.faceAt ?? T), d = s.LShoulder.clone().sub(s.RShoulder).add(s.LThigh.clone().sub(s.RThigh)); return V3(-d.z, 0, d.x).normalize().applyAxisAngle(V3(0, 1, 0), P.camYaw / 57.3); })() : camDir;   // face: camera in front of him (camYaw: offset)
-        cam.position.copy(h).addScaledVector(cd, P.dist).setY(P.camY); cam.lookAt(h.x, 0.95, h.z);
+        cam.position.copy(h).addScaledVector(cd, P.dist).setY(P.camY); cam.lookAt(h.x, P.lookY ?? 0.95, h.z);
         renderer.render(scene, cam);
       }
       man.visible = true; model.visible = true;

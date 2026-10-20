@@ -37,7 +37,7 @@ The mocap and ball model are licensed assets and are not committed.
 
 `story.html` reuses the arena, the anime post pass (`stage.js`, shared with `spike_seq.html`), the character and the retarget:
 `part: "intro"` is last year's lost point in grey (`3-Dig in front with one knee on the ground`) and today's eyes (`1-IDLE`);
-`part: "outro"` is the match cut from last year's ball to today's, with the roar (`12-Reaction after point obtained-Take3`) and the end card.
+`part: "outro"` is the match cut from last year's ball to today's, with the roar (both fists up, see below) and the end card.
 `story_full.json` assembles intro + spike + outro with music and sound effects.
 `mocap_probe.html` prints a clip's detected events and the hip/hand path (debugging helper).
 
@@ -62,6 +62,22 @@ After the direction pass, `makeRetarget` therefore runs two-bone IK:
 - **Hands:** placed where the capture's are relative to the chest, scaled to this arm length, with the elbow as the pole.
 
 `xf.footDy` matches standing ankle heights, and `xf.ik = false` turns the IK off.
+Rest calibration: the Motion Cast skeleton's joints don't sit where the rig's do. Its spine zig-zags: the lower-spine joint sits behind
+the pelvis joint and the head joint well ahead of the neck. Its collarbones run from the sternum back to the shoulders, and its ankle sits
+lower over the toe. Copied raw, the segment directions tipped the standing character's pelvis 27° back and pulled his collarbones 24° back.
+In the cheer, the sway-back made the hips read as facing the other way. `makeRetarget` therefore turns each segment by the difference
+between the capture standing still and the rig at rest, in the body's own frame. `CAP_STAND` holds the Motion Cast values, measured
+over `1-IDLE` with `calib_probe.html`; a BVH take is calibrated from its own opening frames (`measureStand`). `rtFlags: {restCal: false}`
+turns the calibration off for comparisons. `cheer_compare.html` draws the raw capture as a mannequin next to the character.
+
+## Roar: Bandai Namco Research Motiondataset-2 (CC BY-NC 4.0)
+
+The roar at the end of the spike and today's shot in the outro use "raise up both hands, masculine" takes (`_007` and `_002`). These come
+from github.com/BandaiNamcoResearchInc/Bandai-Namco-Research-Motiondataset, `dataset/Bandai-Namco-Research-Motiondataset-2/data/`.
+The licence is CC BY-NC 4.0: non-commercial use only, with credit, which both scenes show. The files aren't committed; put them in
+`impact/mocap/bandai/`. `loadMocap` reads BVH: three's BVHLoader, joints renamed to the capture's names, cm to m, a mid-spine joint
+added. These takes have no fingers, so `xf.fist` closes the hands into fists, with the thumb wrapped over the fingers.
+`roar: "win"` (spike) and `today: "win"` (outro) bring back the Motion Cast won-point reaction.
 `retarget_check.html` draws the capture skeleton (red) over the character (blue skeleton, translucent mesh) from the side and front.
 It also logs per-joint distances and the hand gap, for example:
 `node ../../mograph/render.mjs --html impact/retarget_check.html --out work/rc.mov --duration 6 --fps 2 --opaque 1 --width 1280 --height 540 --stills 2.6,3.4`.
@@ -73,6 +89,6 @@ It isn't committed. Get it from the `vroid/beta/` folder of github.com/madjin/vr
 - `loadCharacter` (loadglb.js): renames the VRM humanoid bones to Mixamo names, adds a HeadTop_End marker, and exposes the facial blendshape groups:
   `gltf.expr('angry', 1)`, `'a'`, `'sorrow'`, `'joy'`, `'blink'`.
 - `paintKit` (kit.js) hides the VRoid hoodie and trousers, then paints a jersey with a number, shorts, knee pads and socks onto the body texture.
+  The body and the face get the same skin tone (`SKIN_TONE`). It is deep enough that lit skin stays out of the cel pass's top tone band, which reads as white.
   The hands' UV islands, which sit inside the torso area, are masked out using the skin weights.
 - `kitNormalMap` bakes the fabric relief (knit, twill, seams, hems, raised number, quilted pads) into the normal map, and into the colour as fold shading.
-- `makeRetarget(..., { rhythm: true })` uses a scapulohumeral rhythm: the shoulder girdle supplies a third of the arm's elevation, so a raised arm doesn't pinch the shoulder.

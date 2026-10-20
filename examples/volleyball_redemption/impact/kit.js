@@ -20,6 +20,9 @@ function handMask(THREE, model, size, re = /(Left|Right)Hand/, minW = 0) {
   });
   return c;
 }
+// skin multiply for the VRoid textures: deep enough that lit skin stays below the cel pass's top tone band (stage.js posterises
+// luminance into 4 bands; lit skin rounded up to the top band reads as white, the "white face")
+const SKIN_TONE = '#b07e5c';
 function paintKit(THREE, model, opt = {}) {
   const HANDS = handMask(THREE, model, 1024);
   const NECK = handMask(THREE, model, 1024, /^(Neck|Head)$/, opt.neckW ?? 0.5);   // neck skin: weighted mostly to the neck/head
@@ -31,12 +34,18 @@ function paintKit(THREE, model, opt = {}) {
     const name = o.material.name || '';
     if (/Tops_|Bottoms_/.test(name)) { o.visible = false; return; }
     if (/Shoes_/.test(name)) { o.material = o.material.clone(); o.material.map = null; o.material.color = new THREE.Color(0xeeeef0); return; }   // white court shoes
+    if (/Face_00_SKIN/.test(name) && o.material.map) {   // the face gets the body's skin tone (same base colour in both textures): otherwise a pale face on a tanned body
+      const im = o.material.map.image, c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d');
+      g.drawImage(im, 0, 0); g.globalCompositeOperation = 'multiply'; g.fillStyle = opt.skin || SKIN_TONE; g.fillRect(0, 0, c.width, c.height);
+      g.globalCompositeOperation = 'destination-in'; g.drawImage(im, 0, 0);   // keep the texture's own alpha
+      const t = new THREE.CanvasTexture(c), src = o.material.map; t.flipY = src.flipY; t.colorSpace = src.colorSpace; t.wrapS = src.wrapS; t.wrapT = src.wrapT;
+      o.material = o.material.clone(); o.material.map = t; o.material.needsUpdate = true; return; }
     if (!/Body_00_SKIN/.test(name) || !o.material.map) return;
     if (painted) { o.material = o.material.clone(); o.material.map = painted.map; o.material.normalMap = painted.normalMap; if (painted.normalScale) o.material.normalScale = painted.normalScale; o.material.needsUpdate = true; return; }
     const src = o.material.map, im = src.image, S = im.width / 1024;
     const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; let g = c.getContext('2d');
     g.drawImage(im, 0, 0);
-    g.globalCompositeOperation = 'multiply'; g.fillStyle = opt.skin || '#d9ab8f'; g.fillRect(0, 0, c.width, c.height);   // sun-warmed skin (the bare texture blows out under the arena lights)
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = opt.skin || SKIN_TONE; g.fillRect(0, 0, c.width, c.height);   // sun-warmed skin (the bare texture blows out under the arena lights)
     g.globalCompositeOperation = 'source-over';
     g.save(); g.scale(S, S);
     const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };   // (uses the current layer)
