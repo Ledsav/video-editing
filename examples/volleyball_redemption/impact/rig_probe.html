@@ -13,7 +13,7 @@
     window.RT_FLAGS = { ik: !!P.ik };
     // two copies: rest (left) and posed (right)
     const load = async () => { const g = await loadCharacter(THREE, GLTFLoader, P.model); const m = g.scene;
-      m.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.material = new THREE.MeshLambertMaterial({ map: o.material.map, transparent: o.material.transparent, alphaTest: o.material.alphaTest, side: THREE.DoubleSide }); } });
+      m.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.material = new THREE.MeshLambertMaterial({ name: o.material.name, map: o.material.map, transparent: o.material.transparent, alphaTest: o.material.alphaTest, side: THREE.DoubleSide }); } });
       const find = (re) => { let f = null; m.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
       const Pw = (b) => V3(0, 0, 0).setFromMatrixPosition(b.matrixWorld);
       m.updateMatrixWorld(true);
@@ -67,6 +67,16 @@
       const d = qr.clone().invert().multiply(q), axis = child.position.clone().normalize();
       const tw = 2 * Math.atan2(new THREE.Vector3(d.x, d.y, d.z).dot(axis), d.w) * 57.3;
       out.push(`TWIST ${n} ${(((tw + 540) % 360) - 180).toFixed(0)} deg`); }
+    if (P.radius) { // body radius around the hips->neck axis, by height fraction (vertices skinned to torso/hip bones only)
+      const h0 = R.Pw(R.bone('Hips')), h1 = R.Pw(R.bone('Neck')), ax = h1.clone().sub(h0), L = ax.length(); ax.normalize();
+      const bins = Array(12).fill(null);
+      R.m.traverse((o) => { if (!o.isSkinnedMesh || !/Body_00_SKIN/.test(o.material.name)) return; const geo = o.geometry, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, pos = geo.attributes.position, bones = o.skeleton.bones, v = new THREE.Vector3();
+        for (let i = 0; i < pos.count; i += 2) { let best = 0, b = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > best) { best = w; b = si.getComponent(i, k); } }
+          if (!/^(Hips|Spine|Spine1|Spine2|LeftUpLeg|RightUpLeg)$/.test(bones[b].name)) continue;
+          v.fromBufferAttribute(pos, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld);
+          const d = v.clone().sub(h0), k = d.dot(ax) / L; if (k < -0.3 || k > 1) continue; const bi = Math.min(11, Math.floor((k + 0.3) / 1.3 * 12));
+          const r = d.sub(ax.clone().multiplyScalar(d.dot(ax))); bins[bi] = bins[bi] || [1, -1, 1, -1]; const B = bins[bi]; B[0] = Math.min(B[0], r.x); B[1] = Math.max(B[1], r.x); B[2] = Math.min(B[2], r.z); B[3] = Math.max(B[3], r.z); } });
+      out.push('BOX (k: x min..max / z min..max, m, rest model faces ' + (R.m.rotation.y ? '-z' : '+z') + ') ' + bins.map((r, i) => `${(-0.3 + (i + 0.5) * 1.3 / 12).toFixed(2)}:${r ? r.map((v) => v.toFixed(2)).join(',') : '-'}`).join(' ')); }
     console.error(out.join('\n'));
     // ---- picture ----
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); renderer.setSize(W, H); document.body.appendChild(renderer.domElement);

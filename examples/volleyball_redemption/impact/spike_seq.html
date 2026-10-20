@@ -229,6 +229,11 @@
       const flex = THREE.MathUtils.degToRad(A[2] + (B[2] - A[2]) * u), tw = THREE.MathUtils.degToRad(A[3] + (B[3] - A[3]) * u);
       const n = V3(0, 0, 1).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V3(1, 0, 0), up)).applyAxisAngle(up, tw);   // natural fold direction
       return [up, up.clone().multiplyScalar(Math.cos(flex)).addScaledVector(n, Math.sin(flex)).normalize()]; };
+    // the swing plane (contact -> snap-through) and the wrist angle through the attack, in degrees
+    const SNAP_FROM = V3(0.12, 0.96, 0.24).normalize(), SNAP_TO = V3(-0.05, 0.25, 0.97).normalize();
+    const WRIST_KEYS = [[-0.20, 0], [-0.07, -35], [-0.01, -10], [0.02, 40], [0.05, 45], [0.10, 25], [0.25, 0]];
+    const wristAt = (x) => { if (x <= WRIST_KEYS[0][0]) return 0; let i = 0; while (i < WRIST_KEYS.length - 2 && x > WRIST_KEYS[i + 1][0]) i++;
+      const [a, va] = WRIST_KEYS[i], [b, vb] = WRIST_KEYS[i + 1]; return va + (vb - va) * VM.ease.inOutSine(Math.min(1, Math.max(0, (x - a) / (b - a)))); };
     const armW = (tau) => { const x = tau - smash.contact; return rampW(x, -0.8, 0.38) * (1 - rampW(tau, smash.land + 0.15, 0.4)); };
     function attackArm(M, tau) {
       const w = P.armW ?? armW(tau); if (w <= 0) return M;
@@ -241,6 +246,17 @@
       const [ku, kf] = keyAt(x);
       swing('RShoulder', 'RForearm', toW(ku), ['RHand', ...fingers]);
       swing('RForearm', 'RHand', toW(kf), fingers);
+      // wrist snap: the hand's angle to the forearm in the swing plane (+ = flexed towards the court, - = cocked back)
+      const th = THREE.MathUtils.degToRad(P.wristDeg ?? wristAt(x)) * w;
+      if (out.RightFinger2) {
+        const f = out.RHand.clone().sub(out.RForearm).normalize();
+        const n = V3(0, 0, 0).crossVectors(toW(SNAP_FROM), toW(SNAP_TO)); n.sub(f.clone().multiplyScalar(n.dot(f)));
+        if (n.lengthSq() > 1e-8) {
+          const want = f.clone().applyAxisAngle(n.normalize(), th), have = out.RightFinger2.clone().sub(out.RHand).normalize();
+          const q = new THREE.Quaternion().setFromUnitVectors(have, want), h = out.RHand;
+          for (const k of fingers) out[k] = out[k].clone().sub(h).applyQuaternion(q).add(h);
+        }
+      }
       return out;
     }
     // the hitting hand open and flat (the capture's fingers curl into a claw): each finger straightened along its knuckle line
@@ -530,7 +546,7 @@
       ring.scale.setScalar(0.1 + rf * 2.4); ring.material.opacity = sf > 0 ? (1 - rf) * 0.95 : 0;
       crack2.material.opacity = sf > 0 ? Math.min(1, sf / 0.01) * (1 - VM.prog(t, T_CONTACT + tFloor + 0.6, 0.4)) : 0; crack2.scale.setScalar(0.3 + 0.7 * Math.min(1, Math.max(0, sf) / 0.03));
       const u = Math.min(1, Math.max(0, (T - shot.T[0]) / (shot.T[1] - shot.T[0])));
-      const c = P.sideCam ? (() => { const h = hipPos(); return { p: [h.x + P.sideCam[0], h.y + P.sideCam[1], h.z + P.sideCam[2]], look: [h.x, h.y + 0.45, h.z], fov: 40 }; })() : shot.cam(t, u);   // DEBUG
+      const c = P.sideCam ? (() => { const h = hipPos(); return { p: [h.x + P.sideCam[0], h.y + P.sideCam[1], h.z + P.sideCam[2]], look: [h.x, h.y + (P.sideCam[3] ?? 0.45), h.z], fov: P.sideCam[4] ?? 40 }; })() : shot.cam(t, u);   // DEBUG
       const punch = P.clean ? 0 : REAL_T > T_HIT_VIDEO ? 10 * Math.exp(-(REAL_T - T_HIT_VIDEO) * 9) * (shot.comic ? 1 : 0.5) : 0;
       cam.position.set(...c.p); cam.fov = Math.max(12, c.fov * (1 + 0.35 * (shot.lens || 0)) - punch); cam.updateProjectionMatrix(); cam.lookAt(...c.look);
       cam.rotateZ((c.roll || 0) + (T > T_FLOOR_VIDEO ? 0.05 * Math.exp(-(T - T_FLOOR_VIDEO) * 5) * Math.sin((T - T_FLOOR_VIDEO) * 40) : 0));

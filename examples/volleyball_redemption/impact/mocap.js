@@ -65,6 +65,38 @@ function makeRetarget(THREE, model, bone) {
   const restHipLocal = bone('Hips').position.clone();
   model.updateMatrixWorld(true);
   const ARM = {}; for (const s of ['Left', 'Right']) ARM[s] = wpos(bone(`${s}Arm`)).distanceTo(wpos(bone(`${s}ForeArm`))) + wpos(bone(`${s}ForeArm`)).distanceTo(wpos(bone(`${s}Hand`)));
+  // torso volumes for hand contact: for the pelvis and spine bones, an elliptic cylinder (in the bone's own space) fitted to the
+  // vertices that bone mostly carries. A hand placed on the capture's hip lands inside a wider character: it is pushed back out.
+  const VOL = [];
+  { model.updateMatrixWorld(true);
+    const acc = new Map(), v = V();
+    model.traverse((o) => { if (!o.isSkinnedMesh || !o.visible) return; const geo = o.geometry, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, pos = geo.attributes.position, bs = o.skeleton.bones;
+      for (let i = 0; i < pos.count; i += 2) { let best = 0, b = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > best) { best = w; b = si.getComponent(i, k); } }
+        const bn = bs[b]; if (best < 0.5 || !['Hips', 'Spine', 'Spine1', 'Spine2'].some((n) => bone(n) === bn)) continue;
+        v.fromBufferAttribute(pos, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld);
+        const l = v.clone().applyMatrix4(new THREE.Matrix4().copy(bn.matrixWorld).invert());
+        const A = acc.get(bn) || { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9, z0: 1e9, z1: -1e9 }; acc.set(bn, A);
+        A.x0 = Math.min(A.x0, l.x); A.x1 = Math.max(A.x1, l.x); A.y0 = Math.min(A.y0, l.y); A.y1 = Math.max(A.y1, l.y); A.z0 = Math.min(A.z0, l.z); A.z1 = Math.max(A.z1, l.z); } });
+    for (const [b, A] of acc) VOL.push({ b, cx: (A.x0 + A.x1) / 2, cz: (A.z0 + A.z1) / 2, a: (A.x1 - A.x0) / 2, c: (A.z1 - A.z0) / 2, y0: A.y0, y1: A.y1 }); }
+  // keep a world point out of the torso volumes (+ margin); returns the corrected point or null when it was outside
+  // the nearest surface point the arm can still reach (root: shoulder joint, reach: arm length): a plain radial push can land
+  // beyond reach (a hand crossing to the far hip), which would lock the arm straight and flip the elbow
+  function pushOut(p, margin, root, reach) {
+    let moved = null;
+    for (const T of VOL) {
+      const inv = new THREE.Matrix4().copy(T.b.matrixWorld).invert(), l = (moved || p).clone().applyMatrix4(inv), sc = V().setFromMatrixScale(T.b.matrixWorld).x, m = margin / sc;
+      if (l.y < T.y0 || l.y > T.y1) continue;
+      const dx = l.x - T.cx, dz = l.z - T.cz, a = T.a + m, c = T.c + m, e = (dx * dx) / (a * a) + (dz * dz) / (c * c);
+      if (e >= 1) continue;
+      let best = null, bd = 1e9;
+      for (let i = 0; i < 72; i++) {
+        const th = i / 72 * Math.PI * 2, q = V().set(T.cx + a * Math.cos(th), l.y, T.cz + c * Math.sin(th)).applyMatrix4(T.b.matrixWorld);
+        if (root && q.distanceTo(root) > reach * 0.96) continue;
+        const d = q.distanceTo(moved || p); if (d < bd) { bd = d; best = q; } }
+      if (best) moved = best;
+    }
+    return moved;
+  }
   // natural hinges at rest (world -> each upper bone's local space): elbows flex forward, knees flex back
   const HINGE = new Map(), PELVIS_HINGE = new Map();   // joint hinges in the upper bone's space; knees also in the pelvis' space
   { const up = V().set(0, 1, 0), fwd = wpos(bone('LeftArm')).sub(wpos(bone('RightArm'))).cross(up).setY(0).normalize();
@@ -140,6 +172,7 @@ function makeRetarget(THREE, model, bone) {
   // the rig has no forearm twist bones: a wrist turned far from its rest roll collapses the skin ("candy wrapper").
   // Keep the hand's roll about its own long axis (towards the middle finger) within +-limit of rest.
   const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8, ELBOW_POLE_LIM = (window.RT_FLAGS || {}).elbowLim ?? 0.7;   // 40 deg
+  const CLAV_MAX = THREE.MathUtils.degToRad((window.RT_FLAGS || {}).clavMax ?? 25), HAND_MARGIN = 0.035;   // wrist centre above the skin
   // and keep the hand within MAX_WRIST_BEND of the forearm's line: past that the wrist reads as broken
   function limitBend(h, child, fore, limit) {
     h.updateMatrixWorld(true);
@@ -196,8 +229,8 @@ function makeRetarget(THREE, model, bone) {
         const d = rest.get(b).clone().invert().multiply(b.quaternion), ax = c.position.clone().normalize();   // relative to the parent bone (where the skin wrings)
         let a = 2 * Math.atan2(V().set(d.x, d.y, d.z).dot(ax), d.w) * 57.3; return ((a + 540) % 360) - 180; };
       const flex = (a, b, c) => (180 - wpos(bone(b)).sub(wpos(bone(a))).angleTo(wpos(bone(c)).sub(wpos(bone(b)))) * 57.3);
-      const clav = (s) => { const d = wpos(bone(`${s}Arm`)).sub(wpos(bone(`${s}Shoulder`))).normalize(); return Math.asin(Math.max(-1, Math.min(1, d.y))) * 57.3; };
-      console.error(`JOINT t=${T.toFixed(3)} ${window.AUDIT_SHOT || ''} twistL ${tw('LeftArm').toFixed(0)} twistR ${tw('RightArm').toFixed(0)} ftwL ${tw('LeftForeArm').toFixed(0)} ftwR ${tw('RightForeArm').toFixed(0)} elbowL ${flex('LeftArm', 'LeftForeArm', 'LeftHand').toFixed(0)} elbowR ${flex('RightArm', 'RightForeArm', 'RightHand').toFixed(0)} clavL ${clav('Left').toFixed(0)} clavR ${clav('Right').toFixed(0)}`);
+      const clav = (s) => { const d = wpos(bone(`${s}Arm`)).sub(wpos(bone(`${s}Shoulder`))).normalize(), up = wpos(bone('Neck')).sub(wpos(bone('Spine2'))).normalize(); return Math.asin(Math.max(-1, Math.min(1, d.dot(up)))) * 57.3; };
+      console.error(`JOINT t=${T.toFixed(3)} ${window.AUDIT_SHOT || ''} twistL ${tw('LeftArm').toFixed(0)} twistR ${tw('RightArm').toFixed(0)} ftwL ${tw('LeftForeArm').toFixed(0)} ftwR ${tw('RightForeArm').toFixed(0)} elbowL ${flex('LeftArm', 'LeftForeArm', 'LeftHand').toFixed(0)} elbowR ${flex('RightArm', 'RightForeArm', 'RightHand').toFixed(0)} clavL ${clav('Left').toFixed(0)} clavR ${clav('Right').toFixed(0)} wristR ${(wpos(bone('RightHand')).sub(wpos(bone('RightForeArm'))).angleTo(wpos(bone('RightHandMiddle1')).sub(wpos(bone('RightHand')))) * 57.3).toFixed(0)}`);
     }
   }
 
@@ -217,7 +250,12 @@ function makeRetarget(THREE, model, bone) {
       twoVec(chest, wpos(bone('Neck')).sub(wpos(chest)), wpos(bone('LeftArm')).sub(wpos(bone('RightArm'))),
         D(M, 'Chest', 'Neck'), D(M, 'RShoulder', 'LShoulder')); }
     for (const [b, c, f, t] of NK) swing(bone(b), bone(c), D(M, f, t));
-    for (const [b, c, f, t] of LIM) swing(bone(b), bone(c), D(M, f, t));
+    for (const [b, c, f, t] of LIM) {
+      const d = D(M, f, t);
+      if (b.endsWith('Shoulder')) {                    // collarbone: a shoulder shrugs at most ~25 deg above the chest's horizontal
+        const up = wpos(bone('Neck')).sub(wpos(bone('Spine2'))).normalize(), dn = d.clone().normalize(), el = Math.asin(Math.max(-1, Math.min(1, dn.dot(up))));
+        if (el > CLAV_MAX) { const hz = dn.clone().sub(up.clone().multiplyScalar(dn.dot(up))).normalize(); d.copy(hz.multiplyScalar(Math.cos(CLAV_MAX)).addScaledVector(up, Math.sin(CLAV_MAX))); } }
+      swing(bone(b), bone(c), d); }
     // directions alone lose contacts on a differently proportioned body (hands that should join, feet that should stay
     // planted): two-bone IK puts the ankles where the capture's are and the hands where the capture's are relative to the chest
     // (scaled to this arm length), with the capture's knee / elbow direction as the pole
@@ -238,6 +276,9 @@ function makeRetarget(THREE, model, bone) {
         const tgt = chestA.clone().add(X(`${m}Hand`).sub(chestC).multiplyScalar(ra));
         const pole = chestA.clone().add(X(`${m}Forearm`).sub(chestC).multiplyScalar(ra));
         twoBone(bone(`${s}Arm`), bone(`${s}ForeArm`), bone(`${s}Hand`), tgt, pole);
+        model.updateMatrixWorld(true);
+        const out = (window.RT_FLAGS || {}).pushOut === false ? null : pushOut(wpos(bone(`${s}Hand`)), HAND_MARGIN, wpos(bone(`${s}Arm`)), ARM[s]);
+        if (out) { twoBone(bone(`${s}Arm`), bone(`${s}ForeArm`), bone(`${s}Hand`), out, pole); model.updateMatrixWorld(true); }
       }
     }
     for (const s of ['Left', 'Right']) {                // hand: towards the middle finger, palm across index -> pinky
