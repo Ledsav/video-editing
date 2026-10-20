@@ -72,7 +72,7 @@ The scoring follows volleyball rules: sets 1–4 go to 25 with a two-point lead,
 | 4 | 0:04.35–0:05.5 | Kneel (grey) | his face, hand to his chest | *He never forgot that point.* | |
 | 5 | 0:05.5–0:06.95 | Eyes (colour) | white flash to colour, extreme close-up on his eyes | TODAY · FINAL · SET 4 → **MATCH POINT 25 : 24** | riser + impact into `rise.wav` |
 | 6 | 0:06.95–0:08.2 | The set | the ball rising from the setter into the lights | **THIS TIME, HE ATTACKS.** | whoosh + boom |
-| 7 | 0:08.2–0:18 | The spike | `spike_seq.html`: run-up, ground-level liftoff with an impact frame, rise, POV, comic impact frame (arm all the way through), ball flight, floor hit-stop + BAM, roar with arms in a V | 26 : 24 | riser, impact/boom on takeoff, contact and floor (contact on a downbeat) |
+| 7 | 0:08.2–0:18 | The spike | `spike_seq.html`: run-up, ground-level liftoff with an impact frame, rise (the bow drawn: elbow back), comic impact frame (held drawn bow, whip, contact, arm all the way down), ball flight, floor hit-stop + BAM, roar with arms in a V | 26 : 24 | riser, impact/boom on takeoff, contact and floor (contact on a downbeat) |
 | 8 | 0:18–0:20 | Last year (grey) | low on the floor: last year's ball rolls to a stop in front of the kneeling player | *He lost this point once.* | muffled `fall.wav` |
 | 9 | 0:20–0:22.2 | Today (colour) | match cut, same lens: today's ball in the cracked floor, then a tilt up to him roaring | *He never stopped coming back.* | impact + boom, `rise.wav` returns |
 | 10 | 0:22.2–0:25.6 | End card | the Mikasa ball turning on navy | **NEVER GIVE UP.** / EVERY SET · EVERY POINT · EVERY DAY / credits | reverse swell + boom, fade to black |

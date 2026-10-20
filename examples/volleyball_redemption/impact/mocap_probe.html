@@ -12,6 +12,19 @@
     let s = `CLIP ${P.file} dur ${f(m.dur)} floor ${f(m.floor)} takeoff ${f(m.takeoff)} land ${f(m.land)}\n`;
     for (let t = 0; t <= m.dur; t += P.step) { const M = m.sample(t);
       s += `t ${f(t)} hip ${f(M.Hip.x)} ${f(M.Hip.y)} ${f(M.Hip.z)} head ${f(M.Head.x)} ${f(M.Head.y)} ${f(M.Head.z)} rh ${f(M.RHand.x)} ${f(M.RHand.y)} ${f(M.RHand.z)}\n`; }
+    if (P.jitter) {   // per-frame angular change of hand / finger directions, and the hand's second difference (noise shows as spikes)
+      const ang = (a, b) => (a.angleTo(b) * 180 / Math.PI);
+      const dirs = (M) => ({ hand: M.RFinger2 ? 0 : M.RightFinger2.clone().sub(M.RHand).normalize(), palm: M.RightFinger1.clone().sub(M.RightFinger4).normalize(),
+        fore: M.RHand.clone().sub(M.RForearm).normalize(), fing: M.RightFinger21.clone().sub(M.RightFinger2).normalize(), lhand: M.LeftFinger2.clone().sub(M.LHand).normalize() });
+      s = 'JIT t hand palm fore fing lhand acc\n';
+      const [a, b] = P.jitter;
+      for (let i = Math.round(a * 60); i < Math.round(b * 60); i++) {
+        const M0 = m.sample((i - 1) / 60), M1 = m.sample(i / 60), M2 = m.sample((i + 1) / 60), d0 = dirs(M0), d1 = dirs(M1), d2 = dirs(M2);
+        const acc = M2.RHand.clone().add(M0.RHand).sub(M1.RHand.clone().multiplyScalar(2)).length() * 3600;
+        // jitter = change of angular velocity (second difference of direction)
+        const j = (k) => Math.abs(ang(d1[k], d2[k]) - ang(d0[k], d1[k])).toFixed(1);
+        s += `${(i / 60).toFixed(3)} ${j('hand')} ${j('palm')} ${j('fore')} ${j('fing')} ${j('lhand')} ${acc.toFixed(0)}\n`; }
+    }
     console.error(s);
   } catch (e) { console.error('ERR ' + e.message); } res(); });
 </script></body></html>

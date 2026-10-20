@@ -8,21 +8,42 @@ async function loadMocap(THREE, GLTFLoader, file) {
   mixer.clipAction(clip).play();
   const nodes = {}; root.traverse((o) => { if (o.name) nodes[o.name] = o; });
   const dur = clip.duration - 1 / 60;                  // the last key loops back to the first: drop it
+  function raw(t) {
+    mixer.setTime(Math.min(Math.max(t, 0), dur)); root.updateMatrixWorld(true);
+    const P = {}; for (const n in nodes) P[n] = new THREE.Vector3().setFromMatrixPosition(nodes[n].matrixWorld);
+    // Head_end sits on the head joint in these captures: rebuild it 20 cm up the head's own axis so the head pitch survives
+    if (nodes.Head && P.Head_end && P.Head_end.distanceTo(P.Head) < 1e-4) P.Head_end = new THREE.Vector3(0, 0.2, 0).applyMatrix4(nodes.Head.matrixWorld);
+    return P;
+  }
+  // bake every captured frame, then low-pass it (zero phase): marker noise reads as jitter, worst in slow motion.
+  // Fingers are smoothed as offsets from their hand, so the hand keeps its speed and the fingers stop trembling.
+  const fps = 60, n = Math.floor(dur * fps), F = [];
+  for (let i = 0; i <= n; i++) F.push(raw(i / fps));
+  const names = Object.keys(F[0]);
+  const handOf = (nm) => nm.startsWith('LeftFinger') ? 'LHand' : nm.startsWith('RightFinger') ? 'RHand' : null;
+  const sigmaOf = (nm) => handOf(nm) ? 3 : /Hand/.test(nm) ? 2 : /Forearm/.test(nm) ? 1.5 : 1.2;
+  const S = F.map(() => ({}));
+  const blur = (get, sigma, put) => { const r = Math.ceil(sigma * 3), w = []; for (let k = -r; k <= r; k++) w.push(Math.exp(-k * k / (2 * sigma * sigma)));
+    for (let i = 0; i <= n; i++) { const v = new THREE.Vector3(); let ws = 0;
+      for (let k = -r; k <= r; k++) { const j = Math.min(n, Math.max(0, i + k)); v.addScaledVector(get(j), w[k + r]); ws += w[k + r]; }
+      put(i, v.divideScalar(ws)); } };
+  for (const nm of names) if (!handOf(nm)) blur((j) => F[j][nm], sigmaOf(nm), (i, v) => (S[i][nm] = v));
+  for (const nm of names) { const h = handOf(nm); if (h && F[0][h]) blur((j) => F[j][nm].clone().sub(F[j][h]), sigmaOf(nm), (i, v) => (S[i][nm] = v.add(S[i][h]))); }
+  // Catmull-Rom between baked frames: no velocity kinks when a shot stretches one captured frame over several video frames
   const cache = new Map();
   function sample(t) {
     const k = Math.round(Math.min(Math.max(t, 0), dur) * 600);   // 0.1 frame cache
     if (cache.has(k)) return cache.get(k);
-    mixer.setTime(k / 600); root.updateMatrixWorld(true);
-    const P = {}; for (const n in nodes) P[n] = new THREE.Vector3().setFromMatrixPosition(nodes[n].matrixWorld);
-    // Head_end sits on the head joint in these captures: rebuild it 20 cm up the head's own axis so the head pitch survives
-    if (nodes.Head && P.Head_end && P.Head_end.distanceTo(P.Head) < 1e-4) P.Head_end = new THREE.Vector3(0, 0.2, 0).applyMatrix4(nodes.Head.matrixWorld);
+    const x = Math.min(k / 600 * fps, n), i = Math.min(Math.floor(x), n - 1), u = x - i, u2 = u * u, u3 = u2 * u;
+    const f0 = S[Math.max(0, i - 1)], f1 = S[i], f2 = S[i + 1], f3 = S[Math.min(n, i + 2)];
+    const c0 = -0.5 * u3 + u2 - 0.5 * u, c1 = 1.5 * u3 - 2.5 * u2 + 1, c2 = -1.5 * u3 + 2 * u2 + 0.5 * u, c3 = 0.5 * u3 - 0.5 * u2;
+    const P = {}; for (const nm of names) P[nm] = new THREE.Vector3().addScaledVector(f0[nm], c0).addScaledVector(f1[nm], c1).addScaledVector(f2[nm], c2).addScaledVector(f3[nm], c3);
     if (cache.size > 4000) cache.clear(); cache.set(k, P); return P;
   }
   // events: floor, takeoff, contact (highest right hand while airborne), landing
-  const fps = 60, n = Math.floor(dur * fps), low = [];
-  for (let i = 0; i <= n; i++) { const P = sample(i / fps); low.push(Math.min(P.LToe.y, P.RToe.y, P.LFoot.y, P.RFoot.y)); }
+  const low = [];
+  for (let i = 0; i <= n; i++) { const P = F[i]; low.push(Math.min(P.LToe.y, P.RToe.y, P.LFoot.y, P.RFoot.y)); }
   const floor = [...low].sort((a, b) => a - b)[Math.floor(low.length * 0.05)];
-  if (window.MOCAP_DEBUG) console.error('LOW ' + file + ' floor ' + floor.toFixed(3) + ' ' + low.filter((_, i) => i % 6 === 0).map((v) => v.toFixed(2)).join(' '));
   let best = [0, 0], s = -1;
   for (let i = 0; i <= n + 1; i++) {
     const air = i <= n && low[i] > floor + 0.1;
@@ -30,7 +51,7 @@ async function loadMocap(THREE, GLTFLoader, file) {
     if (!air && s >= 0) { if (i - s > best[1] - best[0]) best = [s, i]; s = -1; }
   }
   let contact = best[0], hy = -1e9;
-  for (let i = best[0]; i < best[1]; i++) { const y = sample(i / fps).RHand.y; if (y > hy) { hy = y; contact = i; } }
+  for (let i = best[0]; i < best[1]; i++) { const y = F[i].RHand.y; if (y > hy) { hy = y; contact = i; } }
   return { sample, dur, floor, takeoff: best[0] / fps, land: best[1] / fps, contact: contact / fps, airborne: best[1] > best[0] };
 }
 

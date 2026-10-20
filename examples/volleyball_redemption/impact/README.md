@@ -45,3 +45,9 @@ Retarget notes: the retarget takes bone directions from the capture itself. To t
 (`placer(...).rot` in `story.html`); turning only the root offset leaves the body facing the captured way.
 In the converted Motion Cast clips `Head_end` sits on the head joint. `loadMocap` rebuilds it along the head's own axis so the head pitch carries over.
 The toon materials keep the source `side`. The face mesh is double-sided, and with front faces only the dark mouth interior shows through it.
+Smoothing: `loadMocap` bakes every captured frame and low-passes it. The filter is zero-phase Gaussian, with sigma 1.2 frames for the body,
+1.5 for forearms and 2 for hands. Fingers get sigma 3, as offsets from their hand. Frames are then sampled with Catmull-Rom.
+Raw marker noise was about 1°/frame on the hands, with up to 14° palm spikes near contact. It showed as jitter, worst in the slow-motion shots,
+where one captured frame spans up to 6 video frames.
+The spike adds an additive layer on the hitting arm (`attackArm`): a deeper bow-and-arrow cock before contact (elbow high and back)
+and a full follow-through after it (arm down across the body). Both are zero at contact, so the hand still meets the ball.

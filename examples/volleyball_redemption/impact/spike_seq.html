@@ -133,10 +133,31 @@
       return out;
     }
     const roarW = (t) => { const x = t - ROAR_T; return VM.ease.inOutSine(Math.min(1, Math.max(0, (x - 0.35) / 0.3))) * (1 - VM.ease.inOutSine(Math.min(1, Math.max(0, (x - 1.75) / 0.45)))); };
+    // additive layer on the hitting arm (in the chest's own frame): a deeper bow-and-arrow cock before contact
+    // (elbow high and well back, hand by the ear) and a complete follow-through after it (arm all the way down, across the body)
+    const rampW = (x, a, d) => VM.ease.inOutSine(Math.min(1, Math.max(0, (x - a) / d)));
+    const cockW = (tau) => { const c = smash.contact; return rampW(tau, c - 0.42, 0.3) * (1 - rampW(tau, c - 0.12, 0.105)); };
+    const followW = (tau) => { const c = smash.contact; return rampW(tau, c + 0.01, 0.08) * (1 - rampW(tau, smash.land + 0.05, 0.35)); };
+    function attackArm(M, cw, fw) {
+      if (cw <= 0 && fw <= 0) return M;
+      const up = M.Neck.clone().sub(M.Chest).normalize(), rt = M.RShoulder.clone().sub(M.LShoulder).normalize();
+      const fwd = V3(0, 0, 0).crossVectors(up, rt).normalize(), side = V3(0, 0, 0).crossVectors(fwd, up).normalize();   // side: his right
+      const dir = (a, b, c) => side.clone().multiplyScalar(a).addScaledVector(up, b).addScaledVector(fwd, c).normalize();
+      const w = Math.max(cw, fw);
+      const upper = cw >= fw ? dir(0.55, 0.45, -0.7) : dir(-0.35, -0.8, 0.45);
+      const fore = cw >= fw ? dir(-0.4, 0.8, 0.05) : dir(-0.45, -0.9, 0.15);
+      const out = Object.assign({}, M), fingers = Object.keys(M).filter((n) => n.startsWith('RightFinger'));
+      const swing = (a, b, d, kids) => { const len = M[b].distanceTo(M[a]); const cur = M[b].clone().sub(M[a]).normalize();
+        const nb = out[a].clone().add(cur.lerp(d, w).normalize().multiplyScalar(len)); const dd = nb.clone().sub(out[b]);
+        out[b] = nb; for (const k of kids) out[k] = out[k].clone().add(dd); };
+      swing('RShoulder', 'RForearm', upper, ['RHand', ...fingers]);
+      swing('RForearm', 'RHand', fore, fingers);
+      return out;
+    }
     const mocapAt = (t) => {
       if (t >= ROAR_T) return raiseArms(blendMocap(THREE, win.sample(ROAR_FROM + t - ROAR_T), win.sample(ROAR_FROM + t - ROAR_T), 1, roarAlign), roarW(t));
       const tau = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND);
-      const A = smash.sample(Math.min(tau, smash.dur));
+      const A = attackArm(smash.sample(Math.min(tau, smash.dur)), P.cock ?? cockW(tau), P.follow ?? followW(tau));
       if (tau <= BLEND_AT) return A;
       return blendMocap(THREE, A, win.sample(WIN_FROM + tau - BLEND_AT), VM.ease.inOutSine(Math.min(1, (tau - BLEND_AT) / BLEND)), align); };
     console.error('MOCAP events takeoff ' + smash.takeoff.toFixed(2) + ' contact ' + smash.contact.toFixed(2) + ' land ' + smash.land.toFixed(2) + ' scale ' + SC.toFixed(3));
@@ -230,13 +251,11 @@
       { name: 'liftoff', T: [1.45, 2.2], t: [0.6, 0.86], lens: 0.85,                       // ground level: fast into the plant, slow on the explosion, then up
         keys: [[0, 0.6], [0.32, 0.705], [0.55, 0.745], [1, 0.86]],
         cam: (t, u) => { const f = LIFT; return { p: [f.x - 1.45, 0.95 + 0.6 * u, f.z + 1.15], look: [f.x, 0.3 + 1.7 * VM.ease.inCubic(u), f.z - 0.1], fov: 60, roll: 0.1 }; } },
-      { name: 'rise', T: [2.2, 2.95], t: [0.86, 0.99], ease: 'outQuad', lens: 0.3,          // sweeping orbit as he climbs above the net, arms driving up
+      { name: 'rise', T: [2.2, 3.3], t: [0.86, 0.965], ease: 'outQuad', lens: 0.3,           // sweeping orbit as he climbs above the net and draws the bow
         cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.72 - 0.14 * u), r = 4.4 - 1.0 * u;
           return { p: orbit(h, r, 1.6 + 0.8 * u, a), look: [h.x, h.y + 0.5, h.z], fov: 32 - 3 * u, roll: -0.1 + 0.06 * u }; } },
-      { name: 'pov', T: [2.95, 3.3], t: [0.99, 1.02], ease: 'linear', lens: 0.6,            // over his shoulder: the ball dropping onto him
-        cam: (t, u) => { const h = headPos(), b = ballAt(t); return { p: [h.x - 0.4, h.y + 0.3, h.z - 0.8], look: [b.x, b.y - 0.1, b.z], fov: 58, roll: 0.1 }; } },
-      { name: 'comic', T: [3.3, 5.05], t: [1.02, 1.33], comic: true, lens: 0.75,            // side on: bow drawn back (slow), the whip, HOLD at contact, arm all the way down
-        keys: [[0, 1.03], [0.2, 1.075], [0.32, 1.12], [1, 1.33]],
+      { name: 'comic', T: [3.3, 5.05], t: [0.965, 1.36], comic: true, lens: 0.75,            // side on: bow drawn back (slow), the whip, HOLD at contact, arm all the way down
+        keys: [[0, 0.965], [0.22, 1.0], [0.3, 1.07], [0.36, 1.12], [1, 1.36]],   // hold the drawn bow, whip, contact, follow-through to the end
         cam: (t, u) => ({ p: [C.x - 2.45 + 0.25 * u, C.y - 0.35 - 0.2 * u, C.z - 0.25], look: [C.x, C.y - 0.38 - 0.4 * u, C.z - 0.15], fov: 52 - 6 * u, roll: -0.08 + 0.14 * u }) },
       { name: 'smash', T: [5.05, 5.35], t: [1.125, 1.2], ease: 'linear', lens: 0.5,         // the ball's flight again, near real speed (anime overlap)
         cam: (t, u) => { const b = ballAt(t); return { p: [b.x - 1.3, b.y + 0.7, b.z - 1.6], look: [b.x, b.y, b.z + 0.6], fov: 50, roll: 0.12 }; } },

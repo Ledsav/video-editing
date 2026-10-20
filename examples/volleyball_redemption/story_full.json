@@ -46,7 +46,7 @@
     {
       "path": "music/rise.wav",
       "start": 5.42,
-      "in": 9.75,
+      "in": 9.82,
       "duration": 12.58,
       "volume": 0.6,
       "fade_in": 0.05,
@@ -65,7 +65,7 @@
     {
       "path": "music/rise.wav",
       "start": 20.0,
-      "in": 24.33,
+      "in": 24.4,
       "duration": 5.6,
       "volume": 0.6,
       "fade_in": 0.05,
@@ -140,22 +140,22 @@
     },
     {
       "name": "whoosh",
-      "start": 11.15,
+      "start": 11.5,
       "volume": 0.3
     },
     {
       "name": "reverse_swell",
-      "start": 12.06,
+      "start": 12.13,
       "volume": 0.6
     },
     {
       "name": "impact",
-      "start": 12.06,
+      "start": 12.13,
       "volume": 1.0
     },
     {
       "name": "boom",
-      "start": 12.06,
+      "start": 12.13,
       "volume": 0.9
     },
     {
