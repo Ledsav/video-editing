@@ -221,7 +221,7 @@
       [0.00, [0.12, 0.96, 0.24], 5, -10],      // contact: arm fully extended, high and just ahead
       [0.03, [-0.05, 0.25, 0.97], 10, 0],      // snap through
       [0.065, [-0.3, -0.55, 0.78], 20, 0],     // down across the body
-      [0.10, [-0.25, -0.88, 0.4], 25, 0],      // finished low, in front (a real arm swing is ~0.1 s)
+      [0.10, [-0.12, -0.72, 0.68], 25, 0],     // finished low, in front of the body (not into it; a real arm swing is ~0.1 s)
     ];
     const keyAt = (x) => { let i = 0; while (i < ARM_KEYS.length - 2 && x > ARM_KEYS[i + 1][0]) i++;
       const A = ARM_KEYS[i], B = ARM_KEYS[i + 1], v0 = Math.min(1, Math.max(0, (x - A[0]) / (B[0] - A[0]))), u = A[0] >= 0 ? v0 : VM.ease.inOutSine(v0);   // after contact: constant speed
