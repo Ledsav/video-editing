@@ -106,6 +106,7 @@
     const soleToToe = Pw0('LeftToeBase').y - new THREE.Box3().setFromObject(model).min.y;    // character's toe joint height above its sole
     const OFF = V3(-Mc.RHand.x * SC, -smash.floor * SC + soleToToe, -0.05 - Mc.RHand.z * SC);
     const xf = (v) => v.clone().multiplyScalar(SC).add(OFF);
+    const FOOT_DY = (Pw0('LeftFoot').y - new THREE.Box3().setFromObject(model).min.y) - xf(smash.sample(0).LFoot).y;   // feet IK: ankle height
     // after landing: blend into the won-point reaction (fist pump), re-based on the landing spot and facing
     const BLEND_AT = smash.land + 0.45, WIN_FROM = 0.9, BLEND = 0.4;
     const Ma = smash.sample(BLEND_AT), Mb = win.sample(WIN_FROM);
@@ -177,7 +178,7 @@
       if (tau <= smash.takeoff || tau >= smash.land) return 0;
       const u = (tau - smash.takeoff) / (smash.land - smash.takeoff), pc = (smash.contact - smash.takeoff) / (smash.land - smash.takeoff);
       return EXTRA * (u < pc ? Math.sin(Math.PI / 2 * u / pc) : Math.cos(Math.PI / 2 * (u - pc) / (1 - pc))); };
-    function placeAthlete(t) { const up = liftAt(t); retarget(mocapAt(t), (v) => xf(v).add(V3(0, up, 0))); }
+    function placeAthlete(t) { const up = liftAt(t), f = (v) => xf(v).add(V3(0, up, 0)); f.footDy = FOOT_DY; retarget(mocapAt(t), f); }
 
     // ================= ball =================
     const BR = 0.105 * 1.15;

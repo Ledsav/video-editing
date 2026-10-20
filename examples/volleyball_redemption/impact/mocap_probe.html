@@ -26,6 +26,9 @@
         s += `${(i / 60).toFixed(3)} ${j('hand')} ${j('palm')} ${j('fore')} ${j('fing')} ${j('lhand')} ${acc.toFixed(0)}\n`; }
     }
     if (P.feet) { s = 'FEET\n'; for (let i = 0; i <= m.dur * 60; i++) { const M = m.sample(i / 60); s += `${(i / 60).toFixed(3)} ${Math.min(M.LToe.y, M.LFoot.y).toFixed(3)} ${Math.min(M.RToe.y, M.RFoot.y).toFixed(3)}\n`; } }
+    if (P.arms) { s = 'ARMS t handGap elbowL elbowR handY wristToHip\n'; const ang = (a, b, c) => (b.clone().sub(a).angleTo(c.clone().sub(b)) * 57.3);
+      for (let i = 0; i <= m.dur * 20; i++) { const M = m.sample(i / 20);
+        s += `${(i / 20).toFixed(2)} ${(M.LHand.distanceTo(M.RHand) * 100).toFixed(0)} ${ang(M.LShoulder, M.LForearm, M.LHand).toFixed(0)} ${ang(M.RShoulder, M.RForearm, M.RHand).toFixed(0)} ${M.LHand.y.toFixed(2)} ${(M.LHand.clone().add(M.RHand).multiplyScalar(0.5).sub(M.Hip).setY(0).length() * 100).toFixed(0)}\n`; } }
     console.error(s);
   } catch (e) { console.error('ERR ' + e.message); } res(); });
 </script></body></html>

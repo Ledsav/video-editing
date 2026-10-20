@@ -55,3 +55,13 @@ Hands and face: `makeRetarget` limits the wrist's twist (±1 rad from rest) and 
 so past those limits the wrist skin collapses. Arm layers (`swingChain`) turn the hand and fingers rigidly with the arm.
 In the spike, `openHand` straightens the hitting hand's fingers through the attack, because the captured fingers curl into a claw.
 The painted face details (eyes, brows, lashes, eye lines, mouth) use unlit materials like the source; lit, the gold rim lights turned the brows into an orange band.
+IK: directions alone don't keep contacts on a body with other proportions (shorter torso, different shoulder width and arm length).
+The capture's bagher kept 13 cm between the hands, but the character's were 20 cm apart, and his feet slid 7–13 cm.
+After the direction pass, `makeRetarget` therefore runs two-bone IK:
+- **Ankles:** placed exactly on the capture's, with the knee as the pole.
+- **Hands:** placed where the capture's are relative to the chest, scaled to this arm length, with the elbow as the pole.
+
+`xf.footDy` matches standing ankle heights, and `xf.ik = false` turns the IK off.
+`retarget_check.html` draws the capture skeleton (red) over the character (blue skeleton, translucent mesh) from the side and front.
+It also logs per-joint distances and the hand gap, for example:
+`node ../../mograph/render.mjs --html impact/retarget_check.html --out work/rc.mov --duration 6 --fps 2 --opaque 1 --width 1280 --height 540 --stills 2.6,3.4`.

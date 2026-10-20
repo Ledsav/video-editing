@@ -1,0 +1,79 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="6">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Retarget check: the anime character posed from a mocap clip, with the capture's skeleton (scaled and placed the same way) drawn over it in red, side and front views. Logs per-joint distance (cm) between the character's joints and the capture's. Time = clip time.">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="loadglb.js"></script>
+<script src="mocap.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #e9e9ee; } .lab { position: absolute; top: 1vh; font: 600 2vmin sans-serif; color: #223; }</style></head>
+<body>
+<script type="module">
+  const P = VM.params({ clip: 'mocap/3-Dig_in_front_with_one_knee_on_the_ground.glb', model: 'anime_male.glb', raw: 0, nomesh: 0 });
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const W = innerWidth, H = innerHeight, V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(W, H); renderer.setScissorTest(true); document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0xe9e9ee);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x777788, 2.2));
+    const grid = new THREE.GridHelper(4, 16, 0x999999, 0xcccccc); scene.add(grid);
+    const g = await loadGLB(GLTFLoader, P.model), model = g.scene; scene.add(model);
+    model.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.material = new THREE.MeshLambertMaterial({ map: o.material.map, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide }); } });
+    if (P.nomesh) model.traverse((o) => { if (o.isMesh) o.visible = false; });
+    const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
+    const Pw = (b) => V3(0, 0, 0).setFromMatrixPosition(b.matrixWorld);
+    model.updateMatrixWorld(true);
+    { const top = find(/HeadTop_End/), toe = find(/LeftToe_End/) || find(/LeftToeBase/);
+      model.scale.multiplyScalar(1.92 / (Pw(top).y - Pw(toe).y)); model.updateMatrixWorld(true); }
+    const bc = new Map();
+    const bone = (n) => { if (!bc.has(n)) { let f = null; const re = new RegExp('^(mixamorig:?)?' + n + '(_\\d+)?$'); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); bc.set(n, f); } return bc.get(n); };
+    const wp = (n) => Pw(bone(n));
+    const retarget = makeRetarget(THREE, model, bone);
+    const clip = await loadMocap(THREE, GLTFLoader, P.clip);
+    const legOf = (p) => p[0].distanceTo(p[1]) + p[1].distanceTo(p[2]);
+    const soleToToe = wp('LeftToeBase').y - new THREE.Box3().setFromObject(model).min.y;
+    const LEG = legOf([wp('LeftUpLeg'), wp('LeftLeg'), wp('LeftFoot')]);
+    const M0 = clip.sample(0), SC = LEG / legOf([M0.LThigh, M0.LShin, M0.LFoot]), piv = M0.Hip.clone().setY(0);
+    const ankleRest = wp('LeftFoot').y - new THREE.Box3().setFromObject(model).min.y;
+    const xf = (v) => v.clone().sub(piv).multiplyScalar(SC).add(V3(0, -clip.floor * SC + soleToToe, 0));
+    xf.footDy = ankleRest - xf(M0.LFoot).y; xf.ik = !P.noik;
+    console.error('FOOTDY ' + xf.footDy.toFixed(3) + ' ankleRest ' + ankleRest.toFixed(3) + ' capAnkle ' + xf(M0.LFoot).y.toFixed(3));
+    // capture skeleton: red lines (parent links), joints as dots
+    const root = await loadGLB(GLTFLoader, P.clip);
+    const links = []; root.scene.traverse((o) => { if (o.parent && o.parent.name && o.parent.name !== 'mocap_root' && o.parent !== root.scene && !/Finger/.test(o.name)) links.push([o.parent.name, o.name]); });
+    const lineGeo = new THREE.BufferGeometry(); lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(links.length * 6), 3));
+    const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0xe0202a, depthTest: false })); lines.renderOrder = 9; scene.add(lines);
+    // character skeleton: blue
+    const ab = []; model.traverse((o) => { if (o.isBone && o.parent && o.parent.isBone && !/Hand(Thumb|Index|Middle|Ring|Pinky)|_End|HeadTop/.test(o.name)) ab.push([o.parent, o]); });
+    const aGeo = new THREE.BufferGeometry(); aGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ab.length * 6), 3));
+    const aLines = new THREE.LineSegments(aGeo, new THREE.LineBasicMaterial({ color: 0x1a50d0, depthTest: false })); aLines.renderOrder = 10; scene.add(aLines);
+    const PAIRS = [['Hips', 'Hip'], ['Spine2', 'Chest'], ['Head', 'Head'], ['LeftArm', 'LShoulder'], ['RightArm', 'RShoulder'], ['LeftForeArm', 'LForearm'], ['RightForeArm', 'RForearm'],
+      ['LeftHand', 'LHand'], ['RightHand', 'RHand'], ['LeftLeg', 'LShin'], ['RightLeg', 'RShin'], ['LeftFoot', 'LFoot'], ['RightFoot', 'RFoot']];
+    const cam = new THREE.PerspectiveCamera(30, (W / 2) / H, 0.05, 50);
+    const lab = (x, t) => { const d = document.createElement('div'); d.className = 'lab'; d.style.left = x; d.textContent = t; document.body.appendChild(d); };
+    lab('1vw', 'SIDE (red = capture, blue = character)'); lab('51vw', 'FRONT');
+    const log = [];
+    VM.onFrame((T) => {
+      const M = clip.sample(T);
+      retarget(M, xf);
+      const pa = lineGeo.attributes.position.array; links.forEach(([a, b], i) => { const A = xf(M[a]), B = xf(M[b]); pa.set([A.x, A.y, A.z, B.x, B.y, B.z], i * 6); }); lineGeo.attributes.position.needsUpdate = true;
+      const qa = aGeo.attributes.position.array; ab.forEach(([a, b], i) => { const A = Pw(a), B = Pw(b); qa.set([A.x, A.y, A.z, B.x, B.y, B.z], i * 6); }); aGeo.attributes.position.needsUpdate = true;
+      const err = PAIRS.map(([a, m]) => `${a}:${(wp(a).distanceTo(xf(M[m])) * 100).toFixed(0)}`).join(' ');
+      console.error(`ERR t=${T.toFixed(2)} ${err} | handGap char ${(wp('LeftHand').distanceTo(wp('RightHand')) * 100).toFixed(0)} cap ${(M.LHand.distanceTo(M.RHand) * SC * 100).toFixed(0)}`);
+      const DIRS = [['LeftArm', 'LeftForeArm', 'LShoulder', 'LForearm'], ['LeftForeArm', 'LeftHand', 'LForearm', 'LHand'], ['RightArm', 'RightForeArm', 'RShoulder', 'RForearm'], ['RightForeArm', 'RightHand', 'RForearm', 'RHand'],
+        ['LeftUpLeg', 'LeftLeg', 'LThigh', 'LShin'], ['LeftLeg', 'LeftFoot', 'LShin', 'LFoot'], ['Spine', 'Spine1', 'LowerSpine', 'MiddleSpine'], ['Spine1', 'Spine2', 'MiddleSpine', 'Chest'], ['Neck', 'Head', 'Neck', 'Head']];
+      console.error(`ANG t=${T.toFixed(2)} ` + DIRS.map(([a, b, c, d]) => `${a}:${(wp(b).sub(wp(a)).angleTo(M[d].clone().sub(M[c])) * 57.3).toFixed(0)}`).join(' '));
+      if (T < 0.6 && !window._dumped) { window._dumped = 1; const names = []; model.traverse((o) => { if (o.isBone) names.push(o.name + '<' + (o.parent && o.parent.name)); }); console.error('BONES ' + names.join(' | ')); }
+      const h = xf(M.Hip);
+      for (const [vx, dir] of [[0, V3(1, 0, 0)], [W / 2, V3(0, 0, 1)]]) {
+        renderer.setViewport(vx, 0, W / 2, H); renderer.setScissor(vx, 0, W / 2, H);
+        cam.position.copy(h.clone().add(dir.clone().multiplyScalar(4.2)).setY(0.95)); cam.lookAt(h.x, 0.85, h.z);
+        renderer.render(scene, cam);
+      }
+    });
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

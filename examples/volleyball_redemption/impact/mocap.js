@@ -61,6 +61,8 @@ function makeRetarget(THREE, model, bone) {
   const bones = []; model.traverse((o) => { if (o.isBone) bones.push(o); });
   const rest = new Map(bones.map((b) => [b, b.quaternion.clone()]));
   const restHipLocal = bone('Hips').position.clone();
+  model.updateMatrixWorld(true);
+  const ARM = {}; for (const s of ['Left', 'Right']) ARM[s] = wpos(bone(`${s}Arm`)).distanceTo(wpos(bone(`${s}ForeArm`))) + wpos(bone(`${s}ForeArm`)).distanceTo(wpos(bone(`${s}Hand`)));
   const FING = { Thumb: 0, Index: 1, Middle: 2, Ring: 3, Pinky: 4 };
   // [anime bone, anime child, mocap from, mocap to]
   const chain = [['Spine', 'Spine1', 'LowerSpine', 'MiddleSpine'], ['Spine1', 'Spine2', 'MiddleSpine', 'Chest']];
@@ -91,6 +93,22 @@ function makeRetarget(THREE, model, bone) {
     const bq = Q(); b.getWorldQuaternion(bq); setWorldQ(b, d.multiply(bq));
   }
   const D = (M, a, b) => M[b].clone().sub(M[a]);
+  // two-bone IK: a (root) -> b (mid) -> c (end) reaches target, bending towards pole
+  function twoBone(a, b, c, target, pole) {
+    if (!a || !b || !c) return;
+    a.updateMatrixWorld(true);
+    const A = wpos(a), B = wpos(b), C = wpos(c), la = A.distanceTo(B), lb = B.distanceTo(C);
+    const toT = target.clone().sub(A), d = Math.min(Math.max(toT.length(), Math.abs(la - lb) + 1e-4), la + lb - 1e-4);
+    const dir = toT.normalize();
+    let pv = pole.clone().sub(A); pv.sub(dir.clone().multiplyScalar(pv.dot(dir)));
+    if (pv.lengthSq() < 1e-8) { pv = B.clone().sub(A); pv.sub(dir.clone().multiplyScalar(pv.dot(dir))); }
+    pv.normalize();
+    const cosA = (la * la + d * d - lb * lb) / (2 * la * d), sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+    const E = A.clone().add(dir.clone().multiplyScalar(cosA * la)).add(pv.multiplyScalar(sinA * la));
+    swing(a, b, E.clone().sub(A));
+    b.updateMatrixWorld(true);
+    swing(b, c, A.clone().add(dir.clone().multiplyScalar(d)).sub(wpos(b)));
+  }
   // the rig has no forearm twist bones: a wrist turned far from its rest roll collapses the skin ("candy wrapper").
   // Keep the hand's roll about its own long axis (towards the middle finger) within +-limit of rest.
   const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8;
@@ -129,15 +147,34 @@ function makeRetarget(THREE, model, bone) {
       twoVec(chest, wpos(bone('Neck')).sub(wpos(chest)), wpos(bone('LeftArm')).sub(wpos(bone('RightArm'))),
         D(M, 'Chest', 'Neck'), D(M, 'RShoulder', 'LShoulder')); }
     for (const [b, c, f, t] of NK) swing(bone(b), bone(c), D(M, f, t));
-    for (const [b, c, f, t] of LIM) {
-      swing(bone(b), bone(c), D(M, f, t));
-      if (b.endsWith('ForeArm')) {                    // hand: towards the middle finger, palm across index -> pinky
-        const s = b.startsWith('Left') ? 'Left' : 'Right', h = bone(`${s}Hand`);
-        const mid = bone(`${s}HandMiddle1`), idx = bone(`${s}HandIndex1`), pk = bone(`${s}HandPinky1`);
-        if (h && mid && idx && pk) { h.updateMatrixWorld(true);
-          twoVec(h, wpos(mid).sub(wpos(h)), wpos(idx).sub(wpos(pk)), D(M, `${s[0]}Hand`, `${s}Finger2`), D(M, `${s}Finger4`, `${s}Finger1`));
-          limitTwist(h, mid, MAX_WRIST_TWIST); limitBend(h, mid, bone(`${s}ForeArm`), MAX_WRIST_BEND); }
+    for (const [b, c, f, t] of LIM) swing(bone(b), bone(c), D(M, f, t));
+    // directions alone lose contacts on a differently proportioned body (hands that should join, feet that should stay
+    // planted): two-bone IK puts the ankles where the capture's are and the hands where the capture's are relative to the chest
+    // (scaled to this arm length), with the capture's knee / elbow direction as the pole
+    model.updateMatrixWorld(true);
+    const X = (n) => xf(M[n]);
+    if (xf.ik !== false) {
+      const fdy = xf.footDy || 0;
+      for (const s of ['Left', 'Right']) {
+        const m = s[0];
+        twoBone(bone(`${s}UpLeg`), bone(`${s}Leg`), bone(`${s}Foot`), X(`${m}Foot`).add(new THREE.Vector3(0, fdy, 0)), X(`${m}Shin`).add(new THREE.Vector3(0, fdy * 0.5, 0)));
+        swing(bone(`${s}Foot`), bone(`${s}ToeBase`), D(M, `${m}Foot`, `${m}Toe`));
       }
+      const chestA = wpos(bone('LeftArm')).add(wpos(bone('RightArm'))).multiplyScalar(0.5);
+      const chestC = X('LShoulder').add(X('RShoulder')).multiplyScalar(0.5);
+      for (const s of ['Left', 'Right']) {
+        const m = s[0], capLen = X(`${m}Shoulder`).distanceTo(X(`${m}Forearm`)) + X(`${m}Forearm`).distanceTo(X(`${m}Hand`));
+        const ra = ARM[s] / Math.max(capLen, 1e-6);
+        const tgt = chestA.clone().add(X(`${m}Hand`).sub(chestC).multiplyScalar(ra));
+        const pole = chestA.clone().add(X(`${m}Forearm`).sub(chestC).multiplyScalar(ra));
+        twoBone(bone(`${s}Arm`), bone(`${s}ForeArm`), bone(`${s}Hand`), tgt, pole);
+      }
+    }
+    for (const s of ['Left', 'Right']) {                // hand: towards the middle finger, palm across index -> pinky
+      const h = bone(`${s}Hand`), mid = bone(`${s}HandMiddle1`), idx = bone(`${s}HandIndex1`), pk = bone(`${s}HandPinky1`);
+      if (h && mid && idx && pk) { h.updateMatrixWorld(true);
+        twoVec(h, wpos(mid).sub(wpos(h)), wpos(idx).sub(wpos(pk)), D(M, `${s[0]}Hand`, `${s}Finger2`), D(M, `${s}Finger4`, `${s}Finger1`));
+        limitTwist(h, mid, MAX_WRIST_TWIST); limitBend(h, mid, bone(`${s}ForeArm`), MAX_WRIST_BEND); }
     }
     for (const [b, c, f, t] of FIN) swing(bone(b), bone(c), D(M, f, t));
     model.updateMatrixWorld(true);
