@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 SR = 48000
-DUR = 25.6 + 0.4
+DUR = 26.1 + 0.4
 N = int(DUR * SR)
 rng = np.random.default_rng(11)
 
@@ -31,18 +31,21 @@ SPIKE = 8.2
 STEPS = [8.36, 8.735, 9.42]  # run-up footfalls (mocap plants)
 TAKEOFF = 10.023             # liftoff (hold 0.13)
 RISE = 10.4
-COMIC = 11.5                 # cut into the comic frame: the music drops out
-CONTACT = 12.13              # hit (hold 0.23)
-REENTRY = 12.36
-SMASH = 13.25                # ball flight shot
-FLOOR = 13.70                # BAM
-ROAR = 14.8
-SCORE = 15.05                # 26 : 24
-OUTRO = 18.0                 # grey: last year's ball rolls to a stop
-MATCH_CUT = 20.0             # today's ball, colour
-CARD = 22.2
-TITLE = 22.55                # NEVER GIVE UP.
-END = 25.6
+RAGE = 11.05                 # the rage close-up (red, the scream): the music drops out here
+COMIC = RAGE                 # (the silence runs from the rage cut to the contact)
+COMIC_CUT = 11.85            # cut into the comic frame: the drawn bow
+CONTACT = 12.30              # hit: a gunshot; the impact frame holds 1 s, switching look every 0.25 s
+HIT_HOLD = 1.0
+REENTRY = CONTACT + HIT_HOLD
+SMASH = 13.75                # ball flight shot
+FLOOR = 14.20                # BAM
+ROAR = 15.3
+SCORE = 15.55                # 26 : 24
+OUTRO = 18.5                 # grey: last year's ball rolls to a stop
+MATCH_CUT = 20.5             # today's ball, colour
+CARD = 22.7
+TITLE = 23.05                # NEVER GIVE UP.
+END = 26.1
 
 BEAT = (CONTACT - ATTACK) / 12          # 141.7 bpm: the contact lands on a downbeat, 3 bars after the drop
 BAR = 4 * BEAT
@@ -414,6 +417,26 @@ def smack(g=1.0):
     return np.tanh((crack * 1.4 + body) * 1.8) * g
 
 
+def gunshot(g=1.0):
+    """the hit as a gunshot: supersonic crack (N-wave), muzzle boom, sub punch, then a stereo slap-back off the arena walls."""
+    n = int(2.6 * SR)
+    t = np.arange(n) / SR
+    crack = np.zeros(n)
+    m = int(0.0016 * SR)
+    crack[:m] = np.linspace(1, -1, m)                                              # N-wave
+    crack = fft_filter(crack + rng.standard_normal(n) * np.exp(-t / 0.0025) * 0.6, 1200, 18000)
+    boom = fft_filter(rng.standard_normal(n), 40, 1400) * np.exp(-t / 0.07) * 1.6
+    sub = np.sin(2 * np.pi * np.cumsum(48 + 70 * np.exp(-t / 0.03)) / SR) * np.exp(-t / 0.3) * 1.2
+    dry = np.tanh((crack * 3 + boom + sub) * 1.5)
+    out = pan2(dry, 0.0)
+    for dly, gl, pn in ((0.115, 0.35, -0.7), (0.26, 0.22, 0.7), (0.43, 0.12, -0.4), (0.62, 0.07, 0.5)):   # slap-back echoes
+        a = int(dly * SR)
+        echo = fft_filter(dry[: n - a], 150, 3500) * gl
+        out[a:] += pan2(echo, pn)
+    tail = convolve(out * 0.5, HALL)
+    return (out + 0.6 * tail) * g
+
+
 def sub_drop(f0=90, f1=28, length=1.6, g=1.0):
     n = int(length * SR)
     t = np.arange(n) / SR
@@ -693,23 +716,36 @@ def compose():
     music.add(riser, RISE, 0.35)
     music.add(choir(['A4', 'D5', 'F5'], COMIC - RISE, 0.45, 0.8), RISE, 1.0)
 
-    # --- IV. the comic frame: silence. breath, a single tense note, then the whip ---
-    sfx.add(vwoom(0.9, 0.9), COMIC, 0.3)
+    # --- IV. the rage close-up (red): the music cuts, a low burning roar under his scream ---
+    # (the scream itself: the user's recording, placed at RAGE + 0.1)
+    rage_n = int((COMIC_CUT - RAGE + 0.3) * SR)
+    rt = np.arange(rage_n) / SR
+    burn = np.tanh(fft_filter(rng.standard_normal(rage_n), 30, 260) * 5) * np.minimum(1, rt / 0.15) * np.exp(-np.maximum(0, rt - (COMIC_CUT - RAGE)) / 0.1)
+    sfx.add(burn * 0.5, RAGE, 0.8)
+    sfx.add(whoosh(0.7, 200, 2400, 0.8, 0.9, 1.5), RAGE - 0.05, 0.6, 0.2)
+    sfx.add(sub_drop(70, 30, 0.9, 0.9), RAGE, 0.8)
+    # the comic frame: silence, a held breath, a single tense note, then the whip
+    sfx.add(vwoom(0.9, 0.9), COMIC_CUT, 0.3)
     tens = supersaw(hz('A5'), CONTACT - COMIC - 0.05, 4, 6, 1500, 9000, 0.25, 0.05)
     tens *= 1 + 0.4 * np.sin(2 * np.pi * 9 * np.arange(len(tens)) / SR)
     tension.add(tens, COMIC + 0.05, 0.18, 0.2)
-    sfx.add(heartbeat(1.0), COMIC + 0.18, 0.4)
-    sfx.add(heartbeat(1.0), COMIC + 0.62, 0.45)
-    sfx.add(whoosh(0.32, 700, 6000, 1.0, 0.5, 3.0), CONTACT - 0.28, 1.0, -0.3)   # the whip
+    sfx.add(heartbeat(1.0), COMIC_CUT + 0.05, 0.45)
+    sfx.add(whoosh(0.14, 900, 7000, 1.0, 0.5, 3.0), CONTACT - 0.12, 1.1, -0.3)   # the whip: ~3 frames
     tension.add(reverse_swell(0.6, 0.7), CONTACT - 0.6, 1.0)
 
-    # contact: the biggest sound in the film
-    sfx.add(smack(1.2), CONTACT, 1.0)
-    sfx.add(sub_drop(130, 26, 2.2, 1.2), CONTACT, 1.0)
-    sfx.add(debris(0.9, 1.0, 320), CONTACT, 0.6, 0.3)
-    music.add(orch_hit(['D3', 'A3', 'D4', 'A4']), CONTACT, 1.25)
-    music.add(crash(1.2, 3.0), CONTACT, 1.0)
-    sfx.add(ring(1.2, 1.0, 3500), CONTACT + 0.02, 0.7)
+    # contact: a gunshot, the biggest sound in the film
+    sfx.add(gunshot(1.0), CONTACT, 1.3)
+    sfx.add(smack(0.8), CONTACT, 0.6)
+    sfx.add(sub_drop(130, 26, 2.2, 1.2), CONTACT, 0.9)
+    music.add(orch_hit(['D3', 'A3', 'D4', 'A4']), CONTACT, 1.0)
+    sfx.add(ring(HIT_HOLD + 0.4, 1.0, 3500), CONTACT + 0.02, 0.55)
+    # the 1 s impact frame: a hit on every switch (black-and-white / red), alternating weight
+    for k in (1, 2, 3):
+        tk = CONTACT + 0.25 * k
+        sfx.add(taiko(1.2 if k % 2 else 0.9, 58 if k % 2 else 75), tk, 0.9)
+        sfx.add(sub_drop(100, 30, 0.6, 0.7), tk, 0.6)
+        sfx.add(fft_filter(rng.standard_normal(int(0.03 * SR)) * np.exp(-np.arange(int(0.03 * SR)) / SR / 0.006), 2000, 12000), tk, 0.5)
+    music.add(reverse_swell(0.35, 0.8), REENTRY - 0.35, 1.0)
 
     # --- V. re-entry: the chorus (Bb C Dm Dm), bigger: choir, open hats, octave lead ---
     t_end = OUTRO
@@ -827,10 +863,10 @@ def main():
     t = np.arange(N) / SR
     # duck the present music under the big hits, and gate it out in the comic silence
     duck = np.ones(N)
-    for ht, depth, rel in ((CONTACT, 0.0, 0.35), (FLOOR, 0.35, 0.4), (TAKEOFF, 0.5, 0.3)):
+    for ht, depth, rel in ((REENTRY - 0.4, 0.0, 0.4), (FLOOR, 0.35, 0.4), (TAKEOFF, 0.5, 0.3)):
         m = (t >= ht) & (t < ht + rel)
         duck[m] = np.minimum(duck[m], depth + (1 - depth) * ((t[m] - ht) / rel) ** 2)
-    silence = ((t > COMIC + 0.03) & (t < CONTACT - 0.003)) | ((t > OUTRO + 0.35) & (t < MATCH_CUT - 0.55))   # the comic frame; last year (outro)
+    silence = ((t > COMIC + 0.03) & (t < CONTACT - 0.003)) | ((t > CONTACT + 0.4) & (t < REENTRY - 0.36)) | ((t > OUTRO + 0.35) & (t < MATCH_CUT - 0.55))   # rage + comic; inside the impact hold; last year
     gate = np.where(silence, 0.0, 1.0)
     gate = fft_filter(gate, 0, 40)
     mus = mus * np.clip(gate, 0, 1)[:, None] * duck[:, None]
@@ -845,21 +881,21 @@ def main():
     # section loudness (dBFS RMS): the past is intimate, the drop and chorus are the loudest music, the comic is near silence
     mus = to_db(mus, ATTACK + 0.2, COMIC - 0.1, -17.0)
     p = to_db(p, 0.7, FLASH - 0.1, -27.0)
-    ten = to_db(ten, COMIC + 0.1, CONTACT - 0.05, -34.0)
+    ten = to_db(ten, COMIC_CUT + 0.1, CONTACT - 0.05, -34.0)
     score = compress(mus + p + ten, -7, 4, 0.0015, 0.12)        # catch the stingers, keep the band up
     s = sfx.x + 0.18 * convolve(sfx.x, ROOM) + 0.12 * convolve(sfx.x, HALL)
     # crowd: muffled in the past, alive today, erupting on the win; silent in the comic frame
     def level(tt):
-        return smooth_steps(tt, [(0, 0), (0.7, 0.35), (5.4, 0.35), (5.45, 0.55), (11.45, 0.6), (11.6, 0.0),
-                                 (12.3, 0.0), (12.5, 0.55), (18.0, 0.55), (18.02, 0.3), (19.98, 0.3), (20.02, 0.6),
-                                 (22.2, 0.6), (23.5, 0.2), (25.6, 0.0)])
+        return smooth_steps(tt, [(0, 0), (0.7, 0.35), (5.4, 0.35), (5.45, 0.55), (RAGE - 0.05, 0.6), (RAGE + 0.1, 0.0),
+                                 (REENTRY - 0.1, 0.0), (REENTRY + 0.2, 0.55), (OUTRO, 0.55), (OUTRO + 0.02, 0.3), (MATCH_CUT - 0.02, 0.3),
+                                 (MATCH_CUT + 0.02, 0.6), (CARD, 0.6), (CARD + 1.3, 0.2), (END, 0.0)])
 
     def cheer(tt):
-        return smooth_steps(tt, [(0, 0), (9.9, 0), (10.1, 0.25), (11.4, 0.35), (11.6, 0), (13.7, 0), (13.9, 0.5),
-                                 (14.9, 1.0), (17.6, 0.8), (18.0, 0.0), (20.0, 0.0), (20.1, 0.9), (22.2, 0.7),
-                                 (23.6, 0.15), (25.6, 0)])
+        return smooth_steps(tt, [(0, 0), (9.9, 0), (10.1, 0.25), (RAGE - 0.05, 0.35), (RAGE + 0.1, 0), (FLOOR, 0), (FLOOR + 0.2, 0.5),
+                                 (ROAR + 0.1, 1.0), (OUTRO - 0.4, 0.8), (OUTRO, 0.0), (MATCH_CUT, 0.0), (MATCH_CUT + 0.1, 0.9), (CARD, 0.7),
+                                 (CARD + 1.4, 0.15), (END, 0)])
     c = crowd(level, cheer)
-    past_mask = ((t < 5.42) | ((t >= 18.0) & (t < 20.0)))[:, None]
+    past_mask = ((t < 5.42) | ((t >= OUTRO) & (t < MATCH_CUT)))[:, None]
     c = np.where(past_mask, fft_filter(c, 80, 900) * 1.6, c)
     c = c + 0.3 * convolve(c, HALL)
 

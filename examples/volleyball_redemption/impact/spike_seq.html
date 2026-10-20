@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="vedit:kind" content="scene">
-<meta name="vedit:duration" content="9.8">
+<meta name="vedit:duration" content="10.3">
 <meta name="vedit:libs" content="three">
 <meta name="vedit:description" content="Spike as a shot sequence (male athlete): behind-the-hitter set, close-up, wide approach and jump, POV hand, comic-book impact frame, ball into the court, landing roar. Based on: 3-step approach, double-arm swing, load, takeoff, bow-and-arrow arch, arm whip and wrist snap at contact, follow-through, landing, roar. Speed ramps (near-freeze at contact), crane/punch-in/whip camera, sub-frame motion blur, V200W ball, net, court, flash, shockwave, sweat, ball trail.">
 <script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
@@ -16,7 +16,7 @@
 <body><div id="stage"></div>
 <script type="module">
   const P = VM.params({ smash: 'mocap/8-Smash-Take2.glb', win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', model: 'anime_male.glb', subframes: 5, shutter: 0.5, cel: 0.75 });
-  const stage = document.getElementById('stage');
+  const stage = document.getElementById('stage'); if (P.rtFlags) window.RT_FLAGS = P.rtFlags; if (P.rtLog) window.RT_LOG = 1;   // debug: {ik: false} / {hinge: false}
   window.VM_READY = new Promise(async (resolve) => { try {
     const THREE = await import('three');
     const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
@@ -30,6 +30,7 @@
     const { rt, lensMat, postScene, postCam } = makeAnimePost(THREE, W, H);
     const env = []; let bgTexRef = null;
     const comicBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });
+    const rageBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });         // rage close-up: red field + black rays
     const out = document.createElement('canvas'); out.width = W; out.height = H; out.className = 'out'; stage.appendChild(out);
     const og = out.getContext('2d');
     const scene = new THREE.Scene();
@@ -146,7 +147,7 @@
       const dir = (a, b, c) => side.clone().multiplyScalar(a).addScaledVector(up, b).addScaledVector(fwd, c).normalize();
       const w = Math.max(cw, fw);
       const upper = cw >= fw ? dir(0.55, 0.45, -0.7) : dir(-0.35, -0.8, 0.45);
-      const fore = cw >= fw ? dir(-0.4, 0.8, 0.05) : dir(-0.45, -0.9, 0.15);
+      const fore = cw >= fw ? dir(-0.4, 0.8, 0.05) : dir(-0.35, -0.6, 0.72);   // follow-through: forearm ahead of the body
       const out = Object.assign({}, M), fingers = Object.keys(M).filter((n) => n.startsWith('RightFinger'));
       const swing = (a, b, dir, kids) => swingChain(THREE, out, a, b, dir, w, kids);   // rigid: the hand turns with the arm
       swing('RShoulder', 'RForearm', upper, ['RHand', ...fingers]);
@@ -254,6 +255,8 @@
     // ================= shots =================
     // each shot: video [T0, T1] maps to action [t0, t1] (with an ease for slow-mo ramps) and has its own camera
     const headPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Head').matrixWorld);
+    const faceDir = () => { const l = V3(0, 0, 0).setFromMatrixPosition(bone('LeftArm').matrixWorld), r = V3(0, 0, 0).setFromMatrixPosition(bone('RightArm').matrixWorld);
+      return l.sub(r).cross(V3(0, 1, 0)).setY(0).normalize(); };
     const hipPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Hips').matrixWorld);
     const orbit = (c, r, h, a) => [c.x + Math.sin(a) * r, h, c.z + Math.cos(a) * r];   // a = 0: in front of him (+z), PI: behind
     const SHOTS = [
@@ -263,18 +266,23 @@
       { name: 'liftoff', T: [1.45, 2.2], t: [0.6, 0.86], lens: 0.85,                       // ground level: fast into the plant, slow on the explosion, then up
         keys: [[0, 0.6], [0.32, 0.705], [0.55, 0.745], [1, 0.86]],
         cam: (t, u) => { const f = LIFT; return { p: [f.x - 1.45, 0.95 + 0.6 * u, f.z + 1.15], look: [f.x, 0.3 + 1.7 * VM.ease.inCubic(u), f.z - 0.1], fov: 60, roll: 0.1 }; } },
-      { name: 'rise', T: [2.2, 3.3], t: [0.86, 0.965], ease: 'outQuad', lens: 0.3,           // sweeping orbit as he climbs above the net and draws the bow
+      { name: 'rise', T: [2.2, 2.85], t: [0.86, 0.94], ease: 'outQuad', lens: 0.3,           // sweeping orbit as he climbs above the net and draws the bow
         cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.72 - 0.14 * u), r = 4.4 - 1.0 * u;
           return { p: orbit(h, r, 1.6 + 0.8 * u, a), look: [h.x, h.y + 0.5, h.z], fov: 32 - 3 * u, roll: -0.1 + 0.06 * u }; } },
-      { name: 'comic', T: [3.3, 5.05], t: [0.965, 1.36], comic: true, lens: 0.75,            // side on: bow drawn back (slow), the whip, HOLD at contact, arm all the way down
-        keys: [[0, 0.965], [0.22, 1.0], [0.3, 1.07], [0.36, 1.12], [1, 1.36]],   // hold the drawn bow, whip, contact, follow-through to the end
-        cam: (t, u) => ({ p: [C.x - 2.45 + 0.25 * u, C.y - 0.35 - 0.2 * u, C.z - 0.25], look: [C.x, C.y - 0.38 - 0.4 * u, C.z - 0.15], fov: 52 - 6 * u, roll: -0.08 + 0.14 * u }) },
-      { name: 'smash', T: [5.05, 5.35], t: [1.125, 1.2], ease: 'linear', lens: 0.5,         // the ball's flight again, near real speed (anime overlap)
+      { name: 'rage', T: [2.85, 3.65], t: [0.94, 0.965], ease: 'linear', lens: 0.25, rage: true,   // at the top: his face, screaming, the world turns red
+        cam: (t, u) => { const h = headPos(), f = faceDir(), r = 0.78 - 0.18 * VM.ease.inOutSine(u);
+          return { p: [h.x + f.x * r, h.y + 0.05, h.z + f.z * r], look: [h.x, h.y + 0.04, h.z], fov: 26 - 4 * u, roll: 0.06 * Math.sin(u * 9) * u }; } },
+      // the comic frame: the drawn bow held, then the whip snaps to contact in ~3 frames, the 1 s impact frame, the arm all the way down.
+      // T inside the shot skips the hold (holdT), so the action keys only span the first (T1 - T0 - HIT_HOLD) of it
+      { name: 'comic', T: [3.65, 5.55], t: [0.965, 1.36], comic: true, lens: 0.75,
+        keys: [[0, 0.965], [0.19, 1.0], [0.237, 1.12], [0.47, 1.36], [1, 1.38]],
+        cam: (t, u) => { const v = Math.min(1, u / 0.47); return { p: [C.x - 2.45 + 0.25 * v, C.y - 0.35 - 0.2 * v, C.z - 0.25], look: [C.x, C.y - 0.38 - 0.4 * v, C.z - 0.15], fov: 52 - 6 * v, roll: -0.08 + 0.14 * v }; } },
+      { name: 'smash', T: [5.55, 5.85], t: [1.125, 1.2], ease: 'linear', lens: 0.5,         // the ball's flight again, near real speed (anime overlap)
         cam: (t, u) => { const b = ballAt(t); return { p: [b.x - 1.3, b.y + 0.7, b.z - 1.6], look: [b.x, b.y, b.z + 0.6], fov: 50, roll: 0.12 }; } },
-      { name: 'floor', T: [5.35, 6.6], t: [0, 0], lens: 0.6,                                  // low by the impact: hit-stop, crush, BAM, then the bounce
+      { name: 'floor', T: [5.85, 7.1], t: [0, 0], lens: 0.6,                                  // low by the impact: hit-stop, crush, BAM, then the bounce
         keys: [[0, 0], [1, 0]],
         cam: (t, u) => { const a = 2.2 + 0.35 * u; return { p: orbit(hitPoint, 1.9 - 0.3 * u, 0.32 + 0.1 * u, a), look: [hitPoint.x, 0.12, hitPoint.z], fov: 46, roll: 0.1 - 0.12 * u }; } },
-      { name: 'roar', T: [6.6, 9.8], t: [1.95, 4.15], ease: 'linear', lens: 0.35,            // the release: arms flung wide, chest up (slowed to 0.6x)
+      { name: 'roar', T: [7.1, 10.3], t: [1.95, 4.15], ease: 'linear', lens: 0.35,            // the release: arms flung wide, chest up (slowed to 0.6x)
         cam: (t, u) => { const h = hipPos(); return { p: [h.x - 0.35 + 0.15 * u, 0.95, h.z - 3.3 + 0.9 * u], look: [h.x, 1.4, h.z], fov: 44 - 8 * u, roll: 0.04 }; } },   // low, frontal, slow push-in
     ];
     // flight and floor timing depend on tFloor: fill them in now
@@ -317,6 +325,8 @@
     const score = el('div', { position: 'absolute', right: '7vw', bottom: '9vh', textAlign: 'right', font: `400 17vmin ${DISPLAY}`, lineHeight: 0.85, color: '#f3ede2', opacity: 0, textShadow: '0 1vmin 4vmin rgba(0,0,0,0.5)' }, stage,
       `26<span style="opacity:.35"> : </span>24`);
     addFinish({ grain: 0.06, vignette: 0.5 });
+    const hitFlash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 46, pointerEvents: 'none' }, document.body);
+    const redOverlay = el('div', { position: 'absolute', inset: 0, background: '#e3121b', mixBlendMode: 'multiply', opacity: 0, zIndex: 45, pointerEvents: 'none' }, document.body);
     const credit = el('div', { position: 'absolute', left: '7vw', bottom: '5vh', font: `500 1.3vmin ${TEXT}`, letterSpacing: '0.12em', color: 'rgba(243,237,226,0.7)', opacity: 0, zIndex: 60 }, document.body,
       'CHARACTER: "RIGGED ANIME MALE CHARACTER-1" BY RET.OUCHS (SKETCHFAB) · CC BY-SA 4.0');
     VM.onFrame((T) => { credit.style.opacity = shotAt(T).name === 'roar' ? VM.prog(T, shotBy('roar').T[1] - 1.5, 0.5) : 0; });
@@ -335,6 +345,61 @@
       comicBg.style.opacity = on ? 1 : 0; halftoneFg.style.opacity = on ? 0.6 : 0;
       // ink outline + misregistered colour fringe on the 3D layer
       out.style.filter = on ? 'drop-shadow(0.35vmin 0 0 #0a1020) drop-shadow(-0.35vmin 0 0 #0a1020) drop-shadow(0 0.35vmin 0 #0a1020) drop-shadow(0 -0.35vmin 0 #0a1020) drop-shadow(0.8vmin 0.3vmin 0 rgba(255,60,90,0.55)) drop-shadow(-0.8vmin -0.3vmin 0 rgba(0,190,255,0.55))' : 'none';
+    }
+    // ---- rage close-up: red field with black rays, red-graded character, red glow, a drawn scream ----
+    { const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('viewBox', '-960 -540 1920 1080'); svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+      Object.assign(svg.style, { position: 'absolute', inset: 0, width: '100%', height: '100%' });
+      const R = VM.rand(23);
+      let h = '<defs><radialGradient id="rageG"><stop offset="0" stop-color="#ff4a1c"/><stop offset="0.5" stop-color="#c00a0e"/><stop offset="1" stop-color="#240003"/></radialGradient></defs>'
+        + '<rect x="-960" y="-540" width="1920" height="1080" fill="url(#rageG)"/>';
+      for (let i = 0; i < 56; i++) { const a0 = (i / 56) * Math.PI * 2 + R() * 0.05, w = 0.01 + R() * 0.035, L = 2400, r0 = 160 + R() * 260;
+        h += `<path d="M${Math.cos(a0) * r0} ${Math.sin(a0) * r0} L${Math.cos(a0 - w) * L} ${Math.sin(a0 - w) * L} L${Math.cos(a0 + w) * L} ${Math.sin(a0 + w) * L}Z" fill="rgba(20,0,2,${0.45 + R() * 0.4})"/>`; }
+      svg.innerHTML = h; svg.classList.add('rays'); rageBg.appendChild(svg); }
+    // the scream: the model has no jaw or face shapes, so the open mouth is drawn and tracked onto the face
+    const mouth = el('div', { position: 'absolute', left: 0, top: 0, width: '10px', height: '8px', opacity: 0, zIndex: 25, transformOrigin: '50% 20%', pointerEvents: 'none' }, stage,
+      `<svg viewBox="-50 -40 100 100" width="100%" height="100%" style="overflow:visible">
+        <path d="M-40,-14 L40,-14 Q46,-12 44,0 L30,44 Q0,56 -30,44 L-44,0 Q-46,-12 -40,-14Z" fill="#2a0204" stroke="#070001" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M-37,-11 L37,-11 L34,-3 L22,-5 L18,1 L13,-5 L-13,-5 L-18,1 L-22,-5 L-34,-3Z" fill="#fff4ef"/>
+        <path d="M-27,40 L27,40 L25,33 L16,35 L12,30 L8,35 L-8,35 L-12,30 L-16,35 L-25,33Z" fill="#f3e4de"/>
+        <path d="M-20,38 Q0,22 20,38 Q0,44 -20,38Z" fill="#a1203a"/>
+        <path d="M-50,-18 L-58,-26 M-50,-6 L-60,-6 M50,-18 L58,-26 M50,-6 L60,-6" stroke="#160003" stroke-width="3.5" stroke-linecap="round"/></svg>`);
+    // rage brows + the shadow over the eyes (drawn, tracked like the mouth)
+    const brows = el('div', { position: 'absolute', left: 0, top: 0, width: '10px', height: '6px', opacity: 0, zIndex: 24, transformOrigin: '50% 50%', pointerEvents: 'none' }, stage,
+      `<svg viewBox="-100 -30 200 60" width="100%" height="100%" style="overflow:visible">
+        <defs><radialGradient id="kage" cx="0.5" cy="0.25" r="0.6"><stop offset="0" stop-color="#120002" stop-opacity="0.75"/><stop offset="1" stop-color="#120002" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="0" cy="-6" rx="104" ry="40" fill="url(#kage)"/>
+        <path d="M-88,-22 L-14,4 L-18,14 L-86,-8Z" fill="#090001"/>
+        <path d="M88,-22 L14,4 L18,14 L86,-8Z" fill="#090001"/>
+</svg>`);
+    let rageMode = null;
+    function setRage(on) {
+      if (rageMode === on) return; rageMode = on;
+      if (on) { env.forEach((m) => (m.visible = false)); scene.background = null; }
+      else if (!comicMode) { env.forEach((m) => (m.visible = true)); scene.background = bgTexRef; }
+      [crack, liftRing].forEach((m) => (m.visible = !on && !comicMode));
+      rageBg.style.opacity = on ? 1 : 0;
+      if (on) out.style.filter = 'drop-shadow(0 0 1.4vmin rgba(255,40,20,0.95)) drop-shadow(0.35vmin 0 0 #140002) drop-shadow(-0.35vmin 0 0 #140002) drop-shadow(0 0.35vmin 0 #140002)';
+      else if (!comicMode) out.style.filter = 'none';
+      rimW.color.set(on ? 0xff2a12 : 0xffc062); rimW2.color.set(on ? 0xff3a1a : 0xffb24a); camFill.color.set(on ? 0xff7a62 : 0xfff1e2);
+    }
+    function placeMouth(T, shot) {
+      if (!shot.rage) { mouth.style.opacity = 0; brows.style.opacity = 0; return; }
+      const h = headPos(), top = V3(0, 0, 0).setFromMatrixPosition(bone('HeadTop_End').matrixWorld), up = top.clone().sub(h).normalize(), f = faceDir();
+      const side = V3(0, 0, 0).crossVectors(up, f).normalize();
+      const m = h.clone().addScaledVector(up, P.mouthUp ?? 0.02).addScaledVector(f, P.mouthFwd ?? 0.085);
+      cam.updateMatrixWorld();
+      const toPx = (v) => { const q = v.clone().project(cam); return [(q.x + 1) / 2 * W, (1 - q.y) / 2 * H]; };
+      const [mx, my] = toPx(m), [ax, ay] = toPx(m.clone().addScaledVector(side, 0.03)), [bx, by] = toPx(m.clone().addScaledVector(side, -0.03));
+      const wpx = Math.hypot(ax - bx, ay - by) * (P.mouthScale ?? 1.9), ang = Math.atan2(ay - by, ax - bx);
+      const u = (T - shot.T[0]) / (shot.T[1] - shot.T[0]), open = VM.prog(u, 0.12, 0.14, 'outBack'), shake = 1 + 0.06 * Math.sin(T * 70) * open;
+      mouth.style.width = `${wpx}px`; mouth.style.height = `${wpx * 0.8}px`; mouth.style.opacity = open > 0.02 ? 1 : 0;
+      const rot = ang + (Math.abs(ang) > Math.PI / 2 ? Math.PI : 0);
+      mouth.style.transform = `translate(${mx - wpx / 2}px, ${my - wpx * 0.2}px) rotate(${rot}rad) scale(${shake}, ${Math.max(0.05, open) * shake})`;
+      const e = h.clone().addScaledVector(up, P.browUp ?? 0.14).addScaledVector(f, P.browFwd ?? 0.09);
+      const [ex, ey] = toPx(e), bw = wpx * (P.browScale ?? 1.6), anger = VM.prog(u, 0.05, 0.2, 'outCubic');
+      brows.style.width = `${bw}px`; brows.style.height = `${bw * 0.3}px`; brows.style.opacity = anger;
+      brows.style.transform = `translate(${ex - bw / 2}px, ${ey - bw * 0.15}px) rotate(${rot}rad) scale(1, ${0.6 + 0.4 * anger})`;
     }
     function renderAt(T, shot) {
       const t = actionAt(T);
@@ -370,7 +435,7 @@
         column.material.opacity = lo > 0 ? 0.28 * Math.exp(-lo * 14) : 0; column.scale.set(0.6 + lp * 0.5, 0.3 + lp, 0.6 + lp * 0.5);
         const dp = dGeo.attributes.position.array, ss = Math.max(0, lo);
         for (let i = 0; i < ND; i++) { const v = dv[i]; dp[i * 3] = LIFT.x + v.x * ss; dp[i * 3 + 1] = Math.max(0.01, v.y * ss - 4.9 * ss * ss); dp[i * 3 + 2] = LIFT.z + v.z * ss; }
-        dGeo.attributes.position.needsUpdate = true; dust.material.opacity = lo > 0 ? Math.max(0, 1 - lo / 0.7) : 0; dust.visible = !shot.comic; }
+        dGeo.attributes.position.needsUpdate = true; dust.material.opacity = lo > 0 ? Math.max(0, 1 - lo / 0.7) : 0; dust.visible = !shot.comic && !shot.rage; }
       const sf = s - tFloor, rf = sf > 0 ? Math.min(1, sf / 0.35) : 0;
       ring.scale.setScalar(0.1 + rf * 2.4); ring.material.opacity = sf > 0 ? (1 - rf) * 0.95 : 0;
       crack2.material.opacity = sf > 0 ? Math.min(1, sf / 0.01) * (1 - VM.prog(t, T_CONTACT + tFloor + 0.6, 0.4)) : 0; crack2.scale.setScalar(0.3 + 0.7 * Math.min(1, Math.max(0, sf) / 0.03));
@@ -385,6 +450,7 @@
       lensMat.uniforms.k.value = (shot.lens || 0) + (T > T_HIT_VIDEO ? 0.45 * Math.exp(-(T - T_HIT_VIDEO) * 6) : 0);
       lensMat.uniforms.zoom.value = HOLDING ? 0 : zoomAt(T) + smearAt(T);       // impact frames are crisp drawings
       lensMat.uniforms.cel.value = shot.comic ? 0.35 : P.cel;
+      lensMat.uniforms.sat.value = shot.rage ? 0.15 : 1; lensMat.uniforms.tint.value.set(...(shot.rage ? [1.15, 0.2, 0.17] : [1, 1, 1]));   // rage: the world goes red
       { const f = (shot.name === 'smash' && T > T_FLOOR_VIDEO - 0.2) ? hitPoint : (T > T_HIT_VIDEO - 0.7 && T < T_FLOOR_VIDEO + 0.5) ? (shot.name === 'smash' ? ball.position : C) : hipPos();
         cam.updateMatrixWorld(); const pf = f.clone().project(cam); lensMat.uniforms.center.value.set((pf.x + 1) / 2, (pf.y + 1) / 2); }
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
@@ -401,17 +467,18 @@
     speed.width = W; speed.height = H; const sg = speed.getContext('2d');
     const linesAt = (T) => { const n = shotAt(T).name;
       const sh = shotAt(T), u = (T - sh.T[0]) / (sh.T[1] - sh.T[0]);
-      return n === 'liftoff' ? (T > T_TAKEOFF ? 1 : 0.25) : n === 'rise' ? 0.7 * (1 - u) : n === 'runup' ? 0.35 * u : n === 'floor' ? (T > T_FLOOR_VIDEO ? 1 : 0.3) : n === 'pov' ? 0.9 : n === 'smash' ? 1 : n === 'feet' ? 0.35 : 0; };
+      return n === 'liftoff' ? (T > T_TAKEOFF ? 1 : 0.25) : n === 'rise' ? 0.7 * (1 - u) : n === 'runup' ? 0.35 * u : n === 'floor' ? (T > T_FLOOR_VIDEO ? 1 : 0.3) : n === 'pov' ? 0.9 : n === 'smash' ? 1 : n === 'rage' ? 1 : n === 'feet' ? 0.35 : 0; };
     function drawSpeed(T, fx, fy) {
       sg.clearRect(0, 0, W, H); const a = linesAt(T); if (a <= 0) return;
       const R = VM.rand(1 + Math.floor(T * 12)), diag = Math.hypot(W, H);
       for (let i = 0; i < 90; i++) { const ang = R() * Math.PI * 2, r0 = diag * (0.22 + R() * 0.25), r1 = diag * (0.75 + R() * 0.3), w = 0.6 + R() * 3.2;
-        sg.strokeStyle = `rgba(255,248,230,${(0.12 + R() * 0.45) * a})`; sg.lineWidth = w;
+        sg.strokeStyle = shotAt(T).rage ? `rgba(255,${60 + R() * 80},30,${(0.2 + R() * 0.5) * a})` : `rgba(255,248,230,${(0.12 + R() * 0.45) * a})`; sg.lineWidth = w;
         sg.beginPath(); sg.moveTo(fx + Math.cos(ang) * r0, fy + Math.sin(ang) * r0); sg.lineTo(fx + Math.cos(ang) * r1, fy + Math.sin(ang) * r1); sg.stroke(); }
     }
     const shutterOf = (shot) => ({ runup: 0.6, rise: 0.7, liftoff: 0.45, pov: 0.15, smash: 1.0, floor: 0.2 }[shot.name] ?? P.shutter);
     // anime impact frames: the action holds on one drawing, then continues where it stopped (no flicker)
-    const HOLDS = [[T_TAKEOFF, 0.13], [T_HIT_VIDEO, 0.23], [T_FLOOR_VIDEO + 0.05, 0.2]];
+    const HIT_HOLD = 1.0;
+    const HOLDS = [[T_TAKEOFF, 0.13], [T_HIT_VIDEO, HIT_HOLD], [T_FLOOR_VIDEO + 0.05, 0.2]];
     const holdT = (T) => { let out = T;
       for (const [a, h] of HOLDS) { const sh = shotAt(a); if (T < a || T >= sh.T[1]) continue; out = T < a + h ? a : Math.max(a, out - h); }
       return out; };
@@ -421,7 +488,8 @@
     VM.onFrame((T0) => {
       const T = holdT(T0); HOLDING = inHold(T0);
       const shot = shotAt(T0);
-      setComic(!!shot.comic);
+      if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
+      setComic(!!shot.comic); setRage(!!shot.rage);
       const n = shot.comic ? 1 : Math.max(1, P.subframes);
       og.clearRect(0, 0, W, H);
       for (let k = 0; k < n; k++) {
@@ -430,6 +498,8 @@
         og.globalAlpha = 1 / (k + 1); og.drawImage(renderer.domElement, 0, 0);
       }
       og.globalAlpha = 1;
+      placeMouth(T, shot);
+      if (shot.rage) rageBg.querySelector('.rays').style.transform = `scale(${1.05 + 0.06 * Math.sin(T * 31)}) rotate(${T * 25}deg)`;
       if (shot.comic) {
         const u = (T - shot.T[0]) / (shot.T[1] - shot.T[0]);
         comicBg.querySelector('.burst').style.transform = `scale(${1 + 0.15 * u}) rotate(${u * 8}deg)`;
@@ -441,7 +511,15 @@
       // impact frames: 3 frames of inverted, high-contrast black/white on the hit and a hard one on the floor
       const fi = Math.floor((T - T_HIT_VIDEO) * 30), ff = Math.floor((T - T_FLOOR_VIDEO) * 30);
       const fl = Math.floor((T - T_TAKEOFF) * 30);
-      stage.style.filter = inHold(T0) ? 'invert(1) grayscale(1) contrast(3.5)' : 'none';
+      // the hit's impact frame holds 1 s and alternates inverted black-and-white / red, blending at each switch with a zoom punch
+      if (T0 >= T_HIT_VIDEO && T0 < T_HIT_VIDEO + HIT_HOLD) {
+        const x = (T0 - T_HIT_VIDEO) / 0.25, k = Math.floor(x), f = x - k, red = k % 2;     // hard switch every 0.25 s ...
+        stage.style.filter = `grayscale(1) contrast(3.5) invert(${1 - red})`; redOverlay.style.opacity = red;
+        stage.style.transform = `scale(${1 + 0.06 * Math.exp(-f * 10)})`;                   // ... with a zoom punch
+        hitFlash.style.opacity = k > 0 ? Math.max(0, 1 - f * 0.25 / 0.07) : 0;                 // ... and a white flash: the transition
+      } else {
+        stage.style.filter = inHold(T0) ? 'invert(1) grayscale(1) contrast(3.5)' : 'none'; redOverlay.style.opacity = 0; stage.style.transform = ''; hitFlash.style.opacity = 0;
+      }
       // BAM on the floor
       const wf = T > T_FLOOR_VIDEO ? VM.prog(T, T_FLOOR_VIDEO, 0.2, 'outBack') : 0;
       floorWord.style.opacity = shot.name === 'floor' && wf > 0 ? 1 - VM.prog(T, shot.T[1] - 0.25, 0.25) : 0;

@@ -22,7 +22,7 @@
     {
       "id": "spike",
       "html": "impact/spike_seq.html",
-      "duration": 9.8
+      "duration": 10.3
     },
     {
       "id": "outro",
@@ -38,21 +38,21 @@
       "path": "music/anime_score.wav",
       "start": 0,
       "in": 0,
-      "duration": 25.6,
+      "duration": 26.1,
       "volume": 0.85
     },
     {
       "path": "sfx/anime_sfx.wav",
       "start": 0,
       "in": 0,
-      "duration": 25.6,
+      "duration": 26.1,
       "volume": 1.0
     },
     {
       "path": "sfx/anime_crowd.wav",
       "start": 0,
       "in": 0,
-      "duration": 25.6,
+      "duration": 26.1,
       "volume": 0.5
     }
   ],

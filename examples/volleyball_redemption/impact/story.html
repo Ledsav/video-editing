@@ -231,6 +231,7 @@
     const dt = 1 / (VEDIT.fps || 30);
     VM.onFrame((T0) => {
       const T = holdT(T0), shot = shotAt(T0), hold = inHold(T0);
+      if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
       const n = hold || shot.card ? 1 : Math.max(1, P.subframes);
       og.clearRect(0, 0, W, H);
       for (let k = 0; k < n; k++) { renderAt(hold ? T : Math.max(shot.T[0], T - dt * P.shutter * (k / n)), shot); og.globalAlpha = 1 / (k + 1); og.drawImage(renderer.domElement, 0, 0); }

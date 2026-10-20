@@ -63,6 +63,16 @@ function makeRetarget(THREE, model, bone) {
   const restHipLocal = bone('Hips').position.clone();
   model.updateMatrixWorld(true);
   const ARM = {}; for (const s of ['Left', 'Right']) ARM[s] = wpos(bone(`${s}Arm`)).distanceTo(wpos(bone(`${s}ForeArm`))) + wpos(bone(`${s}ForeArm`)).distanceTo(wpos(bone(`${s}Hand`)));
+  // natural hinges at rest (world -> each upper bone's local space): elbows flex forward, knees flex back
+  const HINGE = new Map(), PELVIS_HINGE = new Map();   // joint hinges in the upper bone's space; knees also in the pelvis' space
+  { const up = V().set(0, 1, 0), fwd = wpos(bone('LeftArm')).sub(wpos(bone('RightArm'))).cross(up).setY(0).normalize();
+    for (const s of ['Left', 'Right']) {
+      for (const [a, b, flex] of [[`${s}Arm`, `${s}ForeArm`, fwd], [`${s}UpLeg`, `${s}Leg`, fwd.clone().negate()]]) {
+        const A = bone(a), B = bone(b); if (!A || !B) continue;
+        const dirR = wpos(B).sub(wpos(A)).normalize(), h = V().crossVectors(dirR, flex);
+        if (h.lengthSq() < 1e-6) continue;
+        const qa = Q(); A.getWorldQuaternion(qa); HINGE.set(A, h.clone().normalize().applyQuaternion(qa.invert()));
+        if (a.endsWith('UpLeg')) { const qh = Q(); bone('Hips').getWorldQuaternion(qh); PELVIS_HINGE.set(A, h.clone().normalize().applyQuaternion(qh.invert())); } } } }
   const FING = { Thumb: 0, Index: 1, Middle: 2, Ring: 3, Pinky: 4 };
   // [anime bone, anime child, mocap from, mocap to]
   const chain = [['Spine', 'Spine1', 'LowerSpine', 'MiddleSpine'], ['Spine1', 'Spine2', 'MiddleSpine', 'Chest']];
@@ -101,17 +111,52 @@ function makeRetarget(THREE, model, bone) {
     const toT = target.clone().sub(A), d = Math.min(Math.max(toT.length(), Math.abs(la - lb) + 1e-4), la + lb - 1e-4);
     const dir = toT.normalize();
     let pv = pole.clone().sub(A); pv.sub(dir.clone().multiplyScalar(pv.dot(dir)));
+    // a nearly straight capture limb has its knee/elbow almost on the line, so its side flips with noise (the limb would roll
+    // over): add a small bias towards the joint's natural bend (knees: the pelvis' hinge; elbows: the hinge after a plain swing)
+    const hl0 = HINGE.get(a);
+    if (hl0) {
+      let ref;
+      const pl = PELVIS_HINGE.get(a);
+      if (pl) { const qh = Q(); bone('Hips').getWorldQuaternion(qh); ref = pl.clone().applyQuaternion(qh); }
+      else { const qa0 = Q(); a.getWorldQuaternion(qa0); const cur = B.clone().sub(A).normalize();
+        ref = hl0.clone().applyQuaternion(Q().setFromUnitVectors(cur, dir).multiply(qa0)); }
+      const nat = V().crossVectors(dir, ref); nat.sub(dir.clone().multiplyScalar(nat.dot(dir)));
+      if (nat.lengthSq() > 1e-8) pv.add(nat.normalize().multiplyScalar(0.08 * la));
+    }
     if (pv.lengthSq() < 1e-8) { pv = B.clone().sub(A); pv.sub(dir.clone().multiplyScalar(pv.dot(dir))); }
     pv.normalize();
     const cosA = (la * la + d * d - lb * lb) / (2 * la * d), sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
     const E = A.clone().add(dir.clone().multiplyScalar(cosA * la)).add(pv.multiplyScalar(sinA * la));
     swing(a, b, E.clone().sub(A));
+    // roll the upper bone about its own axis so the joint bends around its natural hinge: the skin creases cleanly
+    // (an elbow or knee bent around any other axis crumples the mesh)
+    const hl = (window.RT_FLAGS || {}).hinge === false ? null : HINGE.get(a);
+    if (hl) { a.updateMatrixWorld(true);
+      const u = wpos(b).sub(wpos(a)).normalize(), qa = Q(); a.getWorldQuaternion(qa);
+      const want = V().crossVectors(pv, dir), have = hl.clone().applyQuaternion(qa);
+      want.sub(u.clone().multiplyScalar(want.dot(u))); have.sub(u.clone().multiplyScalar(have.dot(u)));
+      if (want.lengthSq() > 1e-8 && have.lengthSq() > 1e-8) {
+        want.normalize(); have.normalize();
+        const bend = Math.min(1, Math.max(0, (sinA - 0.3) / 0.25));      // a nearly straight limb has no clear bend plane: leave its roll alone
+        // knees: the hinge stays within +-45 deg of the pelvis' own hinge axis (a thigh can't roll further); a capture pole
+        // asking for more (locked or hyperextended knee, marker noise) is pulled back into the human range
+        const pl = PELVIS_HINGE.get(a);
+        if (pl) { const qh = Q(); bone('Hips').getWorldQuaternion(qh);
+          const ref = pl.clone().applyQuaternion(qh); ref.sub(u.clone().multiplyScalar(ref.dot(u)));
+          if (ref.lengthSq() > 1e-8) { ref.normalize();
+            const off = Math.atan2(V().crossVectors(ref, want).dot(u), ref.dot(want)), lim = 0.79;
+            if (Math.abs(off) > lim) want.copy(ref).applyAxisAngle(u, Math.sign(off) * lim); } }
+        const raw = Math.atan2(V().crossVectors(have, want).dot(u), have.dot(want));
+        // continuity: a correction near +-180 deg would flip sides between frames (the arm spins a full turn); fade it out there
+        const near = Math.min(1, Math.max(0, (2.97 - Math.abs(raw)) / 0.52)), fade = near * near * (3 - 2 * near);
+        const ang = raw;                               // full correction: continuous through +-180 (a partial one snaps)
+        setWorldQ(a, Q().setFromAxisAngle(u, ang).multiply(qa)); } }
     b.updateMatrixWorld(true);
     swing(b, c, A.clone().add(dir.clone().multiplyScalar(d)).sub(wpos(b)));
   }
   // the rig has no forearm twist bones: a wrist turned far from its rest roll collapses the skin ("candy wrapper").
   // Keep the hand's roll about its own long axis (towards the middle finger) within +-limit of rest.
-  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8;
+  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8, CLAVICLE_FOLLOW = 0.35;
   // and keep the hand within MAX_WRIST_BEND of the forearm's line: past that the wrist reads as broken
   function limitBend(h, child, fore, limit) {
     h.updateMatrixWorld(true);
@@ -126,11 +171,45 @@ function makeRetarget(THREE, model, bone) {
     let th = 2 * Math.atan2(V().set(d.x, d.y, d.z).dot(axis), d.w); if (th > Math.PI) th -= 2 * Math.PI; if (th < -Math.PI) th += 2 * Math.PI;
     if (Math.abs(th) <= limit) return;
     const swingQ = d.clone().multiply(Q().setFromAxisAngle(axis, th).invert());                // d = swing * twist
-    const keep = Q().setFromAxisAngle(axis, Math.sign(th) * limit);
+    // past the limit, ease back to 0 at 180 deg: a hard clamp jumps from +limit to -limit when the twist wraps (the hand flips)
+    const keep = Q().setFromAxisAngle(axis, Math.sign(th) * limit * (Math.PI - Math.abs(th)) / (Math.PI - limit));
     b.quaternion.copy(r.clone().multiply(swingQ).multiply(keep)); b.updateMatrixWorld(true);
   }
 
   // M: mocap world positions; xf(v) maps a mocap point into the scene (scale + offset)
+  // ---- human-pose audit (window.AUDIT): logs anything a body can't do, tagged with window.AUDIT_T ----
+  let prevQ = null, prevT = null, prevShot = null;
+  const AUD_BONES = ['Hips', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'];
+  function audit() {
+    const T = window.AUDIT_T ?? -1, out = [], deg = (r) => r * 57.2958;
+    const ang = (a, b, c) => wpos(bone(b)).sub(wpos(bone(a))).angleTo(wpos(bone(c)).sub(wpos(bone(b))));
+    for (const s of ['Left', 'Right']) {
+      for (const [a, b, c, nm] of [[`${s}Arm`, `${s}ForeArm`, `${s}Hand`, 'elbow'], [`${s}UpLeg`, `${s}Leg`, `${s}Foot`, 'knee']]) {
+        const A = bone(a), u = wpos(bone(b)).sub(wpos(A)), l = wpos(bone(c)).sub(wpos(bone(b))), flex = u.angleTo(l);
+        const qa = Q(); A.getWorldQuaternion(qa); const h = HINGE.get(A); if (!h) continue;
+        const side = V().crossVectors(u, l).dot(h.clone().applyQuaternion(qa));
+        if (flex > 0.14 && side < -0.2 * u.length() * l.length()) out.push(`${s}${nm}-backwards ${deg(flex).toFixed(0)}`);
+      }
+      const wb = ang(`${s}ForeArm`, `${s}Hand`, `${s}HandMiddle1`); if (wb > 1.22) out.push(`${s}wrist-bend ${deg(wb).toFixed(0)}`);
+      for (const f of [`${s}Foot`, `${s}ToeBase`, `${s}Leg`]) { const y = wpos(bone(f)).y; if (y < -0.03) out.push(`${f}-below-floor ${(y * 100).toFixed(0)}cm`); }
+      // hand inside the torso: distance to the hips -> neck segment
+      const h0 = wpos(bone('Hips')), h1 = wpos(bone('Neck')), p = wpos(bone(`${s}Hand`)), seg = h1.clone().sub(h0);
+      const k = Math.min(1, Math.max(0, p.clone().sub(h0).dot(seg) / seg.lengthSq())), dist = p.distanceTo(h0.clone().add(seg.multiplyScalar(k)));
+      if (dist < 0.07) out.push(`${s}hand-in-torso ${(dist * 100).toFixed(0)}cm`);
+    }
+    const spine = ang('Hips', 'Spine', 'Spine2'), neck = ang('Spine2', 'Neck', 'Head');
+    if (spine > 1.22) out.push(`spine-bend ${deg(spine).toFixed(0)}`);
+    if (neck > 1.05) out.push(`neck-bend ${deg(neck).toFixed(0)}`);
+    // pops: rotation speed (deg/s) of each bone between consecutive audited frames
+    const q = AUD_BONES.map((n) => { const r = Q(); bone(n).getWorldQuaternion(r); return r; });
+    if (prevQ && prevT !== null && T > prevT && T - prevT < 0.08 && prevShot === window.AUDIT_SHOT) {   // a cut is not a pop
+      const dt = T - prevT;
+      AUD_BONES.forEach((n, i) => { const w = deg(prevQ[i].angleTo(q[i])) / dt; if (w > (window.AUDIT_MAXW || 1500)) out.push(`${n}-pop ${w.toFixed(0)}deg/s`); });
+    }
+    prevQ = q; prevT = T; prevShot = window.AUDIT_SHOT;
+    if (out.length) console.error(`AUDIT t=${T.toFixed(3)} ${window.AUDIT_SHOT || ''} | ${out.join(' | ')}`);
+  }
+
   return function apply(M, xf) {
     bones.forEach((b) => b.quaternion.copy(rest.get(b)));
     const hips = bone('Hips'); hips.position.copy(restHipLocal); model.updateMatrixWorld(true);
@@ -147,13 +226,18 @@ function makeRetarget(THREE, model, bone) {
       twoVec(chest, wpos(bone('Neck')).sub(wpos(chest)), wpos(bone('LeftArm')).sub(wpos(bone('RightArm'))),
         D(M, 'Chest', 'Neck'), D(M, 'RShoulder', 'LShoulder')); }
     for (const [b, c, f, t] of NK) swing(bone(b), bone(c), D(M, f, t));
-    for (const [b, c, f, t] of LIM) swing(bone(b), bone(c), D(M, f, t));
+    for (const [b, c, f, t] of LIM) {
+      if (b.endsWith('Shoulder')) {                    // collarbones: the capture's are steep for this body (a shrug); follow a third of them
+        const B = bone(b); B.updateMatrixWorld(true);
+        const cur = wpos(bone(c)).sub(wpos(B)).normalize();
+        swing(B, bone(c), cur.lerp(D(M, f, t).normalize(), CLAVICLE_FOLLOW)); continue; }
+      swing(bone(b), bone(c), D(M, f, t)); }
     // directions alone lose contacts on a differently proportioned body (hands that should join, feet that should stay
     // planted): two-bone IK puts the ankles where the capture's are and the hands where the capture's are relative to the chest
     // (scaled to this arm length), with the capture's knee / elbow direction as the pole
     model.updateMatrixWorld(true);
     const X = (n) => xf(M[n]);
-    if (xf.ik !== false) {
+    if (xf.ik !== false && (window.RT_FLAGS || {}).ik !== false) {
       const fdy = xf.footDy || 0;
       for (const s of ['Left', 'Right']) {
         const m = s[0];
@@ -178,6 +262,7 @@ function makeRetarget(THREE, model, bone) {
     }
     for (const [b, c, f, t] of FIN) swing(bone(b), bone(c), D(M, f, t));
     model.updateMatrixWorld(true);
+    if (window.AUDIT) audit();
   };
 }
 
