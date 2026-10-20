@@ -25,6 +25,7 @@
         const j = (k) => Math.abs(ang(d1[k], d2[k]) - ang(d0[k], d1[k])).toFixed(1);
         s += `${(i / 60).toFixed(3)} ${j('hand')} ${j('palm')} ${j('fore')} ${j('fing')} ${j('lhand')} ${acc.toFixed(0)}\n`; }
     }
+    if (P.feet) { s = 'FEET\n'; for (let i = 0; i <= m.dur * 60; i++) { const M = m.sample(i / 60); s += `${(i / 60).toFixed(3)} ${Math.min(M.LToe.y, M.LFoot.y).toFixed(3)} ${Math.min(M.RToe.y, M.RFoot.y).toFixed(3)}\n`; } }
     console.error(s);
   } catch (e) { console.error('ERR ' + e.message); } res(); });
 </script></body></html>

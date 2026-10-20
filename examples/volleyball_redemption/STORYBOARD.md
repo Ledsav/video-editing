@@ -80,6 +80,19 @@ The scoring follows volleyball rules: sets 1–4 go to 25 with a two-point lead,
 Files: `impact/story.html` (`part`: `intro` | `outro`), `impact/spike_seq.html`, shared `impact/stage.js` (arena + anime post pass),
 `impact/mocap.js` (retarget), `tools/c4d_anim.py` (C4D → glTF). Licensed assets (mocap, ball model, character) are not committed.
 
+Sound: `tools/anime_sound.py` writes the score and sound design as stems locked to the picture.
+- Score:
+  - a lonely muffled piano in D minor for the past
+  - an orchestra hit on the flash and a string ostinato build
+  - an anime-rock drop on THIS TIME, HE ATTACKS. (141.7 bpm, so the contact lands on a downbeat)
+  - near silence in the comic frame (a heartbeat and one tense note)
+  - the full chorus after the hit, a piano callback in grey, and a final D major chord
+- Sound effects: one per action: run-up squeaks, the ground cracking on takeoff, the arm whip, the palm on leather with a sub drop and a time-freeze ring,
+  the ball's doppler pass, the BAM with debris, last year's ball rolling to a stop, and a sparkle on the eyes.
+- Crowd: muffled in the past, alive today, erupting on 26:24.
+
 ```bash
-cd projects/volleyball_redemption && ../../bin/vedit render story_full.json   # -> out/volleyball_redemption_final.mp4
+cd projects/volleyball_redemption
+python3 tools/anime_sound.py                 # -> music/anime_score.wav, sfx/anime_sfx.wav, sfx/anime_crowd.wav
+../../bin/vedit render story_full.json       # -> out/volleyball_redemption_final.mp4
 ```
