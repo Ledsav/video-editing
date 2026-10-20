@@ -11,12 +11,13 @@
 <script src="mocap.js"></script>
 <script src="ballpro.js"></script>
 <script src="stage.js"></script>
+<script src="kit.js"></script>
 <style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #04060c; } #stage { position: absolute; inset: 0; overflow: hidden; }
   canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }
   .line { position: absolute; left: 0; right: 0; text-align: center; color: #f3ede2; white-space: nowrap; }</style></head>
 <body><div id="stage"></div>
 <script type="module">
-  const P = VM.params({ part: 'intro', model: 'anime_male.glb', dig: 'mocap/3-Dig_in_front_with_one_knee_on_the_ground.glb', idle: 'mocap/1-IDLE.glb',
+  const P = VM.params({ part: 'intro', model: 'vrm/HairSample_Male.vrm', dig: 'mocap/3-Dig_in_front_with_one_knee_on_the_ground.glb', idle: 'mocap/1-IDLE.glb',
     win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', subframes: 3, shutter: 0.5, cel: 0.75 });
   const INTRO = P.part === 'intro';
   const stage = document.getElementById('stage');
@@ -45,14 +46,16 @@
     const camFill = new THREE.DirectionalLight(0xfff1e2, 1.6); scene.add(camFill, camFill.target);
 
     // ================= athlete (same materials as the spike) =================
-    const gltf = await loadGLB(GLTFLoader, P.model), model = gltf.scene; scene.add(model);
+    const gltf = await loadCharacter(THREE, GLTFLoader, P.model), model = gltf.scene; scene.add(model);
+    if (gltf.isVRM) { await document.fonts.ready; paintKit(THREE, model, { number: '7' }); }
     const ramp = (() => { const d = new Uint8Array([125, 190, 255]); const t = new THREE.DataTexture(d, 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
     const KIT = { N00_007_01_Tops_01_CLOTH: 0x2140a6, N00_001_02_Bottoms_01_CLOTH: 0x0f1d4a, N00_004_01_Shoes_01_CLOTH: 0xf4f4f4 };
     model.traverse((o) => { if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false;
-      const m = o.material, kk = KIT[m.name], skin = /_(SKIN|FACE)$/.test(m.name);
+      const m = o.material, kk = KIT[m.name]; let skin = /_(SKIN|FACE)$/.test(m.name);
       const flat = /_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(m.name);   // painted face details stay unlit, like the source
-      o.material = flat ? new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite })
-        : new THREE.MeshToonMaterial({ color: kk ?? (skin ? 0xbcb0aa : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp }); });
+      const hair = gltf.isVRM && /_HAIR$/.test(m.name); if (gltf.isVRM && /Body_00/.test(m.name)) skin = false;
+      o.material = flat ? new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: /_EYE$/.test(m.name) ? THREE.DoubleSide : m.side, depthWrite: m.depthWrite })
+        : new THREE.MeshToonMaterial({ normalMap: m.normalMap, normalScale: m.normalScale, color: kk ?? (skin ? 0xbcb0aa : hair ? 0x55607a : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp }); });
     { model.updateMatrixWorld(true);
       const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
       const Pw = (b) => V3(0, 0, 0).setFromMatrixPosition(b.matrixWorld);
@@ -66,7 +69,7 @@
     model.updateMatrixWorld(true);
     const bone = (n) => { if (!boneCache.has(n)) { let f = null; const re = new RegExp('^(mixamorig:?)?' + n + '(_\\d+)?$'); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); boneCache.set(n, f); } return boneCache.get(n); };
     const wp = (n) => V3(0, 0, 0).setFromMatrixPosition(bone(n).matrixWorld);
-    const retarget = makeRetarget(THREE, model, bone);
+    const retarget = makeRetarget(THREE, model, bone, { rhythm: !!gltf.isVRM });
     const legOf = (pts) => pts[0].distanceTo(pts[1]) + pts[1].distanceTo(pts[2]);
     const soleToToe = wp('LeftToeBase').y - new THREE.Box3().setFromObject(model).min.y;
     const LEG = legOf([wp('LeftUpLeg'), wp('LeftLeg'), wp('LeftFoot')]);
@@ -140,7 +143,7 @@
     const cardTitle = el('div', { top: '57vh', font: `400 15vmin ${DISPLAY}`, letterSpacing: '0.01em', color: '#f3ede2', opacity: 0, zIndex: 5 }, stage, `NEVER GIVE <span style="color:${V200W.yellow}">UP.</span>`); cardTitle.className = 'line';
     const cardSub = el('div', { top: '78vh', font: T1(1.9), letterSpacing: '0.55em', textIndent: '0.55em', color: '#d9dde6', opacity: 0, zIndex: 5 }, stage, 'EVERY SET &nbsp;·&nbsp; EVERY POINT &nbsp;·&nbsp; EVERY DAY'); cardSub.className = 'line';
     const credit = el('div', { position: 'absolute', left: 0, right: 0, bottom: '4vh', textAlign: 'center', font: T1(1.2, 500), letterSpacing: '0.12em', color: 'rgba(243,237,226,0.6)', opacity: 0, zIndex: 5 }, stage,
-      'CHARACTER: "RIGGED ANIME MALE CHARACTER-1" BY RET.OUCHS (SKETCHFAB) · CC BY-SA 4.0 &nbsp;·&nbsp; MOTION CAPTURE: MOTION CAST');
+      'CHARACTER: VROID "HAIRSAMPLE_MALE" (PIXIV, CC0), KIT BY THE AUTHOR &nbsp;·&nbsp; MOTION CAPTURE: MOTION CAST');
     addFinish({ grain: 0.07, vignette: 0.5 });
     const flash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 50 }, document.body);
     const black = el('div', { position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 51 }, document.body);
@@ -213,8 +216,12 @@
     const holdT = (T) => T < T_LAND ? T : T < T_LAND + HOLD ? T_LAND : (shotAt(T) === digShot ? T - HOLD : T);
     window.STORY_TIMES = { land: T_LAND, cuts: SHOTS.map((s) => s.T[0]) };
 
+    // faces (VRoid expressions): grief last year, quiet resolve today, joy in the answer
+    const FACE = { floor: { sorrow: 0.6 }, kneel: { sorrow: 0.9 }, rolls: { sorrow: 0.8 }, eyes: { angry: 0.35 }, today: { joy: 1, a: 0.5 } };
+    let faceKey = null;
     function renderAt(T, shot) {
       const u = uOf(shot, T), c = clipT(shot, T);
+      if (gltf.isVRM && faceKey !== shot.name) { faceKey = shot.name; for (const n of ['sorrow', 'angry', 'joy', 'a']) gltf.expr(n, (FACE[shot.name] || {})[n] || 0); }
       model.visible = !shot.noAthlete && !shot.blank;
       if (model.visible) pose(clips[shot.clip], c, shot.xf, shot.head || 0, { anchor: shot.anchor, arms: shot.arms ? shot.arms(u) : 0 });
       ball.visible = !!shot.ball && !shot.blank;

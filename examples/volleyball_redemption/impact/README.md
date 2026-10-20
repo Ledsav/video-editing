@@ -65,3 +65,14 @@ After the direction pass, `makeRetarget` therefore runs two-bone IK:
 `retarget_check.html` draws the capture skeleton (red) over the character (blue skeleton, translucent mesh) from the side and front.
 It also logs per-joint distances and the hand gap, for example:
 `node ../../mograph/render.mjs --html impact/retarget_check.html --out work/rc.mov --duration 6 --fps 2 --opaque 1 --width 1280 --height 540 --stills 2.6,3.4`.
+
+## Character: VRoid "HairSample_Male" (CC0) in a painted volleyball kit
+
+`impact/vrm/HairSample_Male.vrm` is an official VRoid sample by pixiv. It's CC0 (commercial use and modification allowed, no credit required).
+It isn't committed. Get it from the `vroid/beta/` folder of github.com/madjin/vrm-samples.
+- `loadCharacter` (loadglb.js): renames the VRM humanoid bones to Mixamo names, adds a HeadTop_End marker, and exposes the facial blendshape groups:
+  `gltf.expr('angry', 1)`, `'a'`, `'sorrow'`, `'joy'`, `'blink'`.
+- `paintKit` (kit.js) hides the VRoid hoodie and trousers, then paints a jersey with a number, shorts, knee pads and socks onto the body texture.
+  The hands' UV islands, which sit inside the torso area, are masked out using the skin weights.
+- `kitNormalMap` bakes the fabric relief (knit, twill, seams, hems, raised number, quilted pads) into the normal map, and into the colour as fold shading.
+- `makeRetarget(..., { rhythm: true })` uses a scapulohumeral rhythm: the shoulder girdle supplies a third of the arm's elevation, so a raised arm doesn't pinch the shoulder.

@@ -55,7 +55,7 @@ async function loadMocap(THREE, GLTFLoader, file) {
   return { sample, dur, floor, takeoff: best[0] / fps, land: best[1] / fps, contact: contact / fps, airborne: best[1] > best[0] };
 }
 
-function makeRetarget(THREE, model, bone) {
+function makeRetarget(THREE, model, bone, opts = {}) {
   const V = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
   const wpos = (b) => V().setFromMatrixPosition(b.matrixWorld);
   const bones = []; model.traverse((o) => { if (o.isBone) bones.push(o); });
@@ -230,13 +230,20 @@ function makeRetarget(THREE, model, bone) {
       if (b.endsWith('Shoulder')) {                    // collarbones: the capture's are steep for this body (a shrug); follow a third of them
         const B = bone(b); B.updateMatrixWorld(true);
         const cur = wpos(bone(c)).sub(wpos(B)).normalize();
-        const dir = cur.lerp(D(M, f, t).normalize(), CLAVICLE_FOLLOW).normalize();
+        const dir = cur.lerp(D(M, f, t).normalize(), opts.rhythm ? 0 : CLAVICLE_FOLLOW).normalize();
         // arm above the shoulder: this rig has no deltoid helpers, so the mesh rises to the ears; drop the shoulder point instead
         // (the head stays clear of the shoulders, as a real neck does), up to 22 deg for an arm straight up
         const s = b.startsWith('Left') ? 'L' : 'R', up = D(M, `${s}Shoulder`, `${s}Forearm`).normalize();
         const elev = Math.acos(Math.max(-1, Math.min(1, -up.y)));                 // 0 = arm down, PI = straight up
-        const drop = Math.min(SHOULDER_DROP, Math.max(0, (elev - 1.4) * 0.45));
-        if (drop > 0) { const ax = V().crossVectors(dir, V().set(0, -1, 0)); if (ax.lengthSq() > 1e-6) dir.applyAxisAngle(ax.normalize(), drop); }
+        if (opts.rhythm) {
+          // scapulohumeral rhythm: past ~30 deg the shoulder girdle supplies a third of the arm's elevation (up to ~32 deg),
+          // so the shoulder joint never has to bend past what the skin can hold, and the shoulder rises like a real one
+          const lift = Math.min(0.56, Math.max(0, (elev - 0.52) / 3));
+          const ax = V().crossVectors(V().set(0, 1, 0), dir); if (lift > 0 && ax.lengthSq() > 1e-6) dir.applyAxisAngle(ax.normalize(), lift);
+        } else {
+          const drop = Math.min(SHOULDER_DROP, Math.max(0, (elev - 1.4) * 0.45));
+          if (drop > 0) { const ax = V().crossVectors(dir, V().set(0, -1, 0)); if (ax.lengthSq() > 1e-6) dir.applyAxisAngle(ax.normalize(), drop); }
+        }
         swing(B, bone(c), dir); continue; }
       swing(bone(b), bone(c), D(M, f, t)); }
     // directions alone lose contacts on a differently proportioned body (hands that should join, feet that should stay

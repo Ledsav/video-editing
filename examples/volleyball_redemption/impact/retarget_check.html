@@ -7,6 +7,7 @@
 <script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
 <script src="loadglb.js"></script>
 <script src="mocap.js"></script>
+<script src="kit.js"></script>
 <style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #e9e9ee; } .lab { position: absolute; top: 1vh; font: 600 2vmin sans-serif; color: #223; }</style></head>
 <body>
 <script type="module">
@@ -20,9 +21,17 @@
     const scene = new THREE.Scene(); scene.background = new THREE.Color(0xe9e9ee);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x777788, 2.2));
     const grid = new THREE.GridHelper(4, 16, 0x999999, 0xcccccc); scene.add(grid);
-    const g = await loadGLB(GLTFLoader, P.model), model = g.scene; scene.add(model);
-    model.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.material = new THREE.MeshLambertMaterial({ map: o.material.map, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide }); } });
+    const g = await loadCharacter(THREE, GLTFLoader, P.model), model = g.scene; scene.add(model); if (P.expr) g.expr(P.expr, 1);
+    model.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; const op = P.opaque ? 1 : 0.55; o.material = new THREE.MeshLambertMaterial({ name: o.material.name, map: o.material.map, transparent: op < 1 || o.material.transparent, opacity: op, alphaTest: o.material.alphaTest, depthWrite: op >= 1 && !o.material.transparent, side: THREE.DoubleSide }); } });
     if (P.nomesh) model.traverse((o) => { if (o.isMesh) o.visible = false; });
+    if (P.kit) paintKit(THREE, model);
+    if (P.uvGrid) model.traverse((o) => { if (o.isMesh && /Body_00_SKIN/.test(o.material.name) && o.material.map) {
+      const im = o.material.map.image, c = document.createElement('canvas'); c.width = 1024; c.height = 1024; const g = c.getContext('2d'); g.drawImage(im, 0, 0, 1024, 1024);
+      const R = [[0, 0, 245, 500, '#ff0000'], [0, 505, 245, 440, '#ffff00'], [780, 0, 244, 500, '#00ff00'], [780, 505, 244, 440, '#00ffff'], [245, 0, 535, 220, '#ff00ff'], [245, 220, 535, 220, '#ff8800'], [245, 440, 535, 160, '#0000ff'], [245, 600, 535, 200, '#8800ff']];
+      g.globalAlpha = 0.6; for (const [x, y, w, h, col] of R) { g.fillStyle = col; g.fillRect(x, y, w, h); }
+      g.globalAlpha = 1; g.strokeStyle = '#000'; g.lineWidth = 3; for (let x = 0; x <= 1024; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 1024); g.stroke(); } for (let y = 0; y <= 1024; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(1024, y); g.stroke(); }
+      const t = new THREE.CanvasTexture(c); t.flipY = o.material.map.flipY; t.colorSpace = o.material.map.colorSpace; o.material.map = t; o.material.needsUpdate = true; } });
+    if (P.hideMat) model.traverse((o) => { if (o.isMesh && new RegExp(P.hideMat).test(o.material.name)) o.visible = false; });
     const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
     const Pw = (b) => V3(0, 0, 0).setFromMatrixPosition(b.matrixWorld);
     model.updateMatrixWorld(true);
@@ -68,7 +77,7 @@
       console.error(`ANG t=${T.toFixed(2)} ` + DIRS.map(([a, b, c, d]) => `${a}:${(wp(b).sub(wp(a)).angleTo(M[d].clone().sub(M[c])) * 57.3).toFixed(0)}`).join(' '));
       if (T < 0.6 && !window._dumped) { window._dumped = 1; const names = []; model.traverse((o) => { if (o.isBone) names.push(o.name + '<' + (o.parent && o.parent.name)); }); console.error('BONES ' + names.join(' | ')); }
       const h = xf(M.Hip);
-      for (const [vx, dir] of [[0, V3(1, 0, 0)], [W / 2, V3(0, 0, 1)]]) {
+      for (const [vx, dir] of (P.backView ? [[0, V3(0, 0, -1)], [W / 2, V3(0, 0, 1)]] : [[0, V3(1, 0, 0)], [W / 2, V3(0, 0, 1)]])) {
         renderer.setViewport(vx, 0, W / 2, H); renderer.setScissor(vx, 0, W / 2, H);
         cam.position.copy(h.clone().add(dir.clone().multiplyScalar(4.2)).setY(0.95)); cam.lookAt(h.x, 0.85, h.z);
         renderer.render(scene, cam);

@@ -11,11 +11,12 @@
 <script src="mocap.js"></script>
 <script src="ballpro.js"></script>
 <script src="stage.js"></script>
+<script src="kit.js"></script>
 <style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #04060c; } #stage { position: absolute; inset: 0; overflow: hidden; }
   canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }</style></head>
 <body><div id="stage"></div>
 <script type="module">
-  const P = VM.params({ smash: 'mocap/8-Smash-Take2.glb', win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', model: 'anime_male.glb', subframes: 5, shutter: 0.5, cel: 0.75 });
+  const P = VM.params({ smash: 'mocap/8-Smash-Take2.glb', win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', model: 'vrm/HairSample_Male.vrm', subframes: 5, shutter: 0.5, cel: 0.75 });
   const stage = document.getElementById('stage'); if (P.rtFlags) window.RT_FLAGS = P.rtFlags; if (P.rtLog) window.RT_LOG = 1;   // debug: {ik: false} / {hinge: false}
   window.VM_READY = new Promise(async (resolve) => { try {
     const THREE = await import('three');
@@ -50,8 +51,12 @@
     const camFill = new THREE.DirectionalLight(0xfff1e2, 1.4); scene.add(camFill, camFill.target);
 
     // ================= athlete =================
-    const gltf = await loadGLB(GLTFLoader, P.model);
+    const gltf = await loadCharacter(THREE, GLTFLoader, P.model);
     const model = gltf.scene; scene.add(model);
+    if (gltf.isVRM) { await document.fonts.ready; paintKit(THREE, model, { number: '7', bakeK: P.bakeK }); }   // VRoid: volleyball kit painted on the body
+    if (P.dumpKit) model.traverse((o) => { if (o.isMesh && /Body_00/.test(o.material.name)) { const c = o.material.map.image, n = o.material.normalMap && o.material.normalMap.image;
+      const sm = (im) => { const k = document.createElement('canvas'); k.width = k.height = 1024; k.getContext('2d').drawImage(im, 0, 0, 1024, 1024); return k.toDataURL('image/jpeg', 0.85); };
+      console.error('KITMAP ' + sm(c)); if (n) console.error('KITNRM ' + sm(n)); } });
     const bones0 = new Map(); model.traverse((o) => { if (o.isBone) bones0.set(o.name, o); });
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xd4d8e0, roughness: 0.45, metalness: 0.05 });
     const kitMat = new THREE.MeshStandardMaterial({ color: 0x2140a6, roughness: 0.4, metalness: 0.1 });
@@ -68,8 +73,9 @@
         const m = o.material.clone(); m.roughness = Math.max(0.45, m.roughness ?? 0.6); m.metalness = 0;
         const kk = KIT[o.name] ?? KIT[o.material.name];
         if (kk !== undefined) { m.color = new THREE.Color(kk); m.map = null; }
-        const skin = /_(SKIN|FACE)$/.test(o.material.name);   // lit skin over-exposes the unlit textures: pull it down a stop
-        o.userData.toon = new THREE.MeshToonMaterial({ color: kk ?? (skin ? 0xbcb0aa : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp });   // keep double-sided: the face is culled otherwise
+        const skin = /_(SKIN|FACE)$/.test(o.material.name) && !(gltf.isVRM && /Body_00/.test(o.material.name));   // lit skin over-exposes the unlit textures: pull it down a stop (not the kit)
+        const hair = gltf.isVRM && /_HAIR$/.test(o.material.name);   // VRoid hair: keep it blue-black under the warm rims
+        o.userData.toon = new THREE.MeshToonMaterial({ normalMap: P.relief === 0 ? null : m.normalMap, normalScale: m.normalScale, color: kk ?? (skin ? 0xbcb0aa : hair ? 0x55607a : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp });   // keep double-sided: the face is culled otherwise
         // painted face details (eyes, brows, lashes, eye lines, mouth) stay unlit like the source: lit, the rim lights turn them orange
         // (the eye white and iris are single-sided with inverted winding in this export: culled, the eyes rendered as empty holes)
         if (/_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(o.material.name)) o.userData.toon = new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: /_EYE$/.test(o.material.name) ? THREE.DoubleSide : m.side, depthWrite: m.depthWrite });
@@ -79,7 +85,7 @@
     // ---- rage expression, painted into the model's own face textures (it deforms and shades with the face) ----
     // Face skin: the mouth line becomes a wide-open scream; brows: angled down hard at the centre; irises: shrunk to small pupils
     const RAGE_TEX = new Map();
-    { const byMat = (re) => bodyMeshes.filter((o) => re.test(o.userData.src || ''));
+    if (!gltf.isVRM) { const byMat = (re) => bodyMeshes.filter((o) => re.test(o.userData.src || ''));
       const repaint = (meshes, paint) => { for (const o of meshes) { const src = o.userData.toon.map; if (!src || !src.image) continue;
         const im = src.image, c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d');
         paint(g, im, c.width, c.height);
@@ -151,7 +157,8 @@
     if (P.dumpTex) for (const [o, [a, b]] of RAGE_TEX) console.error('TEX ' + o.userData.src + ' ' + b.image.toDataURL('image/png'));
     let faceRage = null;
     const highlights = bodyMeshes.filter((o) => /EyeHighlight/.test(o.userData.src || ''));
-    const setRageFace = (on) => { if (faceRage === on) return; faceRage = on; if (P.dbgIris) console.error('SETFACE ' + on + ' ' + [...RAGE_TEX.keys()].map((o) => o.userData.src.slice(10, 22) + '=' + (o.material.map === RAGE_TEX.get(o)[1]) + '/' + o.material.type + '/' + o.visible + '/' + (o.material === o.userData.toon)).join(' ')); highlights.forEach((o) => (o.visible = !on || !!P.keepHL));   // dead-eyed fury
+    const setRageFace = (on) => { if (gltf.isVRM) { gltf.expr('angry', on ? (P.angryW ?? 1) : 0); gltf.expr(P.screamVowel ?? 'a', on ? (P.screamOpen ?? 0.8) : 0); gltf.expr('blink', on ? (P.glare ?? 0.3) : 0); return; }   // rage: brows down, mouth open, eyes narrowed
+      if (faceRage === on) return; faceRage = on; if (P.dbgIris) console.error('SETFACE ' + on + ' ' + [...RAGE_TEX.keys()].map((o) => o.userData.src.slice(10, 22) + '=' + (o.material.map === RAGE_TEX.get(o)[1]) + '/' + o.material.type + '/' + o.visible + '/' + (o.material === o.userData.toon)).join(' ')); highlights.forEach((o) => (o.visible = !on || !!P.keepHL));   // dead-eyed fury
       for (const [o, [a, b]] of RAGE_TEX) for (const m of [o.userData.toon, o.userData.std]) if (m && m.map) { m.map = on ? b : a; m.needsUpdate = true; } };
     { model.updateMatrixWorld(true);
       const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
@@ -175,7 +182,7 @@
     // it is mapped piecewise-linearly onto the capture's own detected events.
     const T_OFF = 0.74, T_CONTACT = 1.12, T_LAND = 1.86;
     const smash = await loadMocap(THREE, GLTFLoader, P.smash), win = await loadMocap(THREE, GLTFLoader, P.win);
-    const retarget = makeRetarget(THREE, model, bone);
+    const retarget = makeRetarget(THREE, model, bone, { rhythm: !!gltf.isVRM });
     const TK = [[-0.65, Math.max(0, smash.takeoff - 1.42)], [T_OFF, smash.takeoff], [T_CONTACT, smash.contact], [T_LAND, smash.land]];
     const tauAt = (t) => { let i = 0; while (i < TK.length - 2 && t > TK[i + 1][0]) i++;
       const [a, ta] = TK[i], [b, tb] = TK[i + 1]; return t <= TK[0][0] ? TK[0][1] : ta + (tb - ta) * (t - a) / (b - a); };
@@ -411,7 +418,7 @@
     const hitFlash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 46, pointerEvents: 'none' }, document.body);
     const redOverlay = el('div', { position: 'absolute', inset: 0, background: '#e3121b', mixBlendMode: 'multiply', opacity: 0, zIndex: 45, pointerEvents: 'none' }, document.body);
     const credit = el('div', { position: 'absolute', left: '7vw', bottom: '5vh', font: `500 1.3vmin ${TEXT}`, letterSpacing: '0.12em', color: 'rgba(243,237,226,0.7)', opacity: 0, zIndex: 60 }, document.body,
-      'CHARACTER: "RIGGED ANIME MALE CHARACTER-1" BY RET.OUCHS (SKETCHFAB) · CC BY-SA 4.0');
+      'CHARACTER: VROID "HAIRSAMPLE_MALE" (PIXIV, CC0), KIT BY THE AUTHOR');
     VM.onFrame((T) => { credit.style.opacity = shotAt(T).name === 'roar' ? VM.prog(T, shotBy('roar').T[1] - 1.5, 0.5) : 0; });
 
     // ================= frame =================
