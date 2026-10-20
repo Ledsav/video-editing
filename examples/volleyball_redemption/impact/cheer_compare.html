@@ -53,7 +53,7 @@
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), new THREE.MeshLambertMaterial({ color: 0x8a8f9c })); man.add(head);
     const cam = new THREE.PerspectiveCamera(30, (W / 2) / H, 0.05, 50);
     const lab = (x, t) => { const d = document.createElement('div'); d.className = 'lab'; d.style.left = x; d.textContent = t; document.body.appendChild(d); };
-    lab('1vw', (P.label ? P.label + ' — ' : '') + 'CAPTURE (green = his left, orange = his right, cone = chest front)'); lab('51vw', 'CHARACTER');
+    if (P.solo) lab('1vw', P.label || ''); else { lab('1vw', (P.label ? P.label + ' — ' : '') + 'CAPTURE (green = his left, orange = his right, cone = chest front)'); lab('51vw', 'CHARACTER'); }
     const camDir = V3(Math.sin(P.camYaw / 57.3), 0, Math.cos(P.camYaw / 57.3));
     VM.onFrame((T) => {
       const M = clip.sample(T);
@@ -74,10 +74,11 @@
       nose.position.copy(ch).addScaledVector(fwd, 0.2); nose.quaternion.setFromUnitVectors(V3(0, 1, 0), fwd);
       head.position.copy(xf(M.Head)).addScaledVector(up, 0.08);
       const h = xf(M.Hip).setY(0);
-      for (const [vx, off] of [[0, 0], [W / 2, 1]]) {
-        man.visible = off === 0; model.visible = off === 1;
-        renderer.setViewport(vx, 0, W / 2, H); renderer.setScissor(vx, 0, W / 2, H);
-        cam.position.copy(h).addScaledVector(camDir, P.dist).setY(P.camY); cam.lookAt(h.x, 0.95, h.z);
+      for (const [vx, off] of P.solo ? [[0, 1]] : [[0, 0], [W / 2, 1]]) {
+        man.visible = off === 0; model.visible = off === 1; const vw = P.solo ? W : W / 2; cam.aspect = vw / H; cam.updateProjectionMatrix();
+        renderer.setViewport(vx, 0, vw, H); renderer.setScissor(vx, 0, vw, H);
+        const cd = P.face ? (() => { const s = clip.sample(P.faceAt ?? T), d = s.LShoulder.clone().sub(s.RShoulder).add(s.LThigh.clone().sub(s.RThigh)); return V3(-d.z, 0, d.x).normalize().applyAxisAngle(V3(0, 1, 0), P.camYaw / 57.3); })() : camDir;   // face: camera in front of him (camYaw: offset)
+        cam.position.copy(h).addScaledVector(cd, P.dist).setY(P.camY); cam.lookAt(h.x, 0.95, h.z);
         renderer.render(scene, cam);
       }
       man.visible = true; model.visible = true;
