@@ -55,11 +55,13 @@ async function loadMocap(THREE, GLTFLoader, file) {
   return { sample, dur, floor, takeoff: best[0] / fps, land: best[1] / fps, contact: contact / fps, airborne: best[1] > best[0] };
 }
 
-function makeRetarget(THREE, model, bone, opts = {}) {
+function makeRetarget(THREE, model, bone) {
   const V = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
   const wpos = (b) => V().setFromMatrixPosition(b.matrixWorld);
   const bones = []; model.traverse((o) => { if (o.isBone) bones.push(o); });
   const rest = new Map(bones.map((b) => [b, b.quaternion.clone()]));
+  model.updateMatrixWorld(true);
+  const rest0W = new Map(bones.map((b) => { const q = new THREE.Quaternion(); b.getWorldQuaternion(q); const mq = new THREE.Quaternion(); model.getWorldQuaternion(mq); return [b, mq.invert().multiply(q)]; }));
   const restHipLocal = bone('Hips').position.clone();
   model.updateMatrixWorld(true);
   const ARM = {}; for (const s of ['Left', 'Right']) ARM[s] = wpos(bone(`${s}Arm`)).distanceTo(wpos(bone(`${s}ForeArm`))) + wpos(bone(`${s}ForeArm`)).distanceTo(wpos(bone(`${s}Hand`)));
@@ -128,35 +130,12 @@ function makeRetarget(THREE, model, bone, opts = {}) {
     const cosA = (la * la + d * d - lb * lb) / (2 * la * d), sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
     const E = A.clone().add(dir.clone().multiplyScalar(cosA * la)).add(pv.multiplyScalar(sinA * la));
     swing(a, b, E.clone().sub(A));
-    // roll the upper bone about its own axis so the joint bends around its natural hinge: the skin creases cleanly
-    // (an elbow or knee bent around any other axis crumples the mesh)
-    const hl = (window.RT_FLAGS || {}).hinge === false ? null : HINGE.get(a);
-    if (hl) { a.updateMatrixWorld(true);
-      const u = wpos(b).sub(wpos(a)).normalize(), qa = Q(); a.getWorldQuaternion(qa);
-      const want = V().crossVectors(pv, dir), have = hl.clone().applyQuaternion(qa);
-      want.sub(u.clone().multiplyScalar(want.dot(u))); have.sub(u.clone().multiplyScalar(have.dot(u)));
-      if (want.lengthSq() > 1e-8 && have.lengthSq() > 1e-8) {
-        want.normalize(); have.normalize();
-        const bend = Math.min(1, Math.max(0, (sinA - 0.3) / 0.25));      // a nearly straight limb has no clear bend plane: leave its roll alone
-        // knees: the hinge stays within +-45 deg of the pelvis' own hinge axis (a thigh can't roll further); a capture pole
-        // asking for more (locked or hyperextended knee, marker noise) is pulled back into the human range
-        const pl = PELVIS_HINGE.get(a);
-        if (pl) { const qh = Q(); bone('Hips').getWorldQuaternion(qh);
-          const ref = pl.clone().applyQuaternion(qh); ref.sub(u.clone().multiplyScalar(ref.dot(u)));
-          if (ref.lengthSq() > 1e-8) { ref.normalize();
-            const off = Math.atan2(V().crossVectors(ref, want).dot(u), ref.dot(want)), lim = 0.79;
-            if (Math.abs(off) > lim) want.copy(ref).applyAxisAngle(u, Math.sign(off) * lim); } }
-        const raw = Math.atan2(V().crossVectors(have, want).dot(u), have.dot(want));
-        // continuity: a correction near +-180 deg would flip sides between frames (the arm spins a full turn); fade it out there
-        const near = Math.min(1, Math.max(0, (2.97 - Math.abs(raw)) / 0.52)), fade = near * near * (3 - 2 * near);
-        const ang = raw;                               // full correction: continuous through +-180 (a partial one snaps)
-        setWorldQ(a, Q().setFromAxisAngle(u, ang).multiply(qa)); } }
     b.updateMatrixWorld(true);
     swing(b, c, A.clone().add(dir.clone().multiplyScalar(d)).sub(wpos(b)));
   }
   // the rig has no forearm twist bones: a wrist turned far from its rest roll collapses the skin ("candy wrapper").
   // Keep the hand's roll about its own long axis (towards the middle finger) within +-limit of rest.
-  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8, CLAVICLE_FOLLOW = 0.35, SHOULDER_DROP = (window.RT_FLAGS || {}).shoulderDrop ?? 0.38;
+  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8;
   // and keep the hand within MAX_WRIST_BEND of the forearm's line: past that the wrist reads as broken
   function limitBend(h, child, fore, limit) {
     h.updateMatrixWorld(true);
@@ -208,6 +187,14 @@ function makeRetarget(THREE, model, bone, opts = {}) {
     }
     prevQ = q; prevT = T; prevShot = window.AUDIT_SHOT;
     if (out.length) console.error(`AUDIT t=${T.toFixed(3)} ${window.AUDIT_SHOT || ''} | ${out.join(' | ')}`);
+    if (window.AUDIT_ALL) {   // per-frame joint log (diagnostic): upper-arm twist vs rest, elbow flexion, collarbone elevation
+      const tw = (n) => { const b = bone(n), c = b.children.find((k) => k.isBone);
+        const d = rest.get(b).clone().invert().multiply(b.quaternion), ax = c.position.clone().normalize();   // relative to the parent bone (where the skin wrings)
+        let a = 2 * Math.atan2(V().set(d.x, d.y, d.z).dot(ax), d.w) * 57.3; return ((a + 540) % 360) - 180; };
+      const flex = (a, b, c) => (180 - wpos(bone(b)).sub(wpos(bone(a))).angleTo(wpos(bone(c)).sub(wpos(bone(b)))) * 57.3);
+      const clav = (s) => { const d = wpos(bone(`${s}Arm`)).sub(wpos(bone(`${s}Shoulder`))).normalize(); return Math.asin(Math.max(-1, Math.min(1, d.y))) * 57.3; };
+      console.error(`JOINT t=${T.toFixed(3)} ${window.AUDIT_SHOT || ''} twistL ${tw('LeftArm').toFixed(0)} twistR ${tw('RightArm').toFixed(0)} ftwL ${tw('LeftForeArm').toFixed(0)} ftwR ${tw('RightForeArm').toFixed(0)} elbowL ${flex('LeftArm', 'LeftForeArm', 'LeftHand').toFixed(0)} elbowR ${flex('RightArm', 'RightForeArm', 'RightHand').toFixed(0)} clavL ${clav('Left').toFixed(0)} clavR ${clav('Right').toFixed(0)}`);
+    }
   }
 
   return function apply(M, xf) {
@@ -226,26 +213,7 @@ function makeRetarget(THREE, model, bone, opts = {}) {
       twoVec(chest, wpos(bone('Neck')).sub(wpos(chest)), wpos(bone('LeftArm')).sub(wpos(bone('RightArm'))),
         D(M, 'Chest', 'Neck'), D(M, 'RShoulder', 'LShoulder')); }
     for (const [b, c, f, t] of NK) swing(bone(b), bone(c), D(M, f, t));
-    for (const [b, c, f, t] of LIM) {
-      if (b.endsWith('Shoulder')) {                    // collarbones: the capture's are steep for this body (a shrug); follow a third of them
-        const B = bone(b); B.updateMatrixWorld(true);
-        const cur = wpos(bone(c)).sub(wpos(B)).normalize();
-        const dir = cur.lerp(D(M, f, t).normalize(), opts.rhythm ? 0 : CLAVICLE_FOLLOW).normalize();
-        // arm above the shoulder: this rig has no deltoid helpers, so the mesh rises to the ears; drop the shoulder point instead
-        // (the head stays clear of the shoulders, as a real neck does), up to 22 deg for an arm straight up
-        const s = b.startsWith('Left') ? 'L' : 'R', up = D(M, `${s}Shoulder`, `${s}Forearm`).normalize();
-        const elev = Math.acos(Math.max(-1, Math.min(1, -up.y)));                 // 0 = arm down, PI = straight up
-        if (opts.rhythm) {
-          // scapulohumeral rhythm: past ~30 deg the shoulder girdle supplies a third of the arm's elevation (up to ~32 deg),
-          // so the shoulder joint never has to bend past what the skin can hold, and the shoulder rises like a real one
-          const lift = Math.min(0.56, Math.max(0, (elev - 0.52) / 3));
-          const ax = V().crossVectors(V().set(0, 1, 0), dir); if (lift > 0 && ax.lengthSq() > 1e-6) dir.applyAxisAngle(ax.normalize(), lift);
-        } else {
-          const drop = Math.min(SHOULDER_DROP, Math.max(0, (elev - 1.4) * 0.45));
-          if (drop > 0) { const ax = V().crossVectors(dir, V().set(0, -1, 0)); if (ax.lengthSq() > 1e-6) dir.applyAxisAngle(ax.normalize(), drop); }
-        }
-        swing(B, bone(c), dir); continue; }
-      swing(bone(b), bone(c), D(M, f, t)); }
+    for (const [b, c, f, t] of LIM) swing(bone(b), bone(c), D(M, f, t));
     // directions alone lose contacts on a differently proportioned body (hands that should join, feet that should stay
     // planted): two-bone IK puts the ankles where the capture's are and the hands where the capture's are relative to the chest
     // (scaled to this arm length), with the capture's knee / elbow direction as the pole

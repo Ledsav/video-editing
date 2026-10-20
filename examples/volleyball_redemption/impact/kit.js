@@ -3,17 +3,17 @@
 // UV layout of the VRoid male body (in 1024 units): arms x 0-245 / 780-1024, y 0 (shoulder) -> 500 (wrist);
 // legs x 0-245 / 780-1024, y 505 (top of thigh) -> 940 (ankle); torso x 245-780, y 0 (neck) -> 440; hips y 440-600.
 // UV-space mask of the triangles skinned mostly to the hands and fingers (their UV islands sit inside the torso area)
-function handMask(THREE, model, size) {
+function handMask(THREE, model, size, re = /(Left|Right)Hand/, minW = 0) {
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d'); g.fillStyle = '#fff';
   model.traverse((o) => {
     if (!o.isSkinnedMesh || !/Body_00_SKIN/.test(o.material.name || '')) return;
     const geo = o.geometry, uv = geo.attributes.uv, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, idx = geo.index, bones = o.skeleton.bones;
-    const isHand = (v) => { let best = 0, b = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(v, k); if (w > best) { best = w; b = si.getComponent(v, k); } }
-      return b >= 0 && /(Left|Right)Hand/.test(bones[b].name); };
+    const isHand = (v) => { let best = 0, b = -1, tot = 0; for (let k = 0; k < 4; k++) { const w = sw.getComponent(v, k), bi = si.getComponent(v, k); if (re.test(bones[bi].name)) tot += w; if (w > best) { best = w; b = bi; } }
+      return minW > 0 ? tot >= minW : b >= 0 && re.test(bones[b].name); };
     const n = idx ? idx.count : uv.count;
     for (let t = 0; t < n; t += 3) {
       const a = idx ? idx.getX(t) : t, b = idx ? idx.getX(t + 1) : t + 1, d = idx ? idx.getX(t + 2) : t + 2;
-      if (!(isHand(a) || isHand(b) || isHand(d))) continue;
+      if (!(minW > 0 ? isHand(a) && isHand(b) && isHand(d) : isHand(a) || isHand(b) || isHand(d))) continue;
       g.beginPath(); g.moveTo(uv.getX(a) * size, uv.getY(a) * size); g.lineTo(uv.getX(b) * size, uv.getY(b) * size); g.lineTo(uv.getX(d) * size, uv.getY(d) * size); g.closePath(); g.fill();
       g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
     }
@@ -22,6 +22,7 @@ function handMask(THREE, model, size) {
 }
 function paintKit(THREE, model, opt = {}) {
   const HANDS = handMask(THREE, model, 1024);
+  const NECK = handMask(THREE, model, 1024, /^(Neck|Head)$/, opt.neckW ?? 0.5);   // neck skin: weighted mostly to the neck/head
   const BLUE = opt.blue || '#1f3fa8', NAVY = opt.navy || '#0f1d4a', YEL = opt.yellow || '#f6c300', WHITE = '#f4f4f2';
   const NUM = opt.number ?? '7';
   let done = false, painted = null;   // the body is split into several meshes sharing one texture: paint once, assign to all
@@ -61,7 +62,17 @@ function paintKit(THREE, model, opt = {}) {
     for (const x of [0, 780]) { R(x, 690, 245, 78, '#16181d'); R(x, 690, 245, 6, '#3a3d46'); R(x, 762, 245, 6, '#3a3d46'); }
     // ---- socks ----
     for (const x of [0, 780]) { R(x, 862, 245, 162, WHITE); R(x, 868, 245, 8, BLUE); R(x, 882, 245, 6, YEL); }
-    g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'destination-out'; g.drawImage(HANDS, 0, 0, c.width, c.height);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    // collar: a smooth trim band along the neck line (the raw mask is triangle-jagged), then the neck cut out with a soft edge
+    // blur then threshold: a smooth, crisp outline (dilated when the threshold is low)
+    const soft = (src, blur, thr, col) => { const k = document.createElement('canvas'); k.width = c.width; k.height = c.height; const kg = k.getContext('2d');
+      kg.filter = `blur(${blur * S}px)`; kg.drawImage(src, 0, 0, c.width, c.height); kg.filter = 'none';
+      const d = kg.getImageData(0, 0, k.width, k.height), p = d.data;
+      for (let i = 3; i < p.length; i += 4) { const a = p[i]; p[i] = a > thr + 12 ? 255 : a < thr - 12 ? 0 : Math.round((a - thr + 12) / 24 * 255); }
+      kg.putImageData(d, 0, 0);
+      if (col) { kg.globalCompositeOperation = 'source-in'; kg.fillStyle = col; kg.fillRect(0, 0, k.width, k.height); } return k; };
+    g.globalCompositeOperation = 'source-atop'; g.drawImage(soft(NECK, 6, 18, YEL), 0, 0);                                   // trim band
+    g.globalCompositeOperation = 'destination-out'; g.drawImage(HANDS, 0, 0, c.width, c.height); g.drawImage(soft(NECK, 4, 110), 0, 0);
     g = skinG; g.restore(); g.drawImage(K, 0, 0);
     const t = new THREE.CanvasTexture(c); t.flipY = src.flipY; t.colorSpace = src.colorSpace; t.wrapS = src.wrapS; t.wrapT = src.wrapT; t.anisotropy = 8;
     o.material = o.material.clone(); o.material.map = t; o.material.needsUpdate = true; done = true;
