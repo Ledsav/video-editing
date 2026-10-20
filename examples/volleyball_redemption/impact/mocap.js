@@ -123,7 +123,11 @@ function makeRetarget(THREE, model, bone) {
       else { const qa0 = Q(); a.getWorldQuaternion(qa0); const cur = B.clone().sub(A).normalize();
         ref = hl0.clone().applyQuaternion(Q().setFromUnitVectors(cur, dir).multiply(qa0)); }
       const nat = V().crossVectors(dir, ref); nat.sub(dir.clone().multiplyScalar(nat.dot(dir)));
-      if (nat.lengthSq() > 1e-8) pv.add(nat.normalize().multiplyScalar(0.08 * la));
+      if (nat.lengthSq() > 1e-8) { nat.normalize(); pv.add(nat.clone().multiplyScalar(0.08 * la));
+        // elbows: the arm has no roll correction (it would wring the shoulder), so the elbow has to sit near its natural side,
+        // or the joint bends sideways / backwards. Keep the elbow within ELBOW_POLE_LIM of it.
+        if (!pl && pv.lengthSq() > 1e-10) { const pn = pv.clone().normalize(), ang = Math.atan2(V().crossVectors(nat, pn).dot(dir), nat.dot(pn));
+          if (Math.abs(ang) > ELBOW_POLE_LIM) pv.copy(nat).applyAxisAngle(dir, Math.sign(ang) * ELBOW_POLE_LIM); } }
     }
     if (pv.lengthSq() < 1e-8) { pv = B.clone().sub(A); pv.sub(dir.clone().multiplyScalar(pv.dot(dir))); }
     pv.normalize();
@@ -135,7 +139,7 @@ function makeRetarget(THREE, model, bone) {
   }
   // the rig has no forearm twist bones: a wrist turned far from its rest roll collapses the skin ("candy wrapper").
   // Keep the hand's roll about its own long axis (towards the middle finger) within +-limit of rest.
-  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8;
+  const MAX_WRIST_TWIST = 1.0, MAX_WRIST_BEND = 0.8, ELBOW_POLE_LIM = (window.RT_FLAGS || {}).elbowLim ?? 0.7;   // 40 deg
   // and keep the hand within MAX_WRIST_BEND of the forearm's line: past that the wrist reads as broken
   function limitBend(h, child, fore, limit) {
     h.updateMatrixWorld(true);
