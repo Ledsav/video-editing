@@ -44,7 +44,8 @@ function paintKit(THREE, model, opt = {}) {
     g = K.getContext('2d'); g.scale(S, S);
     // ---- jersey: torso, V-neck collar, side panels, number ----
     R(245, 30, 535, 412, BLUE);
-    g.fillStyle = '#e8b896'; g.beginPath(); g.moveTo(450, 28); g.lineTo(512, 120); g.lineTo(574, 28); g.closePath(); g.fill();   // V-neck (front centre)
+    g.save(); g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.moveTo(450, 0); g.lineTo(450, 28); g.lineTo(512, 120); g.lineTo(574, 28); g.lineTo(574, 0); g.closePath(); g.fill();
+    g.fillRect(245, 0, 535, 28); g.restore();                                                                                     // V-neck and neck: cut out (bare skin, no fabric)
     g.strokeStyle = YEL; g.lineWidth = 9; g.beginPath(); g.moveTo(444, 26); g.lineTo(512, 126); g.lineTo(580, 26); g.stroke();
     g.beginPath(); g.moveTo(245, 34); g.lineTo(444, 34); g.moveTo(580, 34); g.lineTo(780, 34); g.stroke();                      // collar line at the back
     R(330, 120, 26, 320, YEL); R(668, 120, 26, 320, YEL);                                                                        // side panels
@@ -52,7 +53,7 @@ function paintKit(THREE, model, opt = {}) {
     g.lineWidth = 10; g.strokeStyle = NAVY; g.strokeText(NUM, 512, 255); g.fillText(NUM, 512, 255);
     R(245, 425, 535, 18, YEL);                                                                                                    // hem
     // ---- short sleeves with a yellow cuff ----
-    for (const x of [0, 780]) { R(x, 0, 245, 112, BLUE); R(x, 104, 245, 14, YEL); }
+    for (const x of [0, 780]) { R(x, 0, 245, 175, BLUE); R(x, 165, 245, 14, YEL); }                                       // sleeves to mid upper arm: cover the deltoid
     // ---- shorts: hips + top of the thighs, side stripe ----
     R(245, 440, 535, 165, NAVY); R(470, 590, 84, 70, NAVY);                                                                     // (crotch gusset)
     for (const x of [0, 780]) { R(x, 505, 245, 118, NAVY); R(x, 612, 245, 12, YEL); }
@@ -89,7 +90,7 @@ function kitNormalMap(THREE, mesh, opt = {}) {
   const quilt = (x, y) => 128 + 70 * Math.pow(Math.abs(Math.sin(y * 0.11)), 0.5) - 30;                                                      // padded ribs
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     let v = 128;
-    const torso = inRect(x, y, 245, 30, 535, 412), sleeve = inRect(x, y, 0, 0, 245, 112) || inRect(x, y, 780, 0, 244, 112);
+    const torso = inRect(x, y, 245, 30, 535, 412), sleeve = inRect(x, y, 0, 0, 245, 175) || inRect(x, y, 780, 0, 244, 175);
     const shorts = inRect(x, y, 245, 440, 535, 165) || inRect(x, y, 0, 505, 245, 118) || inRect(x, y, 780, 505, 244, 118);
     const pad = inRect(x, y, 0, 690, 245, 78) || inRect(x, y, 780, 690, 244, 78);
     const sock = inRect(x, y, 0, 862, 245, 162) || inRect(x, y, 780, 862, 244, 162);
@@ -110,7 +111,7 @@ function kitNormalMap(THREE, mesh, opt = {}) {
   ridge(444, 26, 512, 126, 7, 210); ridge(512, 126, 580, 26, 7, 210); ridge(245, 34, 444, 34, 6, 200); ridge(580, 34, 780, 34, 6, 200);   // collar
   for (const x of [330, 356, 668, 694]) ridge(x, 120, x, 440, 4, 190);                                                                     // side panel seams
   ridge(245, 434, 780, 434, 10, 200);                                                                                                       // jersey hem
-  for (const x of [0, 780]) { ridge(x, 111, x + 245, 111, 9, 205); ridge(x, 618, x + 245, 618, 8, 200); }                                  // sleeve cuffs, shorts hems
+  for (const x of [0, 780]) { ridge(x, 172, x + 245, 172, 9, 205); ridge(x, 618, x + 245, 618, 8, 200); }                                  // sleeve cuffs, shorts hems
   ridge(245, 448, 780, 448, 12, 215);                                                                                                       // waistband
   for (const x of [0, 780]) { ridge(x, 690, x + 245, 690, 5, 60); ridge(x, 768, x + 245, 768, 5, 60); }                                     // pad edges sink in
   h.fillStyle = 'rgb(185,185,185)'; h.font = `400 150px Anton, 'Bebas Neue', Impact, sans-serif`; h.textAlign = 'center'; h.textBaseline = 'middle';
@@ -143,7 +144,7 @@ function kitNormalMap(THREE, mesh, opt = {}) {
     fold([[270, 405], [380, 395], [470, 410]], 10); fold([[560, 410], [650, 396], [760, 405]], 10);              // jersey bunching above the hem
     fold([[262, 60], [280, 140], [290, 230]], 12); fold([[762, 60], [744, 140], [734, 230]], 12);               // armpit folds (back edges)
     fold([[290, 470], [400, 500], [500, 470]], 9); fold([[530, 470], [630, 500], [740, 470]], 9);               // shorts under the waistband
-    for (const x of [0, 780]) { fold([[x + 30, 540], [x + 120, 590], [x + 215, 545]], 9); fold([[x + 20, 80], [x + 120, 100], [x + 225, 80]], 7); }   // shorts legs, sleeves
+    for (const x of [0, 780]) { fold([[x + 30, 540], [x + 120, 590], [x + 215, 545]], 9); fold([[x + 20, 130], [x + 120, 150], [x + 225, 130]], 7); }   // shorts legs, sleeves
     g.restore(); map.needsUpdate = true;
   }
   const t = new THREE.CanvasTexture(bc); const ref = base || map; t.flipY = ref.flipY; t.wrapS = ref.wrapS; t.wrapT = ref.wrapT; t.colorSpace = THREE.NoColorSpace;

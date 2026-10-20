@@ -79,7 +79,7 @@
       const h = xf(M.Hip);
       for (const [vx, dir] of (P.backView ? [[0, V3(0, 0, -1)], [W / 2, V3(0, 0, 1)]] : [[0, V3(1, 0, 0)], [W / 2, V3(0, 0, 1)]])) {
         renderer.setViewport(vx, 0, W / 2, H); renderer.setScissor(vx, 0, W / 2, H);
-        cam.position.copy(h.clone().add(dir.clone().multiplyScalar(4.2)).setY(0.95)); cam.lookAt(h.x, 0.85, h.z);
+        cam.position.copy(h.clone().add(dir.clone().multiplyScalar(4.2)).setY(P.camY ?? 0.95)); cam.lookAt(h.x, P.camY ? P.camY - 0.1 : 0.85, h.z);
         renderer.render(scene, cam);
       }
     });
