@@ -123,6 +123,29 @@ function makeRetarget(THREE, model, bone) {
         if (h.lengthSq() < 1e-6) continue;
         const qa = Q(); A.getWorldQuaternion(qa); HINGE.set(A, h.clone().normalize().applyQuaternion(qa.invert()));
         if (a.endsWith('UpLeg')) { const qh = Q(); bone('Hips').getWorldQuaternion(qh); PELVIS_HINGE.set(A, h.clone().normalize().applyQuaternion(qh.invert())); } } } }
+  // rest calibration. The capture skeleton's joints don't sit where this rig's do: its spine zig-zags (the lower-spine joint
+  // behind the pelvis joint, the head joint well ahead of the neck), its collarbones run from the sternum back to the
+  // shoulders (this rig's run straight out) and its ankle sits lower over the toe. Copying raw segment directions put all of
+  // that into the character's bones: standing still, his pelvis was tipped 27 deg back and his collarbones pulled 24 deg
+  // back. So each segment is turned by the difference between the capture standing still and this rig at rest, in the
+  // body's own frame. CAP_STAND: the capture skeleton averaged over 1-IDLE.glb (calib_probe.html); pitches in deg, + = forward
+  // of the hip -> neck line; foot: deg below horizontal; clav: the left collarbone in the chest frame [left, up, front].
+  const CAP_STAND = { pelvis: -24.2, spine: 11.5, spine1: -3.3, chest: 7.9, neck: 18.7, head: 9.7, foot: 21.5, clav: [0.912, 0.029, -0.410] };
+  const frameOf = (L, R, lo, hi) => { const x = L.clone().sub(R).normalize(), z = V().crossVectors(x, hi.clone().sub(lo)).normalize(); return [x, V().crossVectors(z, x), z]; };
+  const FIX = {}, CLAV_FIX = {};
+  { model.updateMatrixWorld(true);
+    const F = frameOf(wpos(bone('LeftUpLeg')), wpos(bone('RightUpLeg')), wpos(bone('Hips')), wpos(bone('Neck'))), pitch = (a, b) => { const d = wpos(bone(b)).sub(wpos(bone(a))); return Math.atan2(d.dot(F[2]), d.dot(F[1])) * 57.2958; };
+    for (const [k, a, b] of [['pelvis', 'Hips', 'Spine'], ['spine', 'Spine', 'Spine1'], ['spine1', 'Spine1', 'Spine2'], ['chest', 'Spine2', 'Neck'], ['neck', 'Neck', 'Head'], ['head', 'Head', 'HeadTop_End']])
+      if (bone(a) && bone(b)) FIX[k] = THREE.MathUtils.degToRad(pitch(a, b) - CAP_STAND[k]);
+    const ft = wpos(bone('LeftToeBase')).sub(wpos(bone('LeftFoot')));
+    FIX.foot = THREE.MathUtils.degToRad(Math.atan2(-ft.y, Math.hypot(ft.x, ft.z)) * 57.2958 - CAP_STAND.foot);
+    const C = frameOf(wpos(bone('LeftArm')), wpos(bone('RightArm')), wpos(bone('Spine2')), wpos(bone('Neck')));
+    for (const [s, sg] of [['Left', 1], ['Right', -1]]) {
+      const d = wpos(bone(`${s}Arm`)).sub(wpos(bone(`${s}Shoulder`))).normalize(), loc = V().set(d.dot(C[0]), d.dot(C[1]), d.dot(C[2]));
+      const cap = V().set(sg * CAP_STAND.clav[0], CAP_STAND.clav[1], CAP_STAND.clav[2]).normalize();
+      CLAV_FIX[s] = Q().setFromUnitVectors(cap, loc); }
+    if ((window.RT_FLAGS || {}).restCal === false) { for (const k in FIX) FIX[k] = 0; for (const s in CLAV_FIX) CLAV_FIX[s].identity(); }
+    if (window.RT_VOLLOG) console.error('RESTCAL ' + Object.entries(FIX).map(([k, v]) => `${k} ${(v * 57.3).toFixed(1)}`).join(' ') + ' clav ' + (2 * Math.acos(Math.min(1, CLAV_FIX.Left.w)) * 57.3).toFixed(1)); }
   const FING = { Thumb: 0, Index: 1, Middle: 2, Ring: 3, Pinky: 4 };
   // [anime bone, anime child, mocap from, mocap to]
   const chain = [['Spine', 'Spine1', 'LowerSpine', 'MiddleSpine'], ['Spine1', 'Spine2', 'MiddleSpine', 'Chest']];
@@ -261,26 +284,37 @@ function makeRetarget(THREE, model, bone) {
     // root position
     const hw = xf(M.Hip), inv = new THREE.Matrix4().copy(hips.parent.matrixWorld).invert();
     hips.position.copy(hw.applyMatrix4(inv)); model.updateMatrixWorld(true);
+    // the capture's segments, turned from its standing pose to this rig's rest pose (FIX): spine and pelvis about the hips'
+    // left-right axis, chest, neck and head about the shoulders'; collarbones in the chest frame; feet about their own axis
+    const latP = D(M, 'RThigh', 'LThigh').normalize(), latC = D(M, 'RShoulder', 'LShoulder').normalize();
+    const fix = (d, k) => (FIX[k] ? d.applyAxisAngle(/^(pelvis|spine|spine1)$/.test(k) ? latP : latC, FIX[k]) : d);
+    const SEGK = { Spine: 'spine', Spine1: 'spine1', Neck: 'neck', Head: 'head' };
+    const capC = (() => { const y0 = D(M, 'Chest', 'Neck'), z = V().crossVectors(latC, y0).normalize(); return [latC, V().crossVectors(z, latC), z]; })();
+    const fixClav = (d, s) => { const l = V().set(d.dot(capC[0]), d.dot(capC[1]), d.dot(capC[2])).applyQuaternion(CLAV_FIX[s]);
+      return capC[0].clone().multiplyScalar(l.x).addScaledVector(capC[1], l.y).addScaledVector(capC[2], l.z).multiplyScalar(d.length()); };
+    const fixFoot = (d) => { const ax = V().crossVectors(V().set(0, 1, 0), d); return ax.lengthSq() > 1e-10 ? d.applyAxisAngle(ax.normalize(), FIX.foot) : d; };
     // hips: up the spine, across the thighs
     twoVec(hips, wpos(bone('Spine')).sub(wpos(hips)), wpos(bone('LeftUpLeg')).sub(wpos(bone('RightUpLeg'))),
-      D(M, 'Hip', 'LowerSpine'), D(M, 'RThigh', 'LThigh'));
+      fix(D(M, 'Hip', 'LowerSpine'), 'pelvis'), D(M, 'RThigh', 'LThigh'));
     // the pelvis joints of the two skeletons sit at different heights (this rig's hip sockets are below its pelvis joint, the
     // capture's above): pin the hip sockets, not the pelvis joint, or the legs bend to make up the difference (sunken hips)
     if ((window.RT_FLAGS || {}).socketAlign !== false) {
       model.updateMatrixWorld(true);
       const charMid = wpos(bone('LeftUpLeg')).add(wpos(bone('RightUpLeg'))).multiplyScalar(0.5), capMid = xf(M.LThigh).add(xf(M.RThigh)).multiplyScalar(0.5);
-      const fix = capMid.sub(charMid), pw = V(); hips.getWorldPosition(pw); pw.add(fix);
+      const dv = capMid.sub(charMid), pw = V(); hips.getWorldPosition(pw); pw.add(dv);
       hips.position.copy(pw.applyMatrix4(new THREE.Matrix4().copy(hips.parent.matrixWorld).invert())); model.updateMatrixWorld(true);
     }
-    for (const [b, c, f, t] of CH) swing(bone(b), bone(c), D(M, f, t));
+    for (const [b, c, f, t] of CH) swing(bone(b), bone(c), fix(D(M, f, t), SEGK[b]));
     // chest: up to the neck, across the shoulders
     const chest = bone('Spine2');
     if (chest) { chest.updateMatrixWorld(true);
       twoVec(chest, wpos(bone('Neck')).sub(wpos(chest)), wpos(bone('LeftArm')).sub(wpos(bone('RightArm'))),
-        D(M, 'Chest', 'Neck'), D(M, 'RShoulder', 'LShoulder')); }
-    for (const [b, c, f, t] of NK) swing(bone(b), bone(c), D(M, f, t));
+        fix(D(M, 'Chest', 'Neck'), 'chest'), D(M, 'RShoulder', 'LShoulder')); }
+    for (const [b, c, f, t] of NK) swing(bone(b), bone(c), fix(D(M, f, t), SEGK[b]));
     for (const [b, c, f, t] of LIM) {
-      const d = D(M, f, t);
+      let d = D(M, f, t);
+      if (b.endsWith('Shoulder')) d = fixClav(d, b.slice(0, -8));
+      if (b.endsWith('Foot')) d = fixFoot(d);
       if (b.endsWith('Shoulder')) {                    // collarbone: a shoulder shrugs at most ~25 deg above the chest's horizontal
         const up = wpos(bone('Neck')).sub(wpos(bone('Spine2'))).normalize(), dn = d.clone().normalize(), el = Math.asin(Math.max(-1, Math.min(1, dn.dot(up))));
         if (el > CLAV_MAX) { const hz = dn.clone().sub(up.clone().multiplyScalar(dn.dot(up))).normalize(); d.copy(hz.multiplyScalar(Math.cos(CLAV_MAX)).addScaledVector(up, Math.sin(CLAV_MAX))); } }
@@ -295,7 +329,7 @@ function makeRetarget(THREE, model, bone) {
       for (const s of ['Left', 'Right']) {
         const m = s[0];
         twoBone(bone(`${s}UpLeg`), bone(`${s}Leg`), bone(`${s}Foot`), X(`${m}Foot`).add(new THREE.Vector3(0, fdy, 0)), X(`${m}Shin`).add(new THREE.Vector3(0, fdy * 0.5, 0)));
-        swing(bone(`${s}Foot`), bone(`${s}ToeBase`), D(M, `${m}Foot`, `${m}Toe`));
+        swing(bone(`${s}Foot`), bone(`${s}ToeBase`), fixFoot(D(M, `${m}Foot`, `${m}Toe`)));
       }
       const chestA = wpos(bone('LeftArm')).add(wpos(bone('RightArm'))).multiplyScalar(0.5);
       const chestC = X('LShoulder').add(X('RShoulder')).multiplyScalar(0.5);

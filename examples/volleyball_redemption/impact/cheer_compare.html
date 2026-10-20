@@ -1,0 +1,87 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="6">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Diagnostic: the raw capture as a mannequin (left: green = performer's left side, orange = right side, grey = torso, white cone = where the chest faces) next to the retargeted character (right), same camera. Time = clip time. Params: clip, camYaw (deg, 0 = camera on the capture's +z side), camY, dist.">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="loadglb.js"></script>
+<script src="mocap.js"></script>
+<script src="kit.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #e9e9ee; } .lab { position: absolute; top: 1vh; font: 600 2.2vmin sans-serif; color: #223; }</style></head>
+<body>
+<script type="module">
+  const P = VM.params({ clip: 'mocap/12-Reaction_after_point_obtained-Take3.glb', model: 'vrm/HairSample_Male.vrm', camYaw: 0, camY: 1.1, dist: 4.4, label: '' });
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const W = innerWidth, H = innerHeight, V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(W, H); renderer.setScissorTest(true); document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0xe9e9ee);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x777788, 1.6)); const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(2, 4, 3); scene.add(sun);
+    scene.add(new THREE.GridHelper(8, 32, 0x999999, 0xcccccc));
+    const g = await loadCharacter(THREE, GLTFLoader, P.model), model = g.scene; scene.add(model);
+    model.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.material = new THREE.MeshLambertMaterial({ name: o.material.name, map: o.material.map, transparent: o.material.transparent, alphaTest: o.material.alphaTest, side: THREE.DoubleSide }); } });
+    paintKit(THREE, model);
+    const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
+    const Pw = (b) => V3(0, 0, 0).setFromMatrixPosition(b.matrixWorld);
+    model.updateMatrixWorld(true);
+    { const top = find(/HeadTop_End/), toe = find(/LeftToeBase/); model.scale.multiplyScalar(1.92 / (Pw(top).y - Pw(toe).y)); model.updateMatrixWorld(true); }
+    const bc = new Map();
+    const bone = (n) => { if (!bc.has(n)) { let f = null; const re = new RegExp('^' + n + '$'); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); bc.set(n, f); } return bc.get(n); };
+    const wp = (n) => Pw(bone(n));
+    if (P.noCal) window.RT_FLAGS = { restCal: false };
+    const retarget = makeRetarget(THREE, model, bone);
+    const clip = await loadMocap(THREE, GLTFLoader, P.clip);
+    const legOf = (p) => p[0].distanceTo(p[1]) + p[1].distanceTo(p[2]);
+    const soleToToe = wp('LeftToeBase').y - new THREE.Box3().setFromObject(model).min.y;
+    const LEG = legOf([wp('LeftUpLeg'), wp('LeftLeg'), wp('LeftFoot')]);
+    const M0 = clip.sample(0), SC = LEG / legOf([M0.LThigh, M0.LShin, M0.LFoot]), piv = M0.Hip.clone().setY(0);
+    const ankleRest = wp('LeftFoot').y - new THREE.Box3().setFromObject(model).min.y;
+    const xf = (v) => v.clone().sub(piv).multiplyScalar(SC).add(V3(0, -clip.floor * SC + soleToToe, 0));
+    xf.footDy = ankleRest - xf(M0.LFoot).y;
+    // capture mannequin: a capsule per link
+    const root = await loadGLB(GLTFLoader, P.clip);
+    const links = []; root.scene.traverse((o) => { if (o.parent && o.parent.name && o.parent.name !== 'mocap_root' && o.parent !== root.scene && !/Finger|_end/.test(o.name)) links.push([o.parent.name, o.name]); });
+    const sideCol = (n) => /^L[A-Z]|^Left/.test(n) ? 0x2fae4a : /^R[A-Z]|^Right/.test(n) ? 0xe8782a : 0x8a8f9c;
+    const man = new THREE.Group(); scene.add(man);
+    const segs = links.map(([a, b]) => { const r = /Spine|Chest|Hip|Neck/.test(b) && !/Thigh/.test(b) ? 0.07 : /Head/.test(b) ? 0.09 : 0.045;
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 14), new THREE.MeshLambertMaterial({ color: sideCol(b) })); man.add(m);
+      const s = new THREE.Mesh(new THREE.SphereGeometry(r * 1.05, 14, 10), new THREE.MeshLambertMaterial({ color: sideCol(b) })); man.add(s); return [a, b, m, s]; });
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 12), new THREE.MeshLambertMaterial({ color: 0xffffff })); man.add(nose);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), new THREE.MeshLambertMaterial({ color: 0x8a8f9c })); man.add(head);
+    const cam = new THREE.PerspectiveCamera(30, (W / 2) / H, 0.05, 50);
+    const lab = (x, t) => { const d = document.createElement('div'); d.className = 'lab'; d.style.left = x; d.textContent = t; document.body.appendChild(d); };
+    lab('1vw', (P.label ? P.label + ' — ' : '') + 'CAPTURE (green = his left, orange = his right, cone = chest front)'); lab('51vw', 'CHARACTER');
+    const camDir = V3(Math.sin(P.camYaw / 57.3), 0, Math.cos(P.camYaw / 57.3));
+    VM.onFrame((T) => {
+      const M = clip.sample(T);
+      if (!P.restOnly) retarget(M, xf);
+      for (const [a, b, m, s] of segs) { const A = xf(M[a]), B = xf(M[b]), d = B.clone().sub(A), L = d.length();
+        m.position.copy(A).add(B).multiplyScalar(0.5); m.scale.set(1, Math.max(L, 1e-3), 1); m.quaternion.setFromUnitVectors(V3(0, 1, 0), d.normalize()); s.position.copy(B); }
+      if (P.dump) { const f = (v) => `(${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)})`;
+        console.error(`DUMP t=${T.toFixed(2)} ` + [['LClavicle', 'LeftShoulder'], ['LShoulder', 'LeftArm'], ['LForearm', 'LeftForeArm'], ['LHand', 'LeftHand'], ['RShoulder', 'RightArm'], ['RForearm', 'RightForeArm'], ['RHand', 'RightHand'], ['Chest', 'Spine2'], ['Neck', 'Neck'], ['Head', 'Head']].map(([c, a]) => `${c} cap ${f(xf(M[c]))} char ${f(wp(a))}`).join(' | '));
+        console.error('LINKS ' + links.map((l) => l.join('>')).join(' ')); }
+      if (P.spineLog) {   // forward lean (deg) of each spine segment in the body's own front/up plane: + = leaning forward
+        const lr = M.LThigh.clone().sub(M.RThigh).add(M.LShoulder.clone().sub(M.RShoulder)), fw = V3(-lr.z, 0, lr.x).normalize(), upv = V3(0, 1, 0);
+        const pitch = (d) => Math.atan2(d.dot(fw), d.dot(upv)) * 57.3;
+        const cap = [['Hip', 'LowerSpine'], ['LowerSpine', 'MiddleSpine'], ['MiddleSpine', 'Chest'], ['Chest', 'Neck'], ['Neck', 'Head'], ['Head', 'Head_end']].map(([a, b]) => `${b} ${pitch(M[b].clone().sub(M[a])).toFixed(0)}`);
+        const chr = [['Hips', 'Spine'], ['Spine', 'Spine1'], ['Spine1', 'Spine2'], ['Spine2', 'Neck'], ['Neck', 'Head'], ['Head', 'HeadTop_End']].map(([a, b]) => `${b} ${pitch(wp(b).sub(wp(a))).toFixed(0)}`);
+        const tot = (A, B) => pitch(A.clone().sub(B)).toFixed(0);
+        console.error(`SPINE t=${T.toFixed(2)} cap ${cap.join(' ')} | hip->neck ${tot(M.Neck, M.Hip)} || char ${chr.join(' ')} | hip->neck ${tot(wp('Neck'), wp('Hips'))}`); }
+      const ch = xf(M.Chest), lr = xf(M.LShoulder).sub(xf(M.RShoulder)), up = xf(M.Neck).sub(xf(M.Chest)).normalize(), fwd = V3(0, 0, 0).crossVectors(lr, up).normalize();
+      nose.position.copy(ch).addScaledVector(fwd, 0.2); nose.quaternion.setFromUnitVectors(V3(0, 1, 0), fwd);
+      head.position.copy(xf(M.Head)).addScaledVector(up, 0.08);
+      const h = xf(M.Hip).setY(0);
+      for (const [vx, off] of [[0, 0], [W / 2, 1]]) {
+        man.visible = off === 0; model.visible = off === 1;
+        renderer.setViewport(vx, 0, W / 2, H); renderer.setScissor(vx, 0, W / 2, H);
+        cam.position.copy(h).addScaledVector(camDir, P.dist).setY(P.camY); cam.lookAt(h.x, 0.95, h.z);
+        renderer.render(scene, cam);
+      }
+      man.visible = true; model.visible = true;
+    });
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

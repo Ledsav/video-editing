@@ -1,0 +1,47 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="vedit:kind" content="scene"><meta name="vedit:duration" content="1"><meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Diagnostic: segment directions of the capture skeleton while standing (a calibration clip, averaged) vs the character's rest skeleton, in the body's own frames (pitch = forward lean, roll = sideways, yaw = forward/back swing for the collarbones).">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="loadglb.js"></script><script src="mocap.js"></script></head><body>
+<script type="module">
+  const P = VM.params({ clip: 'mocap/1-IDLE.glb', model: 'vrm/HairSample_Male.vrm', from: 0, to: 99 });
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+    const g = await loadCharacter(THREE, GLTFLoader, P.model), model = g.scene; model.updateMatrixWorld(true);
+    const bone = (n) => { let f = null; model.traverse((o) => { if (!f && o.isBone && o.name === n) f = o; }); return f; };
+    const wp = (n) => V3(0, 0, 0).setFromMatrixPosition(bone(n).matrixWorld);
+    const clip = await loadMocap(THREE, GLTFLoader, P.clip);
+    // body frames: lateral (his left), up, front
+    const frame = (L, R, lo, hi) => { const x = L.clone().sub(R).normalize(), y0 = hi.clone().sub(lo); const z = V3(0, 0, 0).crossVectors(x, y0).normalize(), y = V3(0, 0, 0).crossVectors(z, x); return [x, y, z]; };
+    const ang = (d, [x, y, z]) => { d = d.clone().normalize(); return { pitch: Math.atan2(d.dot(z), d.dot(y)) * 57.3, roll: Math.atan2(-d.dot(x), d.dot(y)) * 57.3, lat: [d.dot(x), d.dot(y), d.dot(z)] }; };
+    const SEG = [['pelvis', 'Hip', 'LowerSpine', 'Hips', 'Spine', 'P'], ['spine', 'LowerSpine', 'MiddleSpine', 'Spine', 'Spine1', 'P'], ['spine1', 'MiddleSpine', 'Chest', 'Spine1', 'Spine2', 'P'],
+      ['chest', 'Chest', 'Neck', 'Spine2', 'Neck', 'P'], ['neck', 'Neck', 'Head', 'Neck', 'Head', 'P'], ['head', 'Head', 'Head_end', 'Head', 'HeadTop_End', 'P'],
+      ['clavL', 'LClavicle', 'LShoulder', 'LeftShoulder', 'LeftArm', 'C'], ['clavR', 'RClavicle', 'RShoulder', 'RightShoulder', 'RightArm', 'C'],
+      ['footL', 'LFoot', 'LToe', 'LeftFoot', 'LeftToeBase', 'P'], ['thighL', 'LThigh', 'LShin', 'LeftUpLeg', 'LeftLeg', 'P']];
+    // capture: average over the clip
+    const acc = {}; let n = 0;
+    for (let t = Math.max(0, P.from); t <= Math.min(clip.dur, P.to); t += 0.1) { const M = clip.sample(t); n++;
+      const Fp = frame(M.LThigh, M.RThigh, M.Hip, M.Neck), Fc = frame(M.LShoulder, M.RShoulder, M.Chest, M.Neck);
+      for (const [nm, a, b, , , f] of SEG) { const d = M[b].clone().sub(M[a]).normalize(), F = f === 'P' ? Fp : Fc; acc[nm] = (acc[nm] || V3(0, 0, 0)).add(V3(d.dot(F[0]), d.dot(F[1]), d.dot(F[2]))); } }
+    const Fp = frame(wp('LeftUpLeg'), wp('RightUpLeg'), wp('Hips'), wp('Neck')), Fc = frame(wp('LeftArm'), wp('RightArm'), wp('Spine2'), wp('Neck'));
+    const out = [];
+    for (const [nm, a, b, ca, cb, f] of SEG) { const c = acc[nm].normalize(), F = f === 'P' ? Fp : Fc, d = wp(cb).sub(wp(ca)).normalize(), r = V3(d.dot(F[0]), d.dot(F[1]), d.dot(F[2]));
+      const pr = (v) => `[${v.toArray().map((x) => x.toFixed(3)).join(',')}] pitch ${(Math.atan2(v.z, v.y) * 57.3).toFixed(1)} roll ${(Math.atan2(-v.x, v.y) * 57.3).toFixed(1)}`;
+      out.push(`${nm}: cap ${pr(c)} | char ${pr(r)} | angle ${(c.angleTo(r) * 57.3).toFixed(1)}`); }
+    const M = clip.sample(0.5), chordC = M.Neck.clone().sub(M.Hip), chordR = wp('Neck').sub(wp('Hips'));
+    { const fp = []; for (const c of [P.clip]) for (let t = Math.max(0, P.from); t <= Math.min(clip.dur, P.to); t += 0.1) { const M = clip.sample(t);
+        for (const s of ['L', 'R']) { const d = M[s + 'Toe'].clone().sub(M[s + 'Foot']); fp.push(Math.atan2(-d.y, Math.hypot(d.x, d.z)) * 57.3); } }
+      fp.sort((a, b) => a - b); const dc = wp('LeftToeBase').sub(wp('LeftFoot'));
+      out.push(`foot below horizontal: cap median ${fp[fp.length >> 1].toFixed(1)} min ${fp[0].toFixed(1)} max ${fp[fp.length - 1].toFixed(1)} | char rest ${(Math.atan2(-dc.y, Math.hypot(dc.x, dc.z)) * 57.3).toFixed(1)}`); }
+    if (P.posed) {   // the character posed by the retarget over the same clip: its segments in its own frames (should read like its rest)
+      window.RT_VOLLOG = 1; const rt = makeRetarget(THREE, model, bone); const pacc = {}; const xf = (v) => v.clone(); xf.ik = false;
+      for (let t = Math.max(0, P.from); t <= Math.min(clip.dur, P.to); t += 0.1) { rt(clip.sample(t), xf); model.updateMatrixWorld(true);
+        const Fp2 = frame(wp('LeftUpLeg'), wp('RightUpLeg'), wp('Hips'), wp('Neck')), Fc2 = frame(wp('LeftArm'), wp('RightArm'), wp('Spine2'), wp('Neck'));
+        for (const [nm, , , ca, cb, f] of SEG) { const d = wp(cb).sub(wp(ca)).normalize(), F = f === 'P' ? Fp2 : Fc2; pacc[nm] = (pacc[nm] || V3(0, 0, 0)).add(V3(d.dot(F[0]), d.dot(F[1]), d.dot(F[2]))); } }
+      for (const [nm] of SEG) { const v = pacc[nm].normalize(); out.push(`POSED ${nm}: [${v.toArray().map((x) => x.toFixed(3)).join(',')}] pitch ${(Math.atan2(v.z, v.y) * 57.3).toFixed(1)}`); } }
+    console.error(`CALIB n=${n}\n` + out.join('\n'));
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>
