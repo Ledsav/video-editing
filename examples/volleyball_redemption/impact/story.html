@@ -173,7 +173,7 @@
           cam: (u) => ({ p: [HIP.x + 2.3 - 0.4 * u, 1.05 - 0.2 * u, HIP.z + 4.4 - 0.7 * u], look: [HIP.x + 0.1, 0.72 - 0.1 * u, HIP.z + 0.7], fov: 38 - 4 * u }) },   // front three-quarter: the platform reads
         { name: 'floor', T: [3.0, 4.35], past: true, clip: 'dig', xf: digXf, keys: [[0, 2.42], [1, 2.95]], ball: pastBall,
           cam: (u) => ({ p: [LAND.x - 0.8 + 0.2 * u, 0.16, LAND.z + 1.7 - 0.2 * u], look: [HIP.x, 0.55, HIP.z + 0.2], fov: 40 }) },
-        { name: 'kneel', T: [4.35, 5.5], past: true, clip: 'dig', xf: digXf, keys: [[0, 2.95], [1, 3.9]], head: -0.35, ball: pastBall,
+        { name: 'kneel', T: [4.35, 5.5], past: true, clip: 'dig', xf: digXf, keys: P.kneelKeys || [[0, 2.62], [1, 2.95]],   // on one knee, arms dropped (the capture then lifts a held platform: arms aimed at the lens) head: -0.35, ball: pastBall,
           cam: (u) => { const h = headW(), f = faceDir(); return { p: [h.x + f.x * (1.3 - 0.25 * u) + 0.3, h.y + 0.12, h.z + f.z * (1.3 - 0.25 * u)], look: [h.x, h.y - 0.02, h.z], fov: 30 }; } },
         { name: 'eyes', T: [5.5, 6.95], clip: 'idle', xf: idleXf, keys: [[0, 0.6], [1, 2.0]],
           cam: (u) => { const h = headW(), f = faceDir(), r = 0.75 - 0.1 * u; return { p: [h.x + f.x * r, h.y + 0.02, h.z + f.z * r], look: [h.x, h.y + 0.035, h.z], fov: 15 - 2 * u }; } },
@@ -231,14 +231,14 @@
       camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(model.visible ? hipW() : ball.position);
       lensMat.uniforms.k.value = shot.card ? 0 : 0.3; lensMat.uniforms.zoom.value = 0;
       lensMat.uniforms.cel.value = P.cel;
-      lensMat.uniforms.sat.value = shot.past ? 0.07 : 1; lensMat.uniforms.tint.value.set(...(shot.past ? [0.86, 0.9, 0.98] : [1, 1, 1]));
+      lensMat.uniforms.sat.value = shot.past && !P.color ? 0.07 : 1; lensMat.uniforms.tint.value.set(...(shot.past ? [0.86, 0.9, 0.98] : [1, 1, 1]));
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
       renderer.setRenderTarget(null); renderer.clear(); renderer.render(postScene, postCam);
     }
     const dt = 1 / (VEDIT.fps || 30);
     VM.onFrame((T0) => {
       const T = holdT(T0), shot = shotAt(T0), hold = inHold(T0);
-      if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
+      if (P.auditAll) window.AUDIT_ALL = 1; if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
       const n = hold || shot.card ? 1 : Math.max(1, P.subframes);
       og.clearRect(0, 0, W, H);
       for (let k = 0; k < n; k++) { renderAt(hold ? T : Math.max(shot.T[0], T - dt * P.shutter * (k / n)), shot); og.globalAlpha = 1 / (k + 1); og.drawImage(renderer.domElement, 0, 0); }
