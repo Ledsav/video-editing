@@ -230,7 +230,7 @@ function makeRetarget(THREE, model, bone) {
         let a = 2 * Math.atan2(V().set(d.x, d.y, d.z).dot(ax), d.w) * 57.3; return ((a + 540) % 360) - 180; };
       const flex = (a, b, c) => (180 - wpos(bone(b)).sub(wpos(bone(a))).angleTo(wpos(bone(c)).sub(wpos(bone(b)))) * 57.3);
       const clav = (s) => { const d = wpos(bone(`${s}Arm`)).sub(wpos(bone(`${s}Shoulder`))).normalize(), up = wpos(bone('Neck')).sub(wpos(bone('Spine2'))).normalize(); return Math.asin(Math.max(-1, Math.min(1, d.dot(up)))) * 57.3; };
-      console.error(`JOINT t=${T.toFixed(3)} ${window.AUDIT_SHOT || ''} twistL ${tw('LeftArm').toFixed(0)} twistR ${tw('RightArm').toFixed(0)} ftwL ${tw('LeftForeArm').toFixed(0)} ftwR ${tw('RightForeArm').toFixed(0)} elbowL ${flex('LeftArm', 'LeftForeArm', 'LeftHand').toFixed(0)} elbowR ${flex('RightArm', 'RightForeArm', 'RightHand').toFixed(0)} clavL ${clav('Left').toFixed(0)} clavR ${clav('Right').toFixed(0)} wristR ${(wpos(bone('RightHand')).sub(wpos(bone('RightForeArm'))).angleTo(wpos(bone('RightHandMiddle1')).sub(wpos(bone('RightHand')))) * 57.3).toFixed(0)}`);
+      console.error(`JOINT t=${T.toFixed(3)} ${window.AUDIT_SHOT || ''} twistL ${tw('LeftArm').toFixed(0)} twistR ${tw('RightArm').toFixed(0)} ftwL ${tw('LeftForeArm').toFixed(0)} ftwR ${tw('RightForeArm').toFixed(0)} elbowL ${flex('LeftArm', 'LeftForeArm', 'LeftHand').toFixed(0)} elbowR ${flex('RightArm', 'RightForeArm', 'RightHand').toFixed(0)} clavL ${clav('Left').toFixed(0)} clavR ${clav('Right').toFixed(0)} wristR ${(wpos(bone('RightHand')).sub(wpos(bone('RightForeArm'))).angleTo(wpos(bone('RightHandMiddle1')).sub(wpos(bone('RightHand')))) * 57.3).toFixed(0)} armR ${(wpos(bone('RightHand')).sub(wpos(bone('RightArm'))).angleTo(V().set(0, 1, 0)) * 57.3).toFixed(1)} handR ${wpos(bone('RightHand')).toArray().map((v) => v.toFixed(3)).join(',')} tau ${(window.AUDIT_TAU ?? -1).toFixed(3)}`);
     }
   }
 
@@ -243,6 +243,14 @@ function makeRetarget(THREE, model, bone) {
     // hips: up the spine, across the thighs
     twoVec(hips, wpos(bone('Spine')).sub(wpos(hips)), wpos(bone('LeftUpLeg')).sub(wpos(bone('RightUpLeg'))),
       D(M, 'Hip', 'LowerSpine'), D(M, 'RThigh', 'LThigh'));
+    // the pelvis joints of the two skeletons sit at different heights (this rig's hip sockets are below its pelvis joint, the
+    // capture's above): pin the hip sockets, not the pelvis joint, or the legs bend to make up the difference (sunken hips)
+    if ((window.RT_FLAGS || {}).socketAlign !== false) {
+      model.updateMatrixWorld(true);
+      const charMid = wpos(bone('LeftUpLeg')).add(wpos(bone('RightUpLeg'))).multiplyScalar(0.5), capMid = xf(M.LThigh).add(xf(M.RThigh)).multiplyScalar(0.5);
+      const fix = capMid.sub(charMid), pw = V(); hips.getWorldPosition(pw); pw.add(fix);
+      hips.position.copy(pw.applyMatrix4(new THREE.Matrix4().copy(hips.parent.matrixWorld).invert())); model.updateMatrixWorld(true);
+    }
     for (const [b, c, f, t] of CH) swing(bone(b), bone(c), D(M, f, t));
     // chest: up to the neck, across the shoulders
     const chest = bone('Spine2');
