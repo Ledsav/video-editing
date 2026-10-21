@@ -1,7 +1,7 @@
 {
   "brief": {
     "prompt": "Volleyball redemption: ONE YEAR AGO (grey, the dig that came too late, 24:26) -> TODAY, match point 25:24 -> the spike (anime/comic) -> 26:24 roar -> match cut to last year's ball -> NEVER GIVE UP end card",
-    "sound": "tools/anime_sound.py: original anime cue (piano past, ostinato build, rock drop on 'THIS TIME, HE ATTACKS', silence before the hit, chorus, callback, D major end), per-action sound design and arena crowd, all locked to the picture"
+    "sound": "tools/user_music.py: the user's tracks cut to the picture (終わったなら for the past, 打ち返せ with its drop on 'THIS TIME, HE ATTACKS', a cut to silence on the rage close-up, its loudest section slamming in on the floor impact, its ending under the end card) and the scream from 'Waaaaah!' on the rage close-up; tools/anime_sound.py: sound design and arena crowd"
   },
   "output": {
     "path": "out/volleyball_redemption_final.mp4",
@@ -35,18 +35,25 @@
   ],
   "music": [
     {
-      "path": "music/anime_score.wav",
+      "path": "music/user_score.wav",
       "start": 0,
       "in": 0,
       "duration": 26.1,
       "volume": 0.85
     },
     {
+      "path": "sfx/user_scream.wav",
+      "start": 0,
+      "in": 0,
+      "duration": 26.1,
+      "volume": 0.5
+    },
+    {
       "path": "sfx/anime_sfx.wav",
       "start": 0,
       "in": 0,
       "duration": 26.1,
-      "volume": 1.0
+      "volume": 0.8
     },
     {
       "path": "sfx/anime_crowd.wav",

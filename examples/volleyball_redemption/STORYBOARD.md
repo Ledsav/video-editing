@@ -80,8 +80,16 @@ The scoring follows volleyball rules: sets 1–4 go to 25 with a two-point lead,
 Files: `impact/story.html` (`part`: `intro` | `outro`), `impact/spike_seq.html`, shared `impact/stage.js` (arena + anime post pass),
 `impact/mocap.js` (retarget), `tools/c4d_anim.py` (C4D → glTF). Licensed assets (mocap, ball model, character) are not committed.
 
-Sound: `tools/anime_sound.py` writes the score and sound design as stems locked to the picture.
-- Score:
+Music: the user's own tracks (Suno), cut to the picture by `tools/user_music.py` from `user_audio/` (not committed):
+- 終わったなら (86 bpm) for the past: its loud opening over the dig, its quiet bass-less passage from the moment last year's ball lands;
+  the same passage returns under last year's ball in the outro.
+- 打ち返せ (136 bpm) for today: its drop on THIS TIME, HE ATTACKS. (the break before it under the eyes), a cut to silence on the rage
+  close-up, its loudest section slamming in on the floor impact (BAM) under the roar, and its ending under the end card.
+- The scream on the rage close-up comes from Waaaaah! (its rising "WAAAAH" at 8.45 s), cut off by the gunshot at contact.
+
+Sound design: `tools/anime_sound.py` writes the sound effects and the crowd as stems locked to the picture (and an original synthesized
+score, `music/anime_score.wav`, which the film used before the user's tracks).
+- Synthesized score:
   - a lonely muffled piano in D minor for the past
   - an orchestra hit on the flash and a string ostinato build
   - an anime-rock drop on THIS TIME, HE ATTACKS. (141.7 bpm, so the contact lands on a downbeat)
@@ -94,5 +102,6 @@ Sound: `tools/anime_sound.py` writes the score and sound design as stems locked 
 ```bash
 cd projects/volleyball_redemption
 python3 tools/anime_sound.py                 # -> music/anime_score.wav, sfx/anime_sfx.wav, sfx/anime_crowd.wav
+python3 tools/user_music.py                  # -> music/user_score.wav, sfx/user_scream.wav (from user_audio/)
 ../../bin/vedit render story_full.json       # -> out/volleyball_redemption_final.mp4
 ```
