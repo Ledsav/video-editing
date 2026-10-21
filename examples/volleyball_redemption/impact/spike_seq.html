@@ -702,7 +702,7 @@
         const u = (T - shot.T[0]) / (shot.T[1] - shot.T[0]);
         comicBg.querySelector('.burst').style.transform = `scale(${1 + 0.15 * u}) rotate(${u * 8}deg)`;
         const w = T > T_HIT_VIDEO ? VM.prog(T, T_HIT_VIDEO, 0.18, 'outBack') : 0;
-        comicWord.style.opacity = w > 0 && !INK ? 1 : 0; comicWord.style.transform = `rotate(-8deg) scale(${0.3 + 0.7 * w})`;
+        comicWord.style.opacity = w > 0 && !INK && P.bam ? 1 : 0;   // no BAM! by default (bam: 1 brings it back) comicWord.style.transform = `rotate(-8deg) scale(${0.3 + 0.7 * w})`;
       } else comicWord.style.opacity = 0;
       // speed lines around the point of action
       { const c0 = lensMat.uniforms.center.value; drawSpeed(T, c0.x * W, (1 - c0.y) * H); }
@@ -721,7 +721,7 @@
       }
       // BAM on the floor
       const wf = T > T_FLOOR_VIDEO ? VM.prog(T, T_FLOOR_VIDEO, 0.2, 'outBack') : 0;
-      floorWord.style.opacity = shot.name === 'floor' && wf > 0 ? 1 - VM.prog(T, shot.T[1] - 0.25, 0.25) : 0;
+      floorWord.style.opacity = P.bam && shot.name === 'floor' && wf > 0 ? 1 - VM.prog(T, shot.T[1] - 0.25, 0.25) : 0;
       floorWord.style.transform = `rotate(6deg) scale(${0.3 + 0.9 * wf})`;
       cam.updateMatrixWorld(); const pc = C.clone().project(cam);
       flash.style.setProperty('--x', `${(pc.x + 1) * 50}%`); flash.style.setProperty('--y', `${(1 - pc.y) * 50}%`);
