@@ -733,18 +733,19 @@ def compose():
     sfx.add(whoosh(0.14, 900, 7000, 1.0, 0.5, 3.0), CONTACT - 0.12, 1.1, -0.3)   # the whip: ~3 frames
     tension.add(reverse_swell(0.6, 0.7), CONTACT - 0.6, 1.0)
 
-    # contact: a gunshot, the biggest sound in the film
-    sfx.add(gunshot(1.0), CONTACT, 1.3)
-    sfx.add(smack(0.8), CONTACT, 0.6)
-    sfx.add(sub_drop(130, 26, 2.2, 1.2), CONTACT, 0.9)
+    # contact: the cannon (tools/user_music.py, its own stem) replaces the gunshot, the smack and the sub drop here; they are still
+    # generated (gain 0) so the random sequence, and every other sound, stays as it was
+    sfx.add(gunshot(1.0), CONTACT, 0.0)
+    sfx.add(smack(0.8), CONTACT, 0.0)
+    sfx.add(sub_drop(130, 26, 2.2, 1.2), CONTACT, 0.0)
     music.add(orch_hit(['D3', 'A3', 'D4', 'A4']), CONTACT, 1.0)
     sfx.add(ring(HIT_HOLD + 0.4, 1.0, 3500), CONTACT + 0.02, 0.55)
     # the 1 s impact frame: a hit on every switch (black-and-white / red), alternating weight
     for k in (1, 2, 3):
         tk = CONTACT + 0.25 * k
-        sfx.add(taiko(1.2 if k % 2 else 0.9, 58 if k % 2 else 75), tk, 0.9)
-        sfx.add(sub_drop(100, 30, 0.6, 0.7), tk, 0.6)
-        sfx.add(fft_filter(rng.standard_normal(int(0.03 * SR)) * np.exp(-np.arange(int(0.03 * SR)) / SR / 0.006), 2000, 12000), tk, 0.5)
+        sfx.add(taiko(1.2 if k % 2 else 0.9, 58 if k % 2 else 75), tk, 0.25)   # low: their decays blur into one boom under the cannon
+        sfx.add(sub_drop(100, 30, 0.6, 0.7), tk, 0.0)   # (off: falling subs under the cannon read as slow motion)
+        sfx.add(fft_filter(rng.standard_normal(int(0.03 * SR)) * np.exp(-np.arange(int(0.03 * SR)) / SR / 0.006), 2000, 12000), tk, 0.9)
     music.add(reverse_swell(0.35, 0.8), REENTRY - 0.35, 1.0)
 
     # --- V. re-entry: the chorus (Bb C Dm Dm), bigger: choir, open hats, octave lead ---

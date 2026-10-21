@@ -8,8 +8,8 @@ Writes (48 kHz stereo, edit time 0 = sample 0):
   music/user_score.wav    the songs, edited on their beats
   sfx/user_scream.wav     the scream on the rage close-up, cut by the cannon at contact
   sfx/user_cannon.wav     the hit as a cannon: a 1 s charge (rising whine, accelerating pulse, crackle, swelling rumble) cut to
-                          silence 50 ms before contact, then the cannon blast, its rumble and the arena's echoes (contact, 12.30 s)
-  sfx/anime_sfx_duck.wav  tools/anime_sound.py's sound design, dipped under the blast (contact to +1 s) so the cannon is heard alone
+                          silence 50 ms before contact, then a sharp, close cannon blast with the arena's echoes (contact, 12.30 s)
+  sfx/anime_sfx_duck.wav  tools/anime_sound.py's sound design, dipped through the silent beat and the blast
 
 Cut points (song times found with `vedit beats` + the nearest transient):
   0.00 - 5.42  終わったなら from its start: the loud opening over the dig; its quiet, bass-less passage (2.4 s) begins as last
@@ -88,28 +88,33 @@ def cannon_charge(dur=1.0, seed=11):
 
 
 def cannon(seed=13):
-    """a cannon in an arena: the blast (a broadband burst, 12 ms), the body (low noise, 0.18 s), the sub punch (58 -> 30 Hz, 0.7 s),
-    saturated; then a long rumble, falling debris and three echoes off the stands."""
+    """a cannon in an arena, sharp and close: the crack (a 1.2 ms N-wave and a bright burst), the punch (wide noise, 45 ms), the low
+    body (90 ms) and a short kick of sub (75 -> 48 Hz, 0.22 s), saturated; then bright slap echoes off the stands, debris and a
+    short tail (no long dark rumble: that reads as slow motion)."""
     rng = np.random.default_rng(seed)
-    n = int(3.6 * SR)
+    n = int(2.0 * SR)
     t = np.arange(n) / SR
-    blast = bandpass(rng.standard_normal(n), 40, 7000) * np.exp(-t / 0.012) * 1.5
-    body = bandpass(rng.standard_normal(n), 30, 420) * np.exp(-t / 0.18) * np.minimum(1, t / 0.002) * 1.7
-    sub = np.sin(2 * np.pi * np.cumsum(30 + 28 * np.exp(-t / 0.08)) / SR) * np.exp(-t / 0.7) * 1.5
-    dry = np.tanh((blast + body + sub) * 2.0)
+    crack = np.zeros(n)
+    m = int(0.0012 * SR)
+    crack[:m] = np.linspace(1, -1, m)
+    crack += bandpass(rng.standard_normal(n), 1500, 14000) * np.exp(-t / 0.005)
+    punch = bandpass(rng.standard_normal(n), 150, 6000) * np.exp(-t / 0.05) * np.minimum(1, t / 0.001) * 2.4
+    body = bandpass(rng.standard_normal(n), 60, 300) * np.exp(-t / 0.08) * 0.8
+    sub = np.sin(2 * np.pi * np.cumsum(52 + 30 * np.exp(-t / 0.03)) / SR) * np.exp(-t / 0.2) * 0.8
+    dry = bandpass(np.tanh((crack * 1.8 + punch + body + sub) * 1.6), 30, 15000)
     out = np.stack([dry, dry], 1)
-    for dly, g, pan in ((0.17, 0.4, -0.6), (0.36, 0.25, 0.6), (0.62, 0.12, -0.3)):
+    for dly, g, pan, lo, hi in ((0.11, 0.35, -0.6, 200, 5000), (0.24, 0.2, 0.6, 300, 4000)):
         a = int(dly * SR)
-        e = bandpass(dry[: n - a], 30, 1500) * g
+        e = bandpass(dry[: n - a], lo, hi) * g
         out[a:, 0] += e * (1 - pan)
         out[a:, 1] += e * (1 + pan)
-    env = (1 - np.exp(-t / 0.05)) * np.exp(-t / 1.1)
-    out += np.stack([bandpass(rng.standard_normal(n), 25, 250) for _ in range(2)], 1) * env[:, None] * 0.55
+    env = (1 - np.exp(-t / 0.02)) * np.exp(-t / 0.45)
+    out += np.stack([bandpass(rng.standard_normal(n), 80, 2500) for _ in range(2)], 1) * env[:, None] * 0.3
     debris = np.zeros(n)
-    for i in np.flatnonzero((rng.random(n) < 120 / SR) & (t > 0.05) & (t < 0.9)):
-        k = min(n - i, 200)
-        debris[i:i + k] += rng.standard_normal(k) * np.exp(-np.arange(k) / 30) * np.exp(-t[i] / 0.4)
-    out += np.stack([bandpass(debris, 1500, 9000)] * 2, 1) * 0.12
+    for i in np.flatnonzero((rng.random(n) < 260 / SR) & (t > 0.03) & (t < 0.6)):
+        k = min(n - i, 150)
+        debris[i:i + k] += rng.standard_normal(k) * np.exp(-np.arange(k) / 18) * np.exp(-t[i] / 0.25)
+    out += np.stack([bandpass(debris, 2000, 12000)] * 2, 1) * 0.2
     return out
 
 
@@ -151,13 +156,14 @@ if __name__ == '__main__':
     shot[a:a + len(g)] += g[: N - a]
     write(shot, root / 'sfx' / 'user_cannon.wav', 0.99)
 
-    # the sound design under the blast: -20 dB from just before contact, back up over 0.8 s (the time-freeze ring returns in the hold)
+    # the sound design under the blast (its own hit layers are off, see anime_sound.py): -10 dB through the silent beat and the
+    # blast, back up over 0.3 s (the time-freeze ring and the taiko hits of the hold stay)
     with wave.open(str(root / 'sfx' / 'anime_sfx.wav'), 'rb') as w:
         sfx = np.frombuffer(w.readframes(w.getnframes()), dtype='<i2').reshape(-1, 2).astype(np.float64) / 32767
     t = np.arange(len(sfx)) / SR
-    dip = 10 ** (-20 / 20)
+    dip = 10 ** (-10 / 20)
     env = np.ones(len(sfx))
-    a0, a1, a2 = CONTACT - GAP - 0.005, CONTACT + 0.25, CONTACT + 1.05
+    a0, a1, a2 = CONTACT - GAP - 0.005, CONTACT + 0.1, CONTACT + 0.4
     env[(t >= a0) & (t < a1)] = dip
     k = (t >= a1) & (t < a2)
     env[k] = dip + (1 - dip) * ((t[k] - a1) / (a2 - a1)) ** 2
