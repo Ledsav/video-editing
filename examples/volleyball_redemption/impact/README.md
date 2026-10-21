@@ -92,3 +92,15 @@ It isn't committed. Get it from the `vroid/beta/` folder of github.com/madjin/vr
   The body and the face get the same skin tone (`SKIN_TONE`). It is deep enough that lit skin stays out of the cel pass's top tone band, which reads as white.
   The hands' UV islands, which sit inside the torso area, are masked out using the skin weights.
 - `kitNormalMap` bakes the fabric relief (knit, twill, seams, hems, raised number, quilted pads) into the normal map, and into the colour as fold shading.
+
+## Opening and ending pages (anime_pages.html)
+
+`page: "op"` is the title card before the story (3.5 s): 打ち返せ！ is stamped kanji by kanji on the song's beats over the ink key
+art, which flips to its negative on the last stamp; then UCHIKAESE! / HIT IT BACK and the episode badge 第1話「最後の一点」.
+`page: "ed"` is the end card (3.4 s, on the song's final chord): a tilted manga panel with the eyes, 諦めない in vertical brush,
+NEVER GIVE UP., つづく / TO BE CONTINUED and a credits strip. Every text is a param.
+- Fonts: Dela Gothic One and Yuji Boku (SIL Open Font License), not committed. Put them in `impact/fonts/` from
+  github.com/google/fonts (`ofl/delagothicone/DelaGothicOne-Regular.ttf`, `ofl/yujiboku/YujiBoku-Regular.ttf`). The page loads them with
+  the FontFace API (file:// pages can't use @font-face URLs).
+- Art: stills rendered from the film without any text, with `art: 1`: `impact/art/op_key.png` = spike_seq.html at 4.25 s,
+  `op_key_neg.png` = 4.60 s, `ed_eyes.png` = story.html (part intro) at 6.30 s, all 1920x1080.

@@ -7,16 +7,18 @@ Reads user_audio/ (not committed):
   waaaaah.mp3       Waaaaah!      152 bpm  source of the scream (8.45 s: a rising "WAAAAH", sustained to 10.7 s)
 Writes (48 kHz stereo, edit time 0 = sample 0):
   music/user_score.wav    the song, edited on its beats (without suno30.mp3: the two tracks below, cut as listed at the end)
+  music/user_op.wav       the opening title card (anime_pages.html, page op, 3.5 s before the story): 2 bars of the chorus, its
+                          downbeat at 0.08 s with the first stamp of the logo
   user_audio/suno30_clean.wav  the cleaned song, uncut (for comparison)
-  sfx/user_scream.wav     the scream on the rage close-up, cut by the cannon at contact
+  sfx/user_scream.wav     the scream on the rage close-up (raised SCREAM_UP semitones: a boy's voice), cut by the cannon at contact
   sfx/user_cannon.wav     the hit as a cannon: a 1 s charge (rising whine, accelerating pulse, crackle, swelling rumble) cut to
                           silence 50 ms before contact, then a sharp, close cannon blast with the arena's echoes (contact, 12.30 s)
   sfx/anime_sfx_duck.wav  tools/anime_sound.py's sound design, dipped through the silent beat and the blast
 
 Cut points of 打ち返せ何度でも (bar = 1.707 s; song times from `vedit beats` and the bass envelope):
-  0.105 - 11.05  the song from its start (its quiet, bass-less bar from 1.5 s falls on the dig, the vocal from 3.3 s)
-  11.05 - 14.20  silence: the rage close-up, the scream over the charge, the cannon, the 1 s impact frame
-  14.20 - 22.80  its chorus: the downbeat (13.995 + its pickup) lands on the ball hitting the floor; muffled under last year's ball
+  0.105 - 22.80  the song, uncut, from its start (its quiet, bass-less bar from 1.5 s falls on the dig, the vocal from 3.3 s);
+                 10 dB down from the rage close-up to the floor impact (the scream, the charge, the cannon and the impact frame
+                 play over it); its chorus downbeat (14.095) lands on the ball hitting the floor; muffled under last year's ball
                  (18.5 - 20.5), open again on today's (20.5)
   22.80 - 26.1   a jump of 3 bars (22.69 -> 27.80, downbeat to downbeat) to its final chord, which lands on the end card
 
@@ -42,11 +44,12 @@ root = Path(__file__).resolve().parent.parent
 src = root / 'user_audio'
 
 FLASH, ATTACK, RAGE, CONTACT, FLOOR, OUTRO, MATCH_CUT = 5.42, 7.05, 11.05, 12.30, 14.20, 18.5, 20.5
+SCREAM_UP = 4                 # semitones: the scream raised (voice resonances with it) so it reads as a boy, not a grown man
 GAP = 0.05                    # silence before the cannon (1.5 frames): the charge, the scream and the sound design all stop
 
 
-def load(name):
-    raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(src / name), '-ac', '2', '-ar', str(SR), '-f', 'f32le', '-'],
+def load(name, af=None):
+    raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(src / name)] + (['-af', af] if af else []) + ['-ac', '2', '-ar', str(SR), '-f', 'f32le', '-'],
                          capture_output=True, check=True).stdout
     return np.frombuffer(raw, dtype=np.float32).reshape(-1, 2).astype(np.float64)
 
@@ -155,14 +158,19 @@ def write(x, path, peak=0.95, trim=True):
 
 
 if __name__ == '__main__':
-    waah = load('waaaaah.mp3')
+    waah = load('waaaaah.mp3', f'rubberband=pitch={2 ** (SCREAM_UP / 12):.5f}:formant=shifted:pitchq=quality,highpass=f=220' if SCREAM_UP else None)
     mus = np.zeros((N, 2))
     if (src / 'suno30.mp3').exists():
         song = clean('suno30.mp3')
         write(song, src / 'suno30_clean.wav', trim=False)
         OFF = FLOOR - 14.095                                                                     # its chorus downbeat on the floor impact
-        place(mus, song, 0.0, OFF, RAGE, fade_in=0.0, fade_out=0.04)                              # the music stops on the rage close-up
-        place(mus, song, FLOOR - OFF - 0.08, FLOOR - 0.08, 22.795 + 0.02, fade_in=0.03, fade_out=0.02)   # the chorus on the floor impact
+        place(mus, song, 0.0, OFF, 22.795 + 0.02, fade_in=0.0, fade_out=0.02)
+        t = np.arange(N) / SR                                                                     # under the attack: down, not out
+        dip = 10 ** (-10 / 20)
+        a0, a1 = RAGE - 0.06, FLOOR - 0.1
+        g = np.where(t < a0, 1, np.where(t < a1, dip, 1.0))
+        g = np.convolve(g, np.ones(int(0.12 * SR)) / int(0.12 * SR), 'same')
+        mus *= g[:, None]
         place(mus, song, 27.80 - 0.02, 22.795 - 0.02, END, fade_in=0.02, fade_out=0.6)          # 3 bars on: its final chord on the end card
         # last year's ball (18.5 - 20.5): the chorus heard as a memory, muffled and lower, opening again on today's ball
         a, b = int(OUTRO * SR), int(MATCH_CUT * SR)
@@ -171,6 +179,12 @@ if __name__ == '__main__':
         w = np.convolve(w, np.hanning(int(0.15 * SR)) / np.hanning(int(0.15 * SR)).sum(), 'same')
         muff = np.stack([bandpass(mus[:, c], 20, 1100) for c in range(2)], 1) * 0.6
         mus = mus * (1 - w[:, None]) + muff * w[:, None]
+        op = np.zeros((int(3.6 * SR), 2))                                                         # the title card: 2 bars of chorus
+        n_op = int(3.5 * SR)
+        seg = song[int((14.095 - 0.08) * SR):int((14.095 - 0.08) * SR) + n_op].copy()
+        seg[-int(0.03 * SR):] *= np.cos(np.linspace(0, np.pi / 2, int(0.03 * SR)))[:, None]
+        op[:n_op] = seg
+        write(op, root / 'music' / 'user_op.wav', trim=False)
     else:
         past, today = load('owatta_nara.mp3'), load('uchikaese.mp3')
         place(mus, past, 0.0, 0.0, FLASH + 0.06, fade_in=0.0, fade_out=0.08)                     # the past, out on the white flash

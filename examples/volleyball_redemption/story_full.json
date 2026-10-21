@@ -1,6 +1,6 @@
 {
   "brief": {
-    "prompt": "Volleyball redemption: ONE YEAR AGO (grey, the dig that came too late, 24:26) -> TODAY, match point 25:24 -> the spike (anime/comic) -> 26:24 roar -> match cut to last year's ball -> NEVER GIVE UP end card",
+    "prompt": "Volleyball redemption, as an anime episode: the opening title card (打ち返せ！, 第1話「最後の一点」) -> ONE YEAR AGO (grey, the dig that came too late, 24:26) -> TODAY, match point 25:24 -> the spike (ink impact frames) -> 26:24 -> match cut to last year's ball -> the end card (諦めない / NEVER GIVE UP. / つづく)",
     "sound": "tools/user_music.py: the user's tracks cut to the picture (終わったなら for the past, 打ち返せ with its drop on 'THIS TIME, HE ATTACKS', a cut to silence on the rage close-up, its loudest section slamming in on the floor impact, its ending under the end card) and the scream from 'Waaaaah!' on the rage close-up; tools/anime_sound.py: sound design and arena crowd"
   },
   "output": {
@@ -11,6 +11,14 @@
     "crf": 16
   },
   "timeline": [
+    {
+      "id": "op",
+      "html": "impact/anime_pages.html",
+      "duration": 3.5,
+      "params": {
+        "page": "op"
+      }
+    },
     {
       "id": "intro",
       "html": "impact/story.html",
@@ -27,44 +35,59 @@
     {
       "id": "outro",
       "html": "impact/story.html",
-      "duration": 7.6,
+      "duration": 4.2,
       "params": {
         "part": "outro"
+      }
+    },
+    {
+      "id": "ed",
+      "html": "impact/anime_pages.html",
+      "duration": 3.4,
+      "params": {
+        "page": "ed"
       }
     }
   ],
   "music": [
     {
-      "path": "music/user_score.wav",
+      "path": "music/user_op.wav",
       "start": 0,
+      "in": 0,
+      "duration": 3.5,
+      "volume": 0.85
+    },
+    {
+      "path": "music/user_score.wav",
+      "start": 3.5,
       "in": 0,
       "duration": 26.1,
       "volume": 0.85
     },
     {
       "path": "sfx/user_scream.wav",
-      "start": 0,
+      "start": 3.5,
       "in": 0,
       "duration": 26.1,
       "volume": 0.5
     },
     {
       "path": "sfx/user_cannon.wav",
-      "start": 0,
+      "start": 3.5,
       "in": 0,
       "duration": 26.1,
       "volume": 1.0
     },
     {
       "path": "sfx/anime_sfx_duck.wav",
-      "start": 0,
+      "start": 3.5,
       "in": 0,
       "duration": 26.1,
       "volume": 0.8
     },
     {
       "path": "sfx/anime_crowd.wav",
-      "start": 0,
+      "start": 3.5,
       "in": 0,
       "duration": 26.1,
       "volume": 0.5

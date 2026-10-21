@@ -30,7 +30,8 @@
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const { rt, lensMat, postScene, postCam } = makeAnimePost(THREE, W, H);
     const { inkMat, inkScene, inkCam } = makeInkPass(THREE, W, H, rt.texture);
-    const INK = (P.ink ?? 1) && !P.clean;            // the comic shot as an ink impact sequence (0: the pop-art comic panel)
+    const INK = (P.ink ?? 1) && !P.clean;
+    if (P.art) { const st = document.createElement('style'); st.textContent = '#stage > :not(canvas), body > :not(#stage):not(script) { display: none !important; }'; document.head.appendChild(st); }   // key-art stills: the picture without any text or overlay            // the comic shot as an ink impact sequence (0: the pop-art comic panel)
     const env = []; let bgTexRef = null;
     const comicBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });
     const rageBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });         // rage close-up: red field + black rays
