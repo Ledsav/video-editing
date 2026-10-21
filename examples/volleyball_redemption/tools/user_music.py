@@ -1,17 +1,26 @@
 """The user's own tracks (Suno), cut to the picture of story_full.json, plus the scream for the attack.
 
 Reads user_audio/ (not committed):
+  suno30.mp3        打ち返せ何度でも  140 bpm  the film's song (30 s, Japanese vocal), cleaned (see clean()) and cut to the picture
   owatta_nara.mp3   終わったなら  86 bpm   the past: last year's lost point (and its callback in the outro)
   uchikaese.mp3     打ち返せ      136 bpm  today: the attack, the roar, the end card
   waaaaah.mp3       Waaaaah!      152 bpm  source of the scream (8.45 s: a rising "WAAAAH", sustained to 10.7 s)
 Writes (48 kHz stereo, edit time 0 = sample 0):
-  music/user_score.wav    the songs, edited on their beats
+  music/user_score.wav    the song, edited on its beats (without suno30.mp3: the two tracks below, cut as listed at the end)
+  user_audio/suno30_clean.wav  the cleaned song, uncut (for comparison)
   sfx/user_scream.wav     the scream on the rage close-up, cut by the cannon at contact
   sfx/user_cannon.wav     the hit as a cannon: a 1 s charge (rising whine, accelerating pulse, crackle, swelling rumble) cut to
                           silence 50 ms before contact, then a sharp, close cannon blast with the arena's echoes (contact, 12.30 s)
   sfx/anime_sfx_duck.wav  tools/anime_sound.py's sound design, dipped through the silent beat and the blast
 
-Cut points (song times found with `vedit beats` + the nearest transient):
+Cut points of 打ち返せ何度でも (bar = 1.707 s; song times from `vedit beats` and the bass envelope):
+  0.105 - 11.05  the song from its start (its quiet, bass-less bar from 1.5 s falls on the dig, the vocal from 3.3 s)
+  11.05 - 14.20  silence: the rage close-up, the scream over the charge, the cannon, the 1 s impact frame
+  14.20 - 22.80  its chorus: the downbeat (13.995 + its pickup) lands on the ball hitting the floor; muffled under last year's ball
+                 (18.5 - 20.5), open again on today's (20.5)
+  22.80 - 26.1   a jump of 3 bars (22.69 -> 27.80, downbeat to downbeat) to its final chord, which lands on the end card
+
+Cut points of the two tracks (used when suno30.mp3 is absent; song times from `vedit beats` + the nearest transient):
   0.00 - 5.42  終わったなら from its start: the loud opening over the dig; its quiet, bass-less passage (2.4 s) begins as last
                year's ball hits the floor (2.22).
   5.42 - 11.05 打ち返せ, its drop (3.975 s) on "THIS TIME, HE ATTACKS." (7.05); the break before it plays under the eyes.
@@ -118,8 +127,23 @@ def cannon(seed=13):
     return out
 
 
-def write(x, path, peak=0.95):
-    x = x[: int(END * SR)]
+def clean(name):
+    """the song with less of the AI sheen on the voice: the stereo side (where the generator's swirly, phasey artefacts sit; the
+    voice is in the middle) cut by half from 1.5 to 9 kHz, a de-esser, the harsh band (6.5 kHz) and the hiss above 11 kHz
+    down, the mud (320 Hz) down and the presence (2.8 kHz) up for a clearer voice, light glue compression."""
+    chain = ('highpass=f=28,deesser=i=0.35:m=0.5:f=0.5:s=o,equalizer=f=320:t=q:w=1.0:g=-2.5,equalizer=f=2800:t=q:w=1.0:g=2,'
+             'equalizer=f=6500:t=q:w=1.4:g=-2.5,highshelf=f=11000:g=-3,acompressor=threshold=-20dB:ratio=1.8:attack=15:release=200')
+    raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(src / name), '-af', chain, '-ac', '2', '-ar', str(SR), '-f', 'f32le', '-'],
+                         capture_output=True, check=True).stdout
+    x = np.frombuffer(raw, dtype=np.float32).reshape(-1, 2).astype(np.float64)
+    mid, side = (x[:, 0] + x[:, 1]) / 2, (x[:, 0] - x[:, 1]) / 2
+    side = side - 0.5 * bandpass(side, 1500, 9000)
+    return np.stack([mid + side, mid - side], 1)
+
+
+def write(x, path, peak=0.95, trim=True):
+    if trim:
+        x = x[: int(END * SR)]
     x = x / (np.abs(x).max() + 1e-9) * peak
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), 'wb') as w:
@@ -131,14 +155,30 @@ def write(x, path, peak=0.95):
 
 
 if __name__ == '__main__':
-    past, today, waah = load('owatta_nara.mp3'), load('uchikaese.mp3'), load('waaaaah.mp3')
+    waah = load('waaaaah.mp3')
     mus = np.zeros((N, 2))
-    place(mus, past, 0.0, 0.0, FLASH + 0.06, fade_in=0.0, fade_out=0.08)                        # the past, out on the white flash
-    off = 3.975 - ATTACK                                                                         # 打ち返せ's drop on the attack line
-    place(mus, today, FLASH + off, FLASH, RAGE, fade_in=0.03, fade_out=0.04)
-    place(mus, today, 44.58, FLOOR, OUTRO + 0.12, fade_in=0.04, fade_out=0.15)                  # the slam on the BAM (its transient left to the BAM)
-    place(mus, past, 2.45, OUTRO, MATCH_CUT + 0.05, fade_in=0.15, fade_out=0.06, gain=0.9)        # memory
-    place(mus, today, 74.55, MATCH_CUT, END, fade_in=0.004, fade_out=0.25)                       # the ending, out by 25.9
+    if (src / 'suno30.mp3').exists():
+        song = clean('suno30.mp3')
+        write(song, src / 'suno30_clean.wav', trim=False)
+        OFF = FLOOR - 14.095                                                                     # its chorus downbeat on the floor impact
+        place(mus, song, 0.0, OFF, RAGE, fade_in=0.0, fade_out=0.04)                              # the music stops on the rage close-up
+        place(mus, song, FLOOR - OFF - 0.08, FLOOR - 0.08, 22.795 + 0.02, fade_in=0.03, fade_out=0.02)   # the chorus on the floor impact
+        place(mus, song, 27.80 - 0.02, 22.795 - 0.02, END, fade_in=0.02, fade_out=0.6)          # 3 bars on: its final chord on the end card
+        # last year's ball (18.5 - 20.5): the chorus heard as a memory, muffled and lower, opening again on today's ball
+        a, b = int(OUTRO * SR), int(MATCH_CUT * SR)
+        w = np.zeros(N)
+        w[a:b] = 1
+        w = np.convolve(w, np.hanning(int(0.15 * SR)) / np.hanning(int(0.15 * SR)).sum(), 'same')
+        muff = np.stack([bandpass(mus[:, c], 20, 1100) for c in range(2)], 1) * 0.6
+        mus = mus * (1 - w[:, None]) + muff * w[:, None]
+    else:
+        past, today = load('owatta_nara.mp3'), load('uchikaese.mp3')
+        place(mus, past, 0.0, 0.0, FLASH + 0.06, fade_in=0.0, fade_out=0.08)                     # the past, out on the white flash
+        off = 3.975 - ATTACK                                                                      # 打ち返せ's drop on the attack line
+        place(mus, today, FLASH + off, FLASH, RAGE, fade_in=0.03, fade_out=0.04)
+        place(mus, today, 44.58, FLOOR, OUTRO + 0.12, fade_in=0.04, fade_out=0.15)               # the slam on the floor impact
+        place(mus, past, 2.45, OUTRO, MATCH_CUT + 0.05, fade_in=0.15, fade_out=0.06, gain=0.9)     # memory
+        place(mus, today, 74.55, MATCH_CUT, END, fade_in=0.004, fade_out=0.25)                    # the ending, out by 25.9
     write(mus, root / 'music' / 'user_score.wav')
 
     scream = np.zeros((N, 2))

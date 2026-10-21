@@ -80,7 +80,13 @@ The scoring follows volleyball rules: sets 1–4 go to 25 with a two-point lead,
 Files: `impact/story.html` (`part`: `intro` | `outro`), `impact/spike_seq.html`, shared `impact/stage.js` (arena + anime post pass),
 `impact/mocap.js` (retarget), `tools/c4d_anim.py` (C4D → glTF). Licensed assets (mocap, ball model, character) are not committed.
 
-Music: the user's own tracks (Suno), cut to the picture by `tools/user_music.py` from `user_audio/` (not committed):
+Music: the user's Suno song 打ち返せ何度でも (30 s, Japanese vocal, 140 bpm), cleaned and cut to the picture by
+`tools/user_music.py` from `user_audio/suno30.mp3` (not committed). The cleanup halves the stereo side from 1.5 to 9 kHz (where
+the generator's swirly artefacts sit; the voice is in the middle), de-esses, cuts the harsh band, the hiss and the mud and lifts
+the presence. The edit: the song from the start until the rage close-up, silence for the scream, the charge, the cannon and the
+impact frame, its chorus downbeat on the ball hitting the floor (muffled under last year's ball, open again on today's), then a
+3-bar jump so its final chord lands on the end card.
+Before that song, the film used two other tracks of the user's (same script, used when suno30.mp3 is absent):
 - 終わったなら (86 bpm) for the past: its loud opening over the dig, its quiet bass-less passage from the moment last year's ball lands;
   the same passage returns under last year's ball in the outro.
 - 打ち返せ (136 bpm) for today: its drop on THIS TIME, HE ATTACKS. (the break before it under the eyes), a cut to silence on the rage
