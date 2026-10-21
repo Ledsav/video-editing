@@ -102,6 +102,6 @@ score, `music/anime_score.wav`, which the film used before the user's tracks).
 ```bash
 cd projects/volleyball_redemption
 python3 tools/anime_sound.py                 # -> music/anime_score.wav, sfx/anime_sfx.wav, sfx/anime_crowd.wav
-python3 tools/user_music.py                  # -> music/user_score.wav, sfx/user_scream.wav (from user_audio/)
+python3 tools/user_music.py                  # -> music/user_score.wav, sfx/user_scream.wav, sfx/user_cannon.wav, sfx/anime_sfx_duck.wav (from user_audio/)
 ../../bin/vedit render story_full.json       # -> out/volleyball_redemption_final.mp4
 ```

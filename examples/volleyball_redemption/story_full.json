@@ -49,7 +49,7 @@
       "volume": 0.5
     },
     {
-      "path": "sfx/user_gunshot.wav",
+      "path": "sfx/user_cannon.wav",
       "start": 0,
       "in": 0,
       "duration": 26.1,
