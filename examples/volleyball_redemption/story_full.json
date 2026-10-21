@@ -53,10 +53,10 @@
       "start": 0,
       "in": 0,
       "duration": 26.1,
-      "volume": 0.9
+      "volume": 1.0
     },
     {
-      "path": "sfx/anime_sfx.wav",
+      "path": "sfx/anime_sfx_duck.wav",
       "start": 0,
       "in": 0,
       "duration": 26.1,

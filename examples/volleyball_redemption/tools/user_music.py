@@ -8,6 +8,7 @@ Writes (48 kHz stereo, edit time 0 = sample 0):
   music/user_score.wav    the songs, edited on their beats
   sfx/user_scream.wav     the scream on the rage close-up, cut by the gunshot at contact
   sfx/user_gunshot.wav    the hit as a pistol shot: a dry crack on top of the sound design's boom (contact, 12.30 s)
+  sfx/anime_sfx_duck.wav  tools/anime_sound.py's sound design, dipped under the shot (contact to +0.6 s) so the shot reads as a gunshot
 
 Cut points (song times found with `vedit beats` + the nearest transient):
   0.00 - 5.42  終わったなら from its start: the loud opening over the dig; its quiet, bass-less passage (2.4 s) begins as last
@@ -74,6 +75,7 @@ def gunshot(seed=7):
     blast = bandpass(rng.standard_normal(n), 120, 3500) * np.exp(-t / 0.03) * 1.3
     thump = np.sin(2 * np.pi * np.cumsum(38 + 22 * np.exp(-t / 0.02)) / SR) * np.exp(-t / 0.12) * 1.1
     dry = np.tanh((crack * 2.2 + blast + thump) * 2.2)
+    dry = bandpass(dry, 25, 14000)                                  # no ultrasonic edges (they overshoot once encoded)
     out = np.stack([dry, dry], 1)
     for dly, g, pan in ((0.021, 0.45, -0.5), (0.058, 0.3, 0.6)):
         a = int(dly * SR)
@@ -116,3 +118,17 @@ if __name__ == '__main__':
     a = int(CONTACT * SR)
     shot[a:a + len(g)] += g[: N - a]
     write(shot, root / 'sfx' / 'user_gunshot.wav', 0.99)
+
+    # the sound design under the shot: -14 dB from just before contact, back up over 0.6 s (the time-freeze ring returns in the hold)
+    with wave.open(str(root / 'sfx' / 'anime_sfx.wav'), 'rb') as w:
+        sfx = np.frombuffer(w.readframes(w.getnframes()), dtype='<i2').reshape(-1, 2).astype(np.float64) / 32767
+    t = np.arange(len(sfx)) / SR
+    dip = 10 ** (-14 / 20)
+    env = np.ones(len(sfx))
+    a0, a1, a2 = CONTACT - 0.004, CONTACT + 0.12, CONTACT + 0.6
+    env[(t >= a0) & (t < a1)] = dip
+    k = (t >= a1) & (t < a2)
+    env[k] = dip + (1 - dip) * ((t[k] - a1) / (a2 - a1)) ** 2
+    out = np.zeros((N, 2))
+    out[:len(sfx)] = sfx * env[:, None]
+    write(out, root / 'sfx' / 'anime_sfx_duck.wav', np.abs(sfx).max())
