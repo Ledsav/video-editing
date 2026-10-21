@@ -238,7 +238,7 @@
       if (shot.name === 'dig' && T >= T_LAND) { const e = Math.exp(-(T - T_LAND) * 8) * 0.05; cam.position.x += VM.noise(T * 50, 1) * e; cam.position.y += VM.noise(T * 50, 2) * e; }
       camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(model.visible ? hipW() : ball.position);
       lensMat.uniforms.k.value = shot.card ? 0 : 0.3; lensMat.uniforms.zoom.value = 0;
-      lensMat.uniforms.cel.value = P.cel;
+      lensMat.uniforms.cel.value = P.cel; lensMat.uniforms.anime.value = P.anime ?? 1; lensMat.uniforms.time.value = T;   // anime: the full-film filter
       lensMat.uniforms.sat.value = shot.past && !P.color ? 0.07 : 1; lensMat.uniforms.tint.value.set(...(shot.past ? [0.86, 0.9, 0.98] : [1, 1, 1]));
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
       renderer.setRenderTarget(null); renderer.clear(); renderer.render(postScene, postCam);

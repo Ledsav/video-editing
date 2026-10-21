@@ -29,6 +29,8 @@
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const { rt, lensMat, postScene, postCam } = makeAnimePost(THREE, W, H);
+    const { inkMat, inkScene, inkCam } = makeInkPass(THREE, W, H, rt.texture);
+    const INK = (P.ink ?? 1) && !P.clean;            // the comic shot as an ink impact sequence (0: the pop-art comic panel)
     const env = []; let bgTexRef = null;
     const comicBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });
     const rageBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });         // rage close-up: red field + black rays
@@ -48,6 +50,7 @@
     const rimB = new THREE.DirectionalLight(0x6f9cff, 2.5); rimB.position.set(3, 2, -4); scene.add(rimB);
     const fill = new THREE.DirectionalLight(0x9db4ff, 0.6); fill.position.set(-4, 1.5, 1); scene.add(fill);
     const hitLight = new THREE.PointLight(0xfff0c0, 0, 6, 1.5); scene.add(hitLight);
+    const inkHit = new THREE.PointLight(0xffffff, 0, 0, 1.2), inkRim = new THREE.DirectionalLight(0xffffff, 0); scene.add(inkHit, inkRim, inkRim.target);
     const camFill = new THREE.DirectionalLight(0xfff1e2, 1.4); scene.add(camFill, camFill.target);
 
     // ================= athlete =================
@@ -80,6 +83,12 @@
         // (the eye white and iris are single-sided with inverted winding in this export: culled, the eyes rendered as empty holes)
         if (/_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(o.material.name)) o.userData.toon = new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: /_EYE$/.test(o.material.name) ? THREE.DoubleSide : m.side, depthWrite: m.depthWrite });
         o.userData.std = P.cel > 0 ? o.userData.toon : m;      // anime: the player is cel-shaded in every shot
+        // ink frames: the light alone decides the drawing (white, lit), the face details keep their own lines
+        if (/Face(Brow|Eyelash|Eyeline|Mouth)/.test(o.material.name)) o.userData.ink = o.userData.toon;
+        else if (/_EYE$|EyeHighlight|EyeIris|EyeWhite/.test(o.material.name) && (P.inkEyes ?? 0) === 0) o.userData.ink = new THREE.MeshBasicMaterial({ visible: false });
+        else { const im = new THREE.MeshLambertMaterial({ color: 0xffffff, map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite });
+          im.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#ifdef USE_MAP\n diffuseColor.a *= texture2D( map, vMapUv ).a;\n#endif'); };
+          o.userData.ink = im; if (P.inkLog) console.error(`INKMAT ${o.material.name} type=${o.material.type} map=${!!m.map} transparent=${m.transparent} alphaTest=${m.alphaTest} side=${m.side} visible=${o.visible}`); }
       }
       o.material = o.userData.std; });
     // ---- rage expression, painted into the model's own face textures (it deforms and shades with the face) ----
@@ -385,6 +394,18 @@
     const faceDir = () => { const l = V3(0, 0, 0).setFromMatrixPosition(bone('LeftArm').matrixWorld), r = V3(0, 0, 0).setFromMatrixPosition(bone('RightArm').matrixWorld);
       return l.sub(r).cross(V3(0, 1, 0)).setY(0).normalize(); };
     const hipPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Hips').matrixWorld);
+    // the impact frame's drawings, each from its own angle (anime impact frames cut between close drawings): around the line from
+    // the comic camera to the contact; [turn about up (rad), distance (m), height (m), target: 0 = contact .. 1 = head .. 2 = hips, fov]
+    const INK_ANGLES = [[0.0, 1.35, -0.25, 0.45, 52], [0.85, 1.25, -0.75, 0.6, 58], [-0.35, 0.8, -0.1, 0.1, 50], [-0.6, 2.4, -0.4, 1.3, 46]];
+    function inkCamAt(T0, base) {
+      const s = T0 - T_HIT_VIDEO; if (s < 0 || s >= HIT_HOLD || P.inkAngles === 0) return null;
+      const [turn, dist, hgt, tg, fov] = INK_ANGLES[Math.floor(s / 0.25) % INK_ANGLES.length];
+      const head = headPos(), tgt = tg <= 1 ? C.clone().lerp(head, tg) : head.clone().lerp(hipPos(), tg - 1);
+      const d = V3(...base.p).sub(C).setY(0).normalize().applyAxisAngle(V3(0, 1, 0), turn);
+      const push = 1 - 0.08 * ((s % 0.25) / 0.25);                              // a slow push inside each drawing
+      const p = tgt.clone().addScaledVector(d, dist * push).add(V3(0, hgt, 0));
+      return { p: p.toArray(), look: tgt.toArray(), fov, roll: [0.12, -0.18, 0.08, -0.1][Math.floor(s / 0.25) % 4] };
+    }
     const orbit = (c, r, h, a) => [c.x + Math.sin(a) * r, h, c.z + Math.cos(a) * r];   // a = 0: in front of him (+z), PI: behind
     const SHOTS = [
       { name: 'runup', T: [0, 1.45], t: [-0.62, 0.6], ease: 'linear', lens: 0.35,         // dolly-orbit from behind him round to his side as he accelerates (real speed)
@@ -452,7 +473,7 @@
     const kicker = el('div', { position: 'absolute', left: '7vw', top: '9vh', font: `600 1.8vmin ${TEXT}`, letterSpacing: '0.5em', color: V200W.yellow, opacity: 0 }, stage, 'MATCH POINT &nbsp;·&nbsp; 25 : 24');
     const score = el('div', { position: 'absolute', right: '7vw', bottom: '9vh', textAlign: 'right', font: `400 17vmin ${DISPLAY}`, lineHeight: 0.85, color: '#f3ede2', opacity: 0, textShadow: '0 1vmin 4vmin rgba(0,0,0,0.5)' }, stage,
       `26<span style="opacity:.35"> : </span>24`);
-    addFinish({ grain: 0.06, vignette: 0.5 });
+    const finish = addFinish({ grain: 0.06, vignette: 0.5 });
     const hitFlash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 46, pointerEvents: 'none' }, document.body);
     const redOverlay = el('div', { position: 'absolute', inset: 0, background: '#e3121b', mixBlendMode: 'multiply', opacity: 0, zIndex: 45, pointerEvents: 'none' }, document.body);
     const credit = el('div', { position: 'absolute', left: '7vw', bottom: '5vh', font: `500 1.3vmin ${TEXT}`, letterSpacing: '0.12em', color: 'rgba(243,237,226,0.7)', opacity: 0, zIndex: 60 }, document.body,
@@ -461,19 +482,34 @@
 
     // ================= frame =================
     let comicMode = null;
-    function setComic(on) {
-      if (comicMode === on) return; comicMode = on;
-      env.forEach((m) => (m.visible = !on));
-      scene.background = on ? null : bgTexRef;
-      bodyMeshes.forEach((m) => (m.material = on ? m.userData.toon : m.userData.std));
-      [crack, liftRing, ring, crack2].forEach((m) => (m.visible = !on));
+    // frame modes: the arena (normal), the comic panel (pop-art, without ink), ink drawings ('hit': the whole comic shot; 'takeoff'
+    // and 'floor': the impact frames of the jump and of the ball on the court). Ink frames are lit by the impact alone (and a rim
+    // from behind) so the drawing splits into light and shadow; the arena goes, the white decals (cracks, rings) stay.
+    let modeKey = null, inkSaved = null;
+    function setMode(comic, ink) {
+      const key = `${comic}|${ink}`; if (modeKey === key) return; modeKey = key;
+      const inkOn = !!ink, flat = comic || inkOn; comicMode = flat;   // (setRage leaves the arena off while this is on)
+      if (inkOn && !inkSaved) { inkSaved = []; scene.traverse((o) => { if (o.isLight && o !== inkHit && o !== inkRim) { inkSaved.push([o, o.intensity]); o.intensity = 0; } }); }
+      if (!inkOn && inkSaved) { inkSaved.forEach(([o, i]) => (o.intensity = i)); inkSaved = null; }
+      inkHit.intensity = inkOn ? (P.inkHit ?? 10) * (ink === 'hit' ? 1 : 1.6) : 0; inkRim.intensity = inkOn ? (P.inkRim ?? 1.2) : 0;
+      inkMat.uniforms.thr.value = P.inkThr ?? 0.95; inkMat.uniforms.lineW.value = P.inkLine ?? 2.4;
+      finish.vig.style.opacity = inkOn ? 0 : 1;
+      env.forEach((m) => (m.visible = !flat));
+      scene.background = flat ? null : bgTexRef;
+      bodyMeshes.forEach((m) => (m.material = inkOn ? m.userData.ink || m.userData.toon : comic ? m.userData.toon : m.userData.std));
+      [crack, liftRing, ring, crack2].forEach((m) => (m.visible = !comic));
       ball.traverse((o) => { if (!o.isMesh) return; o.userData.std = o.userData.std || o.material;
         o.userData.toon = o.userData.toon || new THREE.MeshToonMaterial({ map: o.material.map, gradientMap: ramp });
-        o.material = on ? o.userData.toon : o.userData.std; });
-      comicBg.style.opacity = on ? 1 : 0; halftoneFg.style.opacity = on ? 0.6 : 0;
-      // ink outline + misregistered colour fringe on the 3D layer
-      out.style.filter = on ? 'drop-shadow(0.35vmin 0 0 #0a1020) drop-shadow(-0.35vmin 0 0 #0a1020) drop-shadow(0 0.35vmin 0 #0a1020) drop-shadow(0 -0.35vmin 0 #0a1020) drop-shadow(0.8vmin 0.3vmin 0 rgba(255,60,90,0.55)) drop-shadow(-0.8vmin -0.3vmin 0 rgba(0,190,255,0.55))' : 'none';
+        o.material = flat ? o.userData.toon : o.userData.std; });
+      comicBg.style.opacity = comic && !inkOn ? 1 : 0; halftoneFg.style.opacity = comic && !inkOn ? 0.6 : 0; speed.style.opacity = inkOn ? 0 : 1;
+      // pop-art panel: ink outline + misregistered colour fringe on the 3D layer
+      out.style.filter = comic && !inkOn ? 'drop-shadow(0.35vmin 0 0 #0a1020) drop-shadow(-0.35vmin 0 0 #0a1020) drop-shadow(0 0.35vmin 0 #0a1020) drop-shadow(0 -0.35vmin 0 #0a1020) drop-shadow(0.8vmin 0.3vmin 0 rgba(255,60,90,0.55)) drop-shadow(-0.8vmin -0.3vmin 0 rgba(0,190,255,0.55))' : 'none';
     }
+    // which ink drawing (if any) this video time is
+    let INK_KIND = null;
+    const inkKindAt = (T0, shot) => !INK ? null : shot.comic ? 'hit'
+      : (shot.name === 'liftoff' && T0 >= T_TAKEOFF && T0 < T_TAKEOFF + 0.13 + 1 / 30) ? 'takeoff'
+      : (shot.name === 'floor' && T0 >= T_FLOOR_VIDEO && T0 < T_FLOOR_VIDEO + 0.25 + 1 / 30) ? 'floor' : null;
     // ---- rage close-up: red field with black rays, red-graded character, red glow, a drawn scream ----
     { const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
       svg.setAttribute('viewBox', '-960 -540 1920 1080'); svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
@@ -553,7 +589,8 @@
       }
       const sh = s >= 0 ? Math.min(1, s / 0.06) : 0;
       shock.visible = !shot.comic; shock.scale.setScalar(0.05 + sh * 1.1); shock.material.opacity = s >= 0 ? (1 - sh) * 0.9 : 0;
-      hitLight.position.copy(C); hitLight.intensity = s >= 0 ? (shot.comic ? 8 : 60) * Math.exp(-s * 40) : 0;
+      if (INK_KIND) { inkHit.position.copy(INK_KIND === 'takeoff' ? LIFT.clone().add(V3(0, 0.25, 0)) : INK_KIND === 'floor' ? hitPoint.clone().add(V3(0, 0.3, 0)) : C); const back = C.clone().sub(cam.position).setY(0).normalize(); inkRim.position.copy(C).addScaledVector(back, 4).add(V3(0, 3, 0)); inkRim.target.position.copy(hipPos()); }
+      hitLight.position.copy(C); hitLight.intensity = INK_KIND ? 0 : s >= 0 ? (shot.comic ? 8 : 60) * Math.exp(-s * 40) : 0;
       const pos = pGeo.attributes.position.array;
       for (let i = 0; i < NP; i++) { const v = pv[i], ss = Math.max(0, s) * 0.6;
         pos[i * 3] = C.x + v.x * ss; pos[i * 3 + 1] = C.y + v.y * ss - 4.9 * ss * ss; pos[i * 3 + 2] = C.z + v.z * ss; }
@@ -569,21 +606,26 @@
       ring.scale.setScalar(0.1 + rf * 2.4); ring.material.opacity = sf > 0 ? (1 - rf) * 0.95 : 0;
       crack2.material.opacity = sf > 0 ? Math.min(1, sf / 0.01) * (1 - VM.prog(t, T_CONTACT + tFloor + 0.6, 0.4)) : 0; crack2.scale.setScalar(0.3 + 0.7 * Math.min(1, Math.max(0, sf) / 0.03));
       const u = Math.min(1, Math.max(0, (T - shot.T[0]) / (shot.T[1] - shot.T[0])));
-      const c = P.sideCam ? (() => { const h = hipPos(); return { p: [h.x + P.sideCam[0], h.y + P.sideCam[1], h.z + P.sideCam[2]], look: [h.x, h.y + (P.sideCam[3] ?? 0.45), h.z], fov: P.sideCam[4] ?? 40 }; })() : shot.cam(t, u);   // DEBUG
+      const ic = INK && shot.comic ? inkCamAt(REAL_T, shot.cam(t, u)) : null;
+      const c = ic || P.sideCam ? ic || (() => { const h = hipPos(); return { p: [h.x + P.sideCam[0], h.y + P.sideCam[1], h.z + P.sideCam[2]], look: [h.x, h.y + (P.sideCam[3] ?? 0.45), h.z], fov: P.sideCam[4] ?? 40 }; })() : shot.cam(t, u);   // DEBUG
       const punch = P.clean ? 0 : REAL_T > T_HIT_VIDEO ? 10 * Math.exp(-(REAL_T - T_HIT_VIDEO) * 9) * (shot.comic ? 1 : 0.5) : 0;
       cam.position.set(...c.p); cam.fov = Math.max(12, c.fov * (1 + 0.35 * (shot.lens || 0)) - punch); cam.updateProjectionMatrix(); cam.lookAt(...c.look);
       cam.rotateZ((c.roll || 0) + (T > T_FLOOR_VIDEO ? 0.05 * Math.exp(-(T - T_FLOOR_VIDEO) * 5) * Math.sin((T - T_FLOOR_VIDEO) * 40) : 0));
       const shakeK = (T > T_TAKEOFF ? Math.exp(-(T - T_TAKEOFF) * 5) * 0.06 : 0) + (T > T_HIT_VIDEO ? Math.exp(-(T - T_HIT_VIDEO) * 6) * 0.08 : 0) + (T > T_FLOOR_VIDEO ? Math.exp(-(T - T_FLOOR_VIDEO) * 7) * 0.12 : 0);
       cam.position.x += VM.noise(T * 50, 1) * shakeK; cam.position.y += VM.noise(T * 50, 2) * shakeK;
-      camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(hipPos()); camFill.intensity = shot.name === 'roar' ? 2.6 : 1.4;
+      camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(hipPos()); camFill.intensity = INK_KIND ? 0 : shot.name === 'roar' ? 2.6 : 1.4;
       lensMat.uniforms.k.value = (shot.lens || 0) + (REAL_T > T_HIT_VIDEO ? 0.45 * Math.exp(-(REAL_T - T_HIT_VIDEO) * 6) : 0);
       lensMat.uniforms.zoom.value = HOLDING || P.clean ? 0 : zoomAt(REAL_T) + smearAt(REAL_T);       // impact frames are crisp drawings
-      lensMat.uniforms.cel.value = shot.comic ? 0.35 : P.cel;
+      lensMat.uniforms.cel.value = shot.comic ? 0.35 : P.cel; lensMat.uniforms.anime.value = P.anime ?? 1; lensMat.uniforms.time.value = REAL_T;   // anime: the full-film filter
       lensMat.uniforms.sat.value = 1; lensMat.uniforms.tint.value.set(...(shot.rage ? [1.08, 0.88, 0.86] : [1, 1, 1]));   // rage: the world goes red
       { const f = (shot.name === 'smash' && T > T_FLOOR_VIDEO - 0.2) ? hitPoint : (T > T_HIT_VIDEO - 0.7 && T < T_FLOOR_VIDEO + 0.5) ? (shot.name === 'smash' ? ball.position : C) : hipPos();
         cam.updateMatrixWorld(); const pf = f.clone().project(cam); lensMat.uniforms.center.value.set((pf.x + 1) / 2, (pf.y + 1) / 2); }
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
-      renderer.setRenderTarget(null); renderer.clear(); renderer.render(postScene, postCam);
+      renderer.setRenderTarget(null); renderer.clear();
+      if (INK_KIND && !P.inkRaw) { inkMat.uniforms.time.value = REAL_T; inkMat.uniforms.dbg.value = P.inkDbg ? 1 : 0;
+        const fp = (INK_KIND === 'takeoff' ? LIFT : INK_KIND === 'floor' ? hitPoint : C).clone().project(cam); inkMat.uniforms.center.value.set((fp.x + 1) / 2, (fp.y + 1) / 2);
+        renderer.render(inkScene, inkCam); }
+      else renderer.render(postScene, postCam);
     }
     const dt = 1 / (VEDIT.fps || 30);
     const T_TAKEOFF = (() => { const s = shotBy('liftoff'); let lo = s.T[0], hi = s.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_OFF) lo = m; else hi = m; } return lo; })();
@@ -607,6 +649,8 @@
     const shutterOf = (shot) => ({ runup: 0.6, rise: 0.7, liftoff: 0.45, pov: 0.15, smash: 1.0, floor: 0.2 }[shot.name] ?? P.shutter);
     // anime impact frames: the action holds on one drawing, then continues where it stopped (no flicker)
     const HIT_HOLD = 1.0;
+    // the impact frame's four drawings (0.25 s each): white on black, the negative, black brush on red, mint on black
+    const INK_PALETTES = [[0xffffff, 0x000000], [0x0b0b0b, 0xf6f3ec], [0x120000, 0xd0101c], [0xcff2e0, 0x040807]];
     const HOLDS = [[T_TAKEOFF, 0.13], [T_HIT_VIDEO, HIT_HOLD], [T_FLOOR_VIDEO + 0.05, 0.2]];
     const holdT = (T) => { let out = T;
       for (const [a, h] of HOLDS) { const sh = shotAt(a); if (T < a || T >= sh.T[1]) continue; out = T < a + h ? a : Math.max(a, out - h); }
@@ -614,15 +658,37 @@
     const inHold = (T) => HOLDS.some(([a, h]) => T >= a && T < a + h);
     const smearAt = (T) => HOLDS.some(([a]) => T >= a - 1 / 30 && T < a) ? 0.14 : 0;
     let HOLDING = false, REAL_T = 0;
+    // the impact: a heavy fisheye on the ball that punches in at contact and settles through the hold (re-punched at each new
+    // drawing), and a flash out of the ball that fills the frame and collapses back into it (smaller at each new drawing)
+    function inkState(T0, kind) {
+      const U = inkMat.uniforms, B = P.bulge ?? 0.85, FL = P.inkFlash ?? 1;
+      if (kind === 'hit') {
+        const s = T0 - T_HIT_VIDEO;
+        let k = -1, f = 0; if (s >= 0 && s < HIT_HOLD) { const x = s / 0.25; k = Math.floor(x); f = (x - k) * 0.25; }
+        const [ik, pa] = k >= 0 ? INK_PALETTES[k % INK_PALETTES.length] : INK_PALETTES[0];
+        U.ink.value.set(ik); U.paper.value.set(pa); U.seed.value = Math.max(0, k); U.core.value = s >= 0 ? 1 : 0;
+        U.bulge.value = s < 0 ? B * 0.25 * Math.max(0, 1 + s / 0.25) : s < HIT_HOLD ? B * (0.45 + 0.55 * Math.exp(-s * 5)) + (k > 0 ? 0.25 * B * Math.exp(-f * 18) : 0) : B * 0.45 * Math.exp(-(s - HIT_HOLD) * 12);
+        U.flashR.value = FL * (s < 0 ? 0 : s < HIT_HOLD ? (k === 0 ? 0.07 + 1.6 * Math.exp(-f * 32) : 0.07 + 0.22 * Math.exp(-f * 45)) : Math.max(0, 0.07 * (1 - (s - HIT_HOLD) / 0.06)));
+        return; }
+      // the jump and the floor: a short drawing that flips to the negative (and, on the floor, to red), fisheye and flash on the impact
+      const at = kind === 'takeoff' ? T_TAKEOFF : T_FLOOR_VIDEO, step = kind === 'takeoff' ? 0.07 : 0.09, s = T0 - at;
+      const k = Math.floor(s / step), f = s - k * step, seq = kind === 'takeoff' ? [0, 1] : [0, 1, 2];
+      const [ik, pa] = INK_PALETTES[seq[Math.min(k, seq.length - 1)]];
+      U.ink.value.set(ik); U.paper.value.set(pa); U.seed.value = 7 + k; U.core.value = 1;
+      U.bulge.value = B * (kind === 'takeoff' ? 0.6 : 0.95) * Math.exp(-s * 5);
+      U.flashR.value = FL * (k === 0 ? 0.05 + (kind === 'takeoff' ? 0.8 : 1.3) * Math.exp(-f * 30) : 0.05 + 0.15 * Math.exp(-f * 45));
+    }
     VM.onFrame((T0) => {
       const T = holdT(T0); HOLDING = inHold(T0); REAL_T = T0;
       const shot = shotAt(T0);
+      INK_KIND = inkKindAt(T0, shot);
+      if (INK_KIND) inkState(T0, INK_KIND);
       if (P.auditAll) window.AUDIT_ALL = 1; if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
-      setComic(!!shot.comic && !P.clean); setRage(!!shot.rage && !P.clean); setRageFace(P.forceRage ?? (!!shot.rage && (T - shot.T[0]) > 0.1));
+      setMode(!!shot.comic && !P.clean, INK_KIND); setRage(!!shot.rage && !P.clean); setRageFace(P.forceRage ?? (!!shot.rage && (T - shot.T[0]) > 0.1));
       if (shot.name === 'roar' && roar && gltf.isVRM && !P.forceRage) { const w = rampW((T - shot.T[0]) / (shot.T[1] - shot.T[0]), 0.1, 0.12);   // the shout opens as the fists go up
         gltf.expr('angry', 0.55 * w); gltf.expr('a', w); }
       const swingSmear = shot.comic && T0 > T_HIT_VIDEO + HIT_HOLD && T0 < T_HIT_VIDEO + HIT_HOLD + 0.12;   // the 3 swing frames
-      const n = swingSmear ? 6 : shot.comic ? 1 : Math.max(1, P.subframes);
+      const n = INK_KIND ? 1 : swingSmear ? 6 : shot.comic ? 1 : Math.max(1, P.subframes);   // ink frames: no smear (the drawing carries the motion)
       og.clearRect(0, 0, W, H);
       for (let k = 0; k < n; k++) {
         const Tk = inHold(T0) ? T : Math.max(shot.T[0], T - dt * (swingSmear ? 1 : shutterOf(shot)) * (k / n));   // never blur across a cut; holds are crisp
@@ -636,7 +702,7 @@
         const u = (T - shot.T[0]) / (shot.T[1] - shot.T[0]);
         comicBg.querySelector('.burst').style.transform = `scale(${1 + 0.15 * u}) rotate(${u * 8}deg)`;
         const w = T > T_HIT_VIDEO ? VM.prog(T, T_HIT_VIDEO, 0.18, 'outBack') : 0;
-        comicWord.style.opacity = w > 0 ? 1 : 0; comicWord.style.transform = `rotate(-8deg) scale(${0.3 + 0.7 * w})`;
+        comicWord.style.opacity = w > 0 && !INK ? 1 : 0; comicWord.style.transform = `rotate(-8deg) scale(${0.3 + 0.7 * w})`;
       } else comicWord.style.opacity = 0;
       // speed lines around the point of action
       { const c0 = lensMat.uniforms.center.value; drawSpeed(T, c0.x * W, (1 - c0.y) * H); }
@@ -646,11 +712,12 @@
       // the hit's impact frame holds 1 s and alternates inverted black-and-white / red, blending at each switch with a zoom punch
       if (T0 >= T_HIT_VIDEO && T0 < T_HIT_VIDEO + HIT_HOLD) {
         const x = (T0 - T_HIT_VIDEO) / 0.25, k = Math.floor(x), f = x - k, red = k % 2;     // hard switch every 0.25 s ...
-        stage.style.filter = `grayscale(1) contrast(3.5) invert(${1 - red})`; redOverlay.style.opacity = red;
+        if (INK) { stage.style.filter = 'none'; redOverlay.style.opacity = 0; }
+        else { stage.style.filter = `grayscale(1) contrast(3.5) invert(${1 - red})`; redOverlay.style.opacity = red; }
         stage.style.transform = `scale(${1 + 0.06 * Math.exp(-f * 10)})`;                   // ... with a zoom punch
-        hitFlash.style.opacity = k > 0 ? Math.max(0, 1 - f * 0.25 / 0.07) : 0;                 // ... and a white flash: the transition
+        hitFlash.style.opacity = INK ? (k > 0 && f * 0.25 < 1 / 30 ? 1 : 0) : k > 0 ? Math.max(0, 1 - f * 0.25 / 0.07) : 0;   // ... and a white flash: the transition (ink: one hard frame)
       } else {
-        stage.style.filter = inHold(T0) ? 'invert(1) grayscale(1) contrast(3.5)' : 'none'; redOverlay.style.opacity = 0; stage.style.transform = ''; hitFlash.style.opacity = 0;
+        stage.style.filter = inHold(T0) && !INK_KIND ? 'invert(1) grayscale(1) contrast(3.5)' : 'none'; redOverlay.style.opacity = 0; stage.style.transform = ''; hitFlash.style.opacity = 0;
       }
       // BAM on the floor
       const wf = T > T_FLOOR_VIDEO ? VM.prog(T, T_FLOOR_VIDEO, 0.2, 'outBack') : 0;
@@ -658,12 +725,12 @@
       floorWord.style.transform = `rotate(6deg) scale(${0.3 + 0.9 * wf})`;
       cam.updateMatrixWorld(); const pc = C.clone().project(cam);
       flash.style.setProperty('--x', `${(pc.x + 1) * 50}%`); flash.style.setProperty('--y', `${(1 - pc.y) * 50}%`);
-      flash.style.opacity = T0 > T_HIT_VIDEO ? 0.9 * Math.exp(-(T0 - T_HIT_VIDEO) * 9) : 0;
+      flash.style.opacity = T0 > T_HIT_VIDEO && !INK_KIND ? 0.9 * Math.exp(-(T0 - T_HIT_VIDEO) * 9) : 0;
       kicker.style.opacity = VM.env(T, 0.2, T_HIT_VIDEO - 0.2, 0.4, 0.3);
       const sc = shot.name === 'roar' ? VM.prog(T, shot.T[0] + 0.25, 0.35, 'outBack') : 0;   // the scoreboard lands with the roar
       score.style.opacity = Math.min(1, sc); score.style.bottom = '74vh'; score.style.transform = `scale(${1.6 - 0.6 * sc})`; score.style.transformOrigin = '100% 0';
     });
-    console.error('SPIKE_TIMES ' + JSON.stringify(window.SPIKE_TIMES));
+    console.error('SPIKE_TIMES ' + JSON.stringify(window.SPIKE_TIMES) + ' takeoff ' + T_TAKEOFF.toFixed(3));
     resolve();
   } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
 </script></body></html>

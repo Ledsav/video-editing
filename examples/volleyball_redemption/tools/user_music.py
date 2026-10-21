@@ -7,6 +7,7 @@ Reads user_audio/ (not committed):
 Writes (48 kHz stereo, edit time 0 = sample 0):
   music/user_score.wav    the songs, edited on their beats
   sfx/user_scream.wav     the scream on the rage close-up, cut by the gunshot at contact
+  sfx/user_gunshot.wav    the hit as a pistol shot: a dry crack on top of the sound design's boom (contact, 12.30 s)
 
 Cut points (song times found with `vedit beats` + the nearest transient):
   0.00 - 5.42  終わったなら from its start: the loud opening over the dig; its quiet, bass-less passage (2.4 s) begins as last
@@ -53,6 +54,36 @@ def place(out, song, song_t, at, until, fade_in=0.01, fade_out=0.03, gain=1.0):
     out[a:a + n] += seg * env[:, None] * gain
 
 
+def bandpass(x, lo, hi):
+    X = np.fft.rfft(x)
+    f = np.fft.rfftfreq(len(x), 1 / SR)
+    X[(f < lo) | (f > hi)] = 0
+    return np.fft.irfft(X, len(x))
+
+
+def gunshot(seed=7):
+    """a pistol shot in an arena: the supersonic crack (a 0.6 ms N-wave and a bright burst), the muzzle blast (mid noise, 30 ms),
+    the chest thump (60 -> 38 Hz), two early reflections off the floor and the stands, then the hall's long dark tail."""
+    rng = np.random.default_rng(seed)
+    n = int(2.2 * SR)
+    t = np.arange(n) / SR
+    crack = np.zeros(n)
+    m = int(0.0006 * SR)
+    crack[:m] = np.linspace(1, -1, m)
+    crack += bandpass(rng.standard_normal(n), 2500, 16000) * np.exp(-t / 0.003) * 0.9
+    blast = bandpass(rng.standard_normal(n), 120, 3500) * np.exp(-t / 0.03) * 1.3
+    thump = np.sin(2 * np.pi * np.cumsum(38 + 22 * np.exp(-t / 0.02)) / SR) * np.exp(-t / 0.12) * 1.1
+    dry = np.tanh((crack * 2.2 + blast + thump) * 2.2)
+    out = np.stack([dry, dry], 1)
+    for dly, g, pan in ((0.021, 0.45, -0.5), (0.058, 0.3, 0.6)):
+        a = int(dly * SR)
+        e = bandpass(dry[: n - a], 200, 6000) * g
+        out[a:, 0] += e * (1 - pan) / 2 * 2
+        out[a:, 1] += e * (1 + pan) / 2 * 2
+    tail = np.stack([bandpass(rng.standard_normal(n), 80, 2200) for _ in range(2)], 1) * (np.exp(-t / 0.45) * np.minimum(1, t / 0.03))[:, None] * 0.22
+    return out + tail
+
+
 def write(x, path, peak=0.95):
     x = x[: int(END * SR)]
     x = x / (np.abs(x).max() + 1e-9) * peak
@@ -79,3 +110,9 @@ if __name__ == '__main__':
     scream = np.zeros((N, 2))
     place(scream, waah, 8.35, RAGE, CONTACT + 0.01, fade_in=0.02, fade_out=0.025)                 # the rise starts 0.1 s into the close-up
     write(scream, root / 'sfx' / 'user_scream.wav', 0.98)
+
+    shot = np.zeros((N, 2))
+    g = gunshot()
+    a = int(CONTACT * SR)
+    shot[a:a + len(g)] += g[: N - a]
+    write(shot, root / 'sfx' / 'user_gunshot.wav', 0.99)

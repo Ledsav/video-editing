@@ -49,6 +49,13 @@
       "volume": 0.5
     },
     {
+      "path": "sfx/user_gunshot.wav",
+      "start": 0,
+      "in": 0,
+      "duration": 26.1,
+      "volume": 0.9
+    },
+    {
       "path": "sfx/anime_sfx.wav",
       "start": 0,
       "in": 0,
