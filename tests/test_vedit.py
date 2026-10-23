@@ -128,6 +128,17 @@ class TimelineTests(unittest.TestCase):
         with self.assertRaises(Exception):
             build_plan(base_spec(timeline=[{"source": "a", "in": 10, "out": 12}]), self.dir)
 
+    def test_page_deps_enter_the_cache_key(self):
+        page = self.dir / "dep_page.html"
+        page.write_text('<meta name="vedit:deps" content="lib.js, missing.js">')
+        (self.dir / "lib.js").write_text("const A = 1;")
+        before = mograph.deps(page)
+        (self.dir / "lib.js").write_text("const A = 2;")
+        self.assertEqual(before, ["const A = 1;"])
+        self.assertNotEqual(before, mograph.deps(page))
+        page.write_text("<p>no deps</p>")
+        self.assertEqual(mograph.deps(page), [])
+
 
 class RenderTests(unittest.TestCase):
     @classmethod

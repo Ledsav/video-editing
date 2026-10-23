@@ -3,7 +3,8 @@
 Prompt-driven video editing toolkit (`vedit`) plus the `video-edit` skill in
 `.claude/skills/video-edit/`. For any video editing request, follow that skill; for
 designed/animated videos (motion graphics, promos, kinetic type, explainers) follow
-`.claude/skills/motion-design/`.
+`.claude/skills/motion-design/`; for anime shorts with 3D characters and mocap (impact frames, anime title
+cards) follow `.claude/skills/anime-short/`.
 
 - CLI: `bin/vedit <command>` (no install needed). `bin/vedit doctor` checks the toolchain; `scripts/setup.sh` installs it.
 - User projects live in `projects/<name>/` (gitignored: media, work caches, renders). Never commit footage or renders.

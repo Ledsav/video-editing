@@ -1,0 +1,276 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="4">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:deps" content="anime.js,mocap.js">
+<meta name="vedit:description" content="Anime action shots: a VRM/Mixamo character driven by mocap (BVH or GLB), cel-shaded with the anime post pass, cut into a shot list with character-relative cameras, slow motion and speed ramps, ink impact frames (held drawings with fisheye and a flash out of the hit), speed lines, smears, shakes, memory grades. Everything is a param: see references/shot-spec.md.">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="anime.js"></script>
+<script src="mocap.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #04060c; } #stage { position: absolute; inset: 0; overflow: hidden; }
+  canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }</style></head>
+<body><div id="stage"></div>
+<script type="module">
+  const P = VM.params({
+    character: 'assets/characters/HairSample_Male.vrm', height: 1.75, skin: '#c8957a', hair: null, materials: {},
+    clips: {},                       // key -> 'assets/mocap/x.bvh' | { file, stand: [t0, t1], anim: 0 }
+    props: {},                       // key -> { sphere: { radius, color } } | { glb, scale }
+    set: {}, lights: {},
+    cel: 0.75, anime: 1, lens: 0.25, subframes: 3, shutter: 0.5, grain: 0.07, vignette: 0.5, exposure: 1.1,
+    inkHit: 10, inkRim: 1.2, inkThr: 0.95, inkLine: 2.4,
+    shots: [{ name: 'hello', dur: 4, cam: { target: 'Hips', orbit: 20, dist: 3.2, height: 0.3, fov: 38, to: { orbit: -20 } } }],
+  });
+  const stage = document.getElementById('stage');
+  if (P.art) { const st = document.createElement('style'); st.textContent = 'body > :not(#stage):not(script) { display: none !important; }'; document.head.appendChild(st); }   // key-art stills: no grain, flash, vignette
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const W = innerWidth, H = innerHeight, V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z), UP = V3(0, 1, 0), D2R = Math.PI / 180;
+    const arr = (x) => (x === undefined || x === null ? [] : Array.isArray(x) ? x : [x]);
+
+    // ================= renderer, post, backdrop, lights =================
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = P.exposure;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const { rt, lensMat, postScene, postCam } = makeAnimePost(THREE, W, H);
+    const { inkMat, inkScene, inkCam } = makeInkPass(THREE, W, H, rt.texture);
+    const out = document.createElement('canvas'); out.width = W; out.height = H; out.className = 'out'; stage.appendChild(out);
+    const og = out.getContext('2d');
+    const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(38, W / H, 0.05, 300);
+    const backdrop = makeBackdrop(THREE, scene, P.set), env = backdrop.env;
+    const L = Object.assign({ sky: '#8a9cd0', ground: '#3a2016', amb: 0.75, key: '#fff2da', keyI: 90, rim: '#ffc062', rimI: 9, rim2: '#ffb24a', rim2I: 7, back: '#6f9cff', backI: 2.5, fill: '#fff1e2', fillI: 1.6 }, P.lights);
+    scene.add(new THREE.HemisphereLight(L.sky, L.ground, L.amb));
+    const keyL = new THREE.SpotLight(L.key, L.keyI, 30, 0.45, 0.7, 1.6); keyL.position.set(-2.5, 9, 2.5);
+    keyL.castShadow = true; keyL.shadow.mapSize.set(2048, 2048); keyL.shadow.bias = -0.0004; scene.add(keyL, keyL.target);
+    const rimW = new THREE.DirectionalLight(L.rim, L.rimI); rimW.position.set(4, 4, -3); scene.add(rimW, rimW.target);
+    const rimW2 = new THREE.DirectionalLight(L.rim2, L.rim2I); rimW2.position.set(-4, 3.5, -4); scene.add(rimW2, rimW2.target);
+    const rimB = new THREE.DirectionalLight(L.back, L.backI); rimB.position.set(3, 2, -4); scene.add(rimB, rimB.target);
+    const camFill = new THREE.DirectionalLight(L.fill, L.fillI); scene.add(camFill, camFill.target);
+    const inkHit = new THREE.PointLight(0xffffff, 0, 0, 1.2), inkRim = new THREE.DirectionalLight(0xffffff, 0); scene.add(inkHit, inkRim, inkRim.target);
+
+    // ================= character =================
+    const gltf = await loadCharacter(THREE, GLTFLoader, P.character), model = gltf.scene; scene.add(model);
+    const { meshes, ramp } = toonify(THREE, gltf, { skin: P.skin, hair: P.hair, materials: P.materials, inkEyes: P.inkEyes, debug: P.debug });
+    const bone = standCharacter(THREE, model, P.height);
+    const wp = (n) => V3().setFromMatrixPosition(bone(n).matrixWorld);
+    // the head's forward axis in its own frame (the rest pose faces +z): where the face points, for face close-ups
+    const HEAD_FWD = (() => { const q = new THREE.Quaternion(); bone('Head').getWorldQuaternion(q); return V3(0, 0, 1).applyQuaternion(q.invert()); })();
+    const headFwd = () => { const q = new THREE.Quaternion(); bone('Head').getWorldQuaternion(q); return HEAD_FWD.clone().applyQuaternion(q).setY(0).normalize(); };
+    const retarget = makeRetarget(THREE, model, bone);
+    const legOf = (a, b, c) => a.distanceTo(b) + b.distanceTo(c);
+    const box0 = new THREE.Box3().setFromObject(model);
+    const soleToToe = wp('LeftToeBase').y - box0.min.y, ANKLE_REST = wp('LeftFoot').y - box0.min.y;
+    const LEG = legOf(wp('LeftUpLeg'), wp('LeftLeg'), wp('LeftFoot'));
+    if (P.debug) console.error('EXPRESSIONS ' + gltf.exprNames.join(','));
+
+    // ================= mocap =================
+    const clips = {};
+    for (const [k, v] of Object.entries(P.clips)) { const o = typeof v === 'string' ? { file: v } : v; clips[k] = await loadMocap(THREE, GLTFLoader, o.file, o);
+      if (P.debug) { const c = clips[k]; console.error(`CLIP ${k} dur ${c.dur.toFixed(2)} takeoff ${c.takeoff.toFixed(2)} contact ${c.contact.toFixed(2)} land ${c.land.toFixed(2)} airborne ${c.airborne} fingers ${c.fingers} tpose ${c.tpose}`);
+        console.error(`CLIP ${k} strikes ` + c.strikes.map((x) => `${x.t.toFixed(2)} ${x.limb} (${x.speed} m/s)`).join(' | ')); } }
+    const facing = (M) => M.LShoulder.clone().sub(M.RShoulder).cross(UP).setY(0).normalize();
+    // a clip placed in the world: its hip at clip time `at` lands on (x, z), the body turned to face `face` deg (0 = +z, the
+    // default camera side); scaled to this character's leg, its floor on y = 0
+    function placer(clip, pl = {}) {
+      const at = pl.at ?? 0, M0 = clip.sample(at), f = facing(M0), yaw = (pl.face ?? 0) * D2R - Math.atan2(f.x, f.z);
+      const SC = LEG / legOf(M0.LThigh, M0.LShin, M0.LFoot), piv = M0.Hip.clone().setY(0), y0 = -clip.floor * SC + soleToToe;
+      const rot = (v) => v.clone().sub(piv).applyAxisAngle(UP, yaw).add(piv);
+      const post = (v) => v.clone().sub(piv).multiplyScalar(SC).add(V3(pl.x ?? 0, y0, pl.z ?? 0));
+      post.footDy = ANKLE_REST - post(clip.sample(0).LFoot).y;
+      return { rot, post, anchor: pl.anchor ? at : undefined };
+    }
+
+    // ================= props =================
+    const props = {};
+    for (const [k, d] of Object.entries(P.props)) {
+      let o;
+      if (d.glb) { o = (await loadGLB(GLTFLoader, d.glb)).scene; o.scale.setScalar(d.scale ?? 1); }
+      else { const r = (d.sphere || {}).radius ?? 0.11; o = new THREE.Mesh(new THREE.SphereGeometry(r, 48, 32), new THREE.MeshStandardMaterial({ color: (d.sphere || {}).color || '#f2c94c', roughness: 0.5 })); }
+      o.traverse((m) => { if (!m.isMesh) return; m.castShadow = true; m.userData.toon = new THREE.MeshToonMaterial({ map: m.material.map, color: m.material.color, gradientMap: ramp });
+        m.userData.ink = new THREE.MeshLambertMaterial({ color: 0xffffff }); m.material = m.userData.toon; });
+      o.visible = false; scene.add(o); props[k] = o; }
+
+    // ================= shots =================
+    const ease = (e) => VM.ease[e] || VM.ease.linear;
+    const lerpKeys = (keys, u) => { let i = 0; while (i < keys.length - 2 && u > keys[i + 1][0]) i++;
+      const [a, ta] = keys[i], [b, tb] = keys[i + 1]; return ta + (tb - ta) * Math.min(1, Math.max(0, (u - a) / (b - a))); };
+    let T = 0;
+    const SH = P.shots.map((s, i) => {
+      const sh = { ...s, i, name: s.name || `shot${i + 1}`, T0: T, T1: T + s.dur }; T += s.dur;
+      sh.clipObj = s.clip ? clips[s.clip] : null;
+      if (s.clip && !sh.clipObj) throw new Error(`shot ${sh.name}: unknown clip ${s.clip}`);
+      sh.imps = arr(s.impact).map((m) => ({ hold: m.style === 'flash' ? 0 : 0.6, style: 'ink', step: 0.25, palettes: [0, 1, 2, 3], bulge: 0.85, flash: 1, shake: 0.08, zoom: 0.3, punch: 10, streaks: 1, ...m }));
+      const holds = sh.imps.reduce((a, m) => a + m.hold, 0), A = Math.max(0.01, s.dur - holds);
+      const c = sh.clipObj, from = s.from ?? (s.keys ? 0 : 0), to = s.to ?? (c ? Math.min(c.dur, from + A) : A);
+      sh.clipAt = (u) => s.keys ? lerpKeys(s.keys, u) : from + (to - from) * ease(s.ease)(u);
+      sh.A = A;
+      // impact times: shot seconds, or a clip time ({ clip: t }) / a clip event ('contact', 'takeoff', 'land') found on the clip's timing
+      let held = 0;
+      for (const m of sh.imps) {
+        let a = typeof m.at === 'number' ? m.at - held : null;
+        if (a === null) { const ct = typeof m.at === 'string' ? c[m.at] : m.at.clip; let lo = 0, hi = 1, inc = sh.clipAt(1) >= sh.clipAt(0);
+          for (let k = 0; k < 50; k++) { const mid = (lo + hi) / 2; if ((sh.clipAt(mid) < ct) === inc) lo = mid; else hi = mid; }
+          a = lo * A; }
+        m.a = a; m.t = a + held; held += m.hold; }
+      sh.place = sh.clipObj ? placer(sh.clipObj, { at: from, ...(s.place || {}) }) : null;
+      return sh; });
+    const TOTAL = T;
+    if (Math.abs(TOTAL - VM.duration) > 0.02) console.error(`ANIME_SHOT note: shots last ${TOTAL.toFixed(2)} s, the clip ${VM.duration.toFixed(2)} s`);
+    const shotAt = (t) => SH.find((s) => t < s.T1) || SH[SH.length - 1];
+    // action time inside a shot: holds freeze it
+    const actionOf = (sh, s) => sh.imps.reduce((a, m) => a - Math.min(Math.max(s - m.t, 0), m.hold), s);
+    const impactAt = (sh, s) => sh.imps.find((m) => s >= m.t && s < m.t + m.hold);
+    window.ANIME_TIMES = { total: TOTAL, shots: SH.map((s) => ({ name: s.name, start: +s.T0.toFixed(3) })), impacts: SH.flatMap((s) => s.imps.map((m) => ({ shot: s.name, at: +(s.T0 + m.t).toFixed(3), hold: m.hold, style: m.style }))) };
+    console.error('ANIME_TIMES ' + JSON.stringify(window.ANIME_TIMES));
+
+    // ================= pose, camera =================
+    const exprNames = [...new Set(SH.flatMap((s) => Object.keys(s.face || {})))];
+    const val = (v, u) => (Array.isArray(v) ? v[0] + (v[1] - v[0]) * u : v);
+    function pose(sh, c, u) {
+      const clip = sh.clipObj, pl = sh.place, R = clip.sample(c), M = {};
+      const A = pl.anchor !== undefined ? clip.sample(pl.anchor).Hip.clone().sub(R.Hip).setY(0) : V3();
+      for (const n in R) M[n] = pl.rot(R[n].clone().add(A));
+      pl.post.fist = sh.fist !== undefined ? val(sh.fist, u) : clip.fingers ? 0 : 0.35;   // takes without fingers: relaxed, half-curled hands
+      retarget(M, pl.post, clip.stand);
+      if (gltf.isVRM) for (const n of exprNames) gltf.expr(n, val((sh.face || {})[n] ?? 0, u));
+    }
+    const targetPos = (t) => (Array.isArray(t) ? V3(...t) : model.visible && bone(t || 'Hips') ? wp(t || 'Hips') : V3(0, 1, 0));
+    // camera: around the target, relative to the character's facing at the shot start (orbit 0 = in front, 180 = behind,
+    // 90 = his left); `to` holds the values at the end of the shot; pos / look: absolute world positions instead
+    function camAt(sh, u) {
+      const c0 = sh.cam || {}, c1 = { ...c0, ...(c0.to || {}) }, k = ease(c0.ease || 'inOutSine')(u), mix = (a, b, d) => (a ?? d) + ((b ?? a ?? d) - (a ?? d)) * k;
+      const fov = mix(c0.fov, c1.fov, 38), roll = mix(c0.roll, c1.roll, 0) * D2R;
+      if (c0.pos) { const p = V3(...c0.pos).lerp(V3(...(c1.pos || c0.pos)), k), l = V3(...(c0.look || [0, 1, 0])).lerp(V3(...(c1.look || c0.look || [0, 1, 0])), k); return { p, l, fov, roll }; }
+      const tg = c0.follow === false ? sh.camT0 : targetPos(c0.target);
+      const orbit = mix(c0.orbit, c1.orbit, 0) * D2R, dist = mix(c0.dist, c1.dist, 3), hgt = mix(c0.height, c1.height, 0.2), ly = mix(c0.lookY, c1.lookY, 0);
+      const d = (sh.F0 || V3(0, 0, 1)).clone().applyAxisAngle(UP, orbit);
+      return { p: tg.clone().addScaledVector(d, dist).add(V3(0, hgt, 0)), l: tg.clone().add(V3(0, ly, 0)), fov, roll };
+    }
+    // the impact frame's drawings, each from its own angle (anime impact frames cut between close drawings)
+    const INK_ANGLES = [[0.0, 1.0, -0.15, 52], [0.85, 0.95, -0.55, 58], [-0.35, 0.65, -0.05, 50], [-0.6, 1.8, -0.3, 46]];
+    function inkCamAt(m, tg, base, x) {
+      const [turn, dist, hgt, fov] = INK_ANGLES[Math.floor(x / m.step) % INK_ANGLES.length];
+      const d = base.p.clone().sub(tg).setY(0).normalize().applyAxisAngle(UP, turn), push = 1 - 0.08 * ((x % m.step) / m.step);
+      return { p: tg.clone().addScaledVector(d, dist * (m.dist || 1.4) * push).add(V3(0, hgt, 0)), l: tg, fov, roll: [0.12, -0.18, 0.08, -0.1][Math.floor(x / m.step) % 4] };
+    }
+
+    // ================= modes: normal / ink =================
+    let inkOn = false, saved = null;
+    function setInk(on) {
+      if (on === inkOn) return; inkOn = on;
+      if (on) { saved = []; scene.traverse((o) => { if (o.isLight && o !== inkHit && o !== inkRim) { saved.push([o, o.intensity]); o.intensity = 0; } }); }
+      else { saved.forEach(([o, i]) => (o.intensity = i)); saved = null; }
+      inkHit.intensity = on ? P.inkHit : 0; inkRim.intensity = on ? P.inkRim : 0;
+      inkMat.uniforms.thr.value = P.inkThr; inkMat.uniforms.lineW.value = P.inkLine;
+      env.forEach((m) => (m.visible = !on)); scene.background = on ? null : backdrop.bgTex;
+      meshes.forEach((m) => (m.material = on ? m.userData.ink : m.userData.toon));
+      Object.values(props).forEach((o) => o.traverse((m) => { if (m.isMesh) m.material = on ? m.userData.ink : m.userData.toon; }));
+      finish.vig.style.opacity = on ? 0 : 1; speed.style.opacity = on ? 0 : 1;
+    }
+
+    // ================= overlays =================
+    const speed = el('canvas', { position: 'absolute', inset: 0, width: '100vw', height: '100vh', pointerEvents: 'none', mixBlendMode: 'screen' }, stage);
+    speed.width = W; speed.height = H; const sg = speed.getContext('2d');
+    function drawSpeed(t, a, fx, fy, col) {
+      sg.clearRect(0, 0, W, H); if (a <= 0) return;
+      const R = VM.rand(1 + Math.floor(t * 12)), diag = Math.hypot(W, H), [r, g, b] = col;
+      for (let i = 0; i < 90; i++) { const ang = R() * Math.PI * 2, r0 = diag * (0.22 + R() * 0.25), r1 = diag * (0.75 + R() * 0.3);
+        sg.strokeStyle = `rgba(${r},${g},${b},${(0.12 + R() * 0.45) * a})`; sg.lineWidth = 0.6 + R() * 3.2;
+        sg.beginPath(); sg.moveTo(fx + Math.cos(ang) * r0, fy + Math.sin(ang) * r0); sg.lineTo(fx + Math.cos(ang) * r1, fy + Math.sin(ang) * r1); sg.stroke(); }
+    }
+    const finish = addFinish({ grain: P.grain, vignette: P.vignette });
+    const flash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 45 }, document.body);
+    const red = el('div', { position: 'absolute', inset: 0, background: '#d0101c', mixBlendMode: 'multiply', opacity: 0, zIndex: 44 }, document.body);
+
+    // ================= one frame =================
+    for (const sh of SH) {   // facing and camera target at each shot's start
+      model.visible = !!sh.clipObj; if (sh.clipObj) pose(sh, sh.clipAt(0), 0);
+      // the orbit's 0: cam.facing (a fixed heading, deg), else where the character faces at the shot start: cam.ref 'chest'
+      // (the shoulders), 'hips', or 'head' (where the face points: the default for Head / Neck targets, since fighters and
+      // hitters stand bladed and the shoulders face sideways)
+      const cm = sh.cam || {}, fc = cm.facing, ref = cm.ref || (/^(Head|Neck)/.test(cm.target || '') ? 'head' : 'chest');
+      const across = (a, b) => wp(a).sub(wp(b)).cross(UP).setY(0).normalize();
+      sh.F0 = fc !== undefined ? V3(Math.sin(fc * D2R), 0, Math.cos(fc * D2R)) : !sh.clipObj ? V3(0, 0, 1)
+        : ref === 'head' ? headFwd() : ref === 'hips' ? across('LeftUpLeg', 'RightUpLeg') : across('LeftArm', 'RightArm');
+      sh.camT0 = targetPos((sh.cam || {}).target); }
+    const dt = 1 / (VEDIT.fps || 30);
+    function renderAt(sh, s, ink) {
+      const a = actionOf(sh, s), u = Math.min(1, Math.max(0, a / sh.A)), c = sh.clipAt(u);
+      model.visible = !!sh.clipObj;
+      if (model.visible) pose(sh, c, u);
+      for (const [k, o] of Object.entries(props)) { const d = (sh.props || {})[k]; o.visible = !!d; if (!d) continue;
+        if (d.attach) { const b = bone(d.attach); o.position.copy(V3(...(d.offset || [0, 0, 0])).applyMatrix4(b.matrixWorld)); }
+        else if (d.path) { const key = sh.clipObj ? c : a, pts = d.path; let i = 0; while (i < pts.length - 2 && key > pts[i + 1][0]) i++;
+          const [t0, ...p0] = pts[i], [t1, ...p1] = pts[Math.min(i + 1, pts.length - 1)], w = t1 > t0 ? Math.min(1, Math.max(0, (key - t0) / (t1 - t0))) : 0;
+          o.position.copy(V3(...p0).lerp(V3(...p1), w)); }
+        else if (d.pos) o.position.set(...d.pos);
+        o.rotation.set((d.spin || 0) * a, 0.4, 0.2); }
+      let k = camAt(sh, Math.min(1, s / sh.dur));
+      const m = impactAt(sh, s);
+      if (ink && m && m.angles) k = inkCamAt(m, targetPos(m.target || 'RightHand'), k, s - m.t);
+      // shake and fov punch after each impact (from the release of the hold)
+      let shake = (sh.cam || {}).shake || 0, punch = 0;
+      for (const im of sh.imps) { const r = s - (im.t + (im.style === 'ink' ? im.hold : 0)); if (r >= 0) { shake += im.shake * Math.exp(-r * 6); punch += im.punch * Math.exp(-r * 9); } }
+      const p = k.p.clone(); p.x += VM.noise(s * 50, 1) * shake; p.y += VM.noise(s * 50, 2) * shake;
+      cam.position.copy(p); cam.fov = Math.max(10, k.fov - punch); cam.updateProjectionMatrix(); cam.lookAt(k.l); cam.rotateZ(k.roll || 0); cam.updateMatrixWorld();
+      const hip = model.visible ? wp('Hips') : k.l;
+      keyL.target.position.copy(hip); [rimW, rimW2, rimB].forEach((l) => l.target.position.copy(hip));
+      camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(hip);
+      if (ink && m) { const tg = targetPos(m.target || 'RightHand'); inkHit.position.copy(tg);
+        const back = tg.clone().sub(cam.position).setY(0).normalize(); inkRim.position.copy(tg).addScaledVector(back, 4).add(V3(0, 3, 0)); inkRim.target.position.copy(hip); }
+      return { a, k };
+    }
+    VM.onFrame((T0) => {
+      const sh = shotAt(T0), s = T0 - sh.T0, m = impactAt(sh, s), ink = !!(m && m.style === 'ink');
+      setInk(ink);
+      // post: lens, zoom blur (impact pulses, a one-frame smear into each hold), cel, grade
+      let zoom = val(sh.zoom ?? 0, s / sh.dur);
+      for (const im of sh.imps) { if (s >= im.t - dt && s < im.t) zoom += 0.14; const r = s - (im.t + (im.style === 'ink' ? im.hold : 0)); if (r >= 0) zoom += im.zoom * Math.exp(-r * 4.5); }
+      const gr = sh.memory ? { sat: 0.07, tint: [0.86, 0.9, 0.98] } : sh.grade || {};
+      lensMat.uniforms.k.value = sh.lens ?? P.lens; lensMat.uniforms.zoom.value = m ? 0 : zoom;
+      lensMat.uniforms.cel.value = sh.cel ?? P.cel; lensMat.uniforms.anime.value = P.anime; lensMat.uniforms.time.value = T0;
+      lensMat.uniforms.sat.value = gr.sat ?? 1; lensMat.uniforms.tint.value.set(...(gr.tint || [1, 1, 1]));
+      // motion blur: subframes over the shutter, never across a cut or into a hold; a smear on the release of an ink hold
+      const release = sh.imps.some((im) => im.style === 'ink' && s >= im.t + im.hold && s < im.t + im.hold + 0.12);
+      const n = m ? 1 : release ? 6 : Math.max(1, sh.subframes ?? P.subframes), shutter = release ? 1 : sh.shutter ?? P.shutter;
+      og.clearRect(0, 0, W, H);
+      let last = null;
+      for (let j = 0; j < n; j++) {
+        const sj = m ? s : Math.max(0, s - dt * shutter * (j / n));
+        last = renderAt(sh, sj, ink);
+        renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
+        renderer.setRenderTarget(null); renderer.clear();
+        if (ink) {
+          const x = s - m.t, kk = Math.floor(x / m.step), f = x - kk * m.step, U = inkMat.uniforms;
+          const [ik, pa] = INK_PALETTES[m.palettes[kk % m.palettes.length] % INK_PALETTES.length];
+          U.ink.value.set(ik); U.paper.value.set(pa); U.seed.value = kk + 7 * sh.i; U.core.value = 1; U.streaks.value = m.streaks; U.time.value = T0;
+          U.bulge.value = m.bulge * (0.45 + 0.55 * Math.exp(-x * 5)) + (kk > 0 ? 0.25 * m.bulge * Math.exp(-f * 18) : 0);
+          U.flashR.value = m.flash * (kk === 0 ? 0.07 + 1.6 * Math.exp(-f * 32) : 0.07 + 0.22 * Math.exp(-f * 45));
+          const fp = targetPos(m.target || 'RightHand').project(cam); U.center.value.set((fp.x + 1) / 2, (fp.y + 1) / 2);
+          renderer.render(inkScene, inkCam);
+        } else {
+          const near = sh.imps.find((im) => s > im.t - 0.6 && s < im.t + im.hold + 0.6), fp = (near ? targetPos(near.target || 'RightHand') : last.k.l).clone().project(cam);
+          lensMat.uniforms.center.value.set((fp.x + 1) / 2, (fp.y + 1) / 2);
+          renderer.render(postScene, postCam);
+        }
+        og.globalAlpha = 1 / (j + 1); og.drawImage(renderer.domElement, 0, 0);
+      }
+      og.globalAlpha = 1;
+      // speed lines around the point of action
+      const c0 = lensMat.uniforms.center.value, sp = val(sh.speed ?? 0, s / sh.dur) + sh.imps.reduce((acc, im) => { const r = s - (im.t + (im.style === 'ink' ? im.hold : 0)); return acc + (r >= 0 ? Math.exp(-r * 3) : 0); }, 0);
+      drawSpeed(T0, ink ? 0 : Math.min(1, sp), c0.x * W, (1 - c0.y) * H, sh.speedColor || [255, 248, 230]);
+      // non-ink impacts: 'invert' holds a high-contrast negative that flips to red each step; 'flash' a white flash
+      if (m && m.style === 'invert') { const kk = Math.floor((s - m.t) / m.step); stage.style.filter = `grayscale(1) contrast(3.5) invert(${1 - (kk % 2)})`; red.style.opacity = kk % 2; }
+      else { stage.style.filter = 'none'; red.style.opacity = 0; }
+      // white: 'flash' impacts and flashAt times fade from 0.9; an ink hold cuts to white for one frame at each new drawing
+      let fl = arr(sh.flashAt).reduce((o, t) => Math.max(o, s >= t ? 0.9 * Math.exp(-(s - t) * 9) : 0), 0);
+      for (const im of sh.imps) { const r = s - im.t;
+        if (im.style === 'flash' && r >= 0) fl = Math.max(fl, 0.9 * Math.exp(-r * 9));
+        if (im.style === 'ink' && r >= im.step && r < im.hold && (r % im.step) < dt * 0.99 && !P.art) fl = 1; }
+      flash.style.opacity = Math.min(1, fl);
+    });
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

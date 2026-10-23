@@ -57,6 +57,20 @@ def resolve_assets(params, base: Path):
     return params
 
 
+def deps(html: Path) -> list:
+    """Files a page declares it depends on (<meta name="vedit:deps" content="lib.js,data/x.json">, relative to the
+    page): part of the render cache key, so editing a shared script re-renders the pages that use it. Text files count
+    by content, others by size and modification time; missing files are ignored."""
+    import re
+    m = re.search(r'<meta\s+name="vedit:deps"\s+content="([^"]*)"', html.read_text())
+    out = []
+    for name in (m.group(1).split(",") if m else []):
+        f = html.parent / name.strip()
+        if name.strip() and f.is_file():
+            out.append(f.read_text() if f.suffix in (".js", ".mjs", ".css", ".html", ".json") else f)
+    return out
+
+
 def _workers(frames: int) -> int:
     env = os.environ.get("VEDIT_MOGRAPH_WORKERS")
     if env:
@@ -76,7 +90,7 @@ def render(html: Path, out_dir: Path, *, width: int, height: int, fps: float, du
     params = params or {}
     beats = [round(b, 4) for b in (beats or [])]
     key = stable_hash(html.read_text(), RUNTIME.read_text(), RENDERER.read_text(), params, width, height, fps,
-                      round(duration, 4), opaque, beats)
+                      round(duration, 4), opaque, beats, *deps(html))
     ext = ".mp4" if opaque else ".mov"
     out = out_dir / f"{html.stem}_{key}{ext}"
     if out.exists():
