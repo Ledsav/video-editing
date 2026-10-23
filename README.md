@@ -36,6 +36,23 @@ transitioned and mixed with footage like any clip:
 Scene templates: `scene_kinetic`, `scene_stats`, `scene_logo_reveal`, `scene_3d_mountains`,
 `scene_photo_stack`. Long scenes render in parallel browser workers.
 
+## Anime shorts
+
+The **anime-short skill** (`.claude/skills/anime-short/`) makes anime-style action shorts with 3D characters
+driven by motion capture. You give it a character (VRM/VRoid or Mixamo; CC0 VRoid samples are fetched for you) and
+mocap takes (BVH or GLB; the CMU database is searchable and free for commercial use). It builds a shot list with
+cameras around the character, slow motion and ink impact frames (held brush drawings with a fisheye and a flash on
+the hit). It also makes anime opening and ending title cards, a song cut to the picture, synthesised anime sound
+design, a 9:16 version for TikTok, and the credits each licence needs.
+
+```bash
+.claude/skills/anime-short/tools/new_project.sh boxer            # kit + a 13 s demo + free assets
+python3 .claude/skills/anime-short/tools/shot_stills.py projects/boxer fight   # screenshots of the shots
+```
+
+> Use the anime-short skill. Make a 20 s anime short of a boxer landing one punch, with an opening title card,
+> an impact frame on the punch and an end card. Show me screenshots before rendering.
+
 ## Setup
 
 ```bash

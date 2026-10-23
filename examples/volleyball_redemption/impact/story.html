@@ -1,0 +1,290 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="8.2">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Story bookends for the spike, same arena, character and anime pass. part=intro: ONE YEAR AGO (grey): set 4 of the final at 24:25, a spike he digs too late, 24:26, kneeling; flash to colour: his eyes, MATCH POINT 25:24, the set rising: THIS TIME, HE ATTACKS. part=outro: last year's ball rolling to a stop (grey), match cut to today's ball in the cracked floor while he roars (colour), end card NEVER GIVE UP.">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="../scenes/common.js"></script>
+<script src="../styles/mikasa.js"></script>
+<script src="loadglb.js"></script>
+<script src="mocap.js"></script>
+<script src="ballpro.js"></script>
+<script src="stage.js"></script>
+<script src="kit.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #04060c; } #stage { position: absolute; inset: 0; overflow: hidden; }
+  canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }
+  .line { position: absolute; left: 0; right: 0; text-align: center; color: #f3ede2; white-space: nowrap; }</style></head>
+<body><div id="stage"></div>
+<script type="module">
+  const P = VM.params({ part: 'intro', model: 'vrm/HairSample_Male.vrm', dig: 'mocap/3-Dig_in_front_with_one_knee_on_the_ground.glb', idle: 'mocap/1-IDLE.glb',
+    win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', today: 'mocap/bandai/dataset-2_raise-up-both-hands_masculine_002.bvh', subframes: 3, shutter: 0.5, cel: 0.75 });   // today: 'win' = the won-point reaction
+  const INTRO = P.part === 'intro';
+  const stage = document.getElementById('stage'); if (P.rtFlags) window.RT_FLAGS = P.rtFlags;
+    if (P.art) { const st = document.createElement('style'); st.textContent = '#stage > :not(canvas), body > :not(#stage):not(script) { display: none !important; }'; document.head.appendChild(st); }   // key-art stills: the picture without any text or overlay   // debug: {restCal: false} ...
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const W = innerWidth, H = innerHeight, V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+    // ================= renderer, post pass, arena (shared with spike_seq.html) =================
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const { rt, lensMat, postScene, postCam } = makeAnimePost(THREE, W, H);
+    const out = document.createElement('canvas'); out.width = W; out.height = H; out.className = 'out'; stage.appendChild(out);
+    const og = out.getContext('2d');
+    const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(32, W / H, 0.05, 200);
+    const env = [], arena = buildArena(THREE, scene, env);
+
+    scene.add(new THREE.HemisphereLight(0x8a9cd0, 0x3a2016, 0.75));
+    const keyL = new THREE.SpotLight(0xfff2da, 90, 30, 0.45, 0.7, 1.6); keyL.position.set(-2.5, 9, -2); keyL.target.position.set(0.4, 0.5, -4);
+    keyL.castShadow = true; keyL.shadow.mapSize.set(2048, 2048); keyL.shadow.bias = -0.0004; scene.add(keyL, keyL.target);
+    const rimW = new THREE.DirectionalLight(0xffc062, 9); rimW.position.set(4, 4, 3); scene.add(rimW);
+    const rimW2 = new THREE.DirectionalLight(0xffb24a, 7); rimW2.position.set(-4, 3.5, -4); scene.add(rimW2);
+    const rimB = new THREE.DirectionalLight(0x6f9cff, 2.5); rimB.position.set(3, 2, -4); scene.add(rimB);
+    const camFill = new THREE.DirectionalLight(0xfff1e2, 1.6); scene.add(camFill, camFill.target);
+
+    // ================= athlete (same materials as the spike) =================
+    const gltf = await loadCharacter(THREE, GLTFLoader, P.model), model = gltf.scene; scene.add(model);
+    if (gltf.isVRM) { await document.fonts.ready; paintKit(THREE, model, { number: '7', skin: P.skin }); }
+    const ramp = (() => { const d = new Uint8Array([125, 190, 255]); const t = new THREE.DataTexture(d, 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
+    const KIT = { N00_007_01_Tops_01_CLOTH: 0x2140a6, N00_001_02_Bottoms_01_CLOTH: 0x0f1d4a, N00_004_01_Shoes_01_CLOTH: 0xf4f4f4 };
+    model.traverse((o) => { if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false;
+      const m = o.material, kk = KIT[m.name]; let skin = /_(SKIN|FACE)$/.test(m.name);
+      const flat = /_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(m.name);   // painted face details stay unlit, like the source
+      const hair = gltf.isVRM && /_HAIR$/.test(m.name); if (gltf.isVRM && /(Body|Face)_00/.test(m.name)) skin = false;   // VRoid skin: tinted by paintKit, face and body alike
+      o.material = flat ? new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: /_EYE$/.test(m.name) ? THREE.DoubleSide : m.side, depthWrite: m.depthWrite })
+        : new THREE.MeshToonMaterial({ normalMap: m.normalMap, normalScale: m.normalScale, color: kk ?? (skin ? 0xbcb0aa : hair ? 0x55607a : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp }); });
+    { model.updateMatrixWorld(true);
+      const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
+      const Pw = (b) => V3(0, 0, 0).setFromMatrixPosition(b.matrixWorld);
+      const top = find(/HeadTop_End/), toe = find(/LeftToe_End/) || find(/LeftToeBase/), foot = find(/LeftFoot(_\d+)?$/);
+      if (foot && toe && Pw(toe).z < Pw(foot).z) model.rotation.y = Math.PI;      // rest pose faces +z (as in the spike)
+      model.scale.multiplyScalar(1.92 / (Pw(top).y - Pw(toe).y)); model.updateMatrixWorld(true); }
+    const boneCache = new Map();
+    const bone = (n) => { if (!boneCache.has(n)) { let f = null; const re = new RegExp('^(mixamorig:?)?' + n + '(_\\d+)?$'); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); boneCache.set(n, f); } return boneCache.get(n); };
+    const wp = (n) => V3(0, 0, 0).setFromMatrixPosition(bone(n).matrixWorld);
+    const retarget = makeRetarget(THREE, model, bone);
+    const legOf = (pts) => pts[0].distanceTo(pts[1]) + pts[1].distanceTo(pts[2]);
+    const soleToToe = wp('LeftToeBase').y - new THREE.Box3().setFromObject(model).min.y;
+    const LEG = legOf([wp('LeftUpLeg'), wp('LeftLeg'), wp('LeftFoot')]);
+    const ANKLE_REST = wp('LeftFoot').y - new THREE.Box3().setFromObject(model).min.y;
+    const clips = {};
+    for (const k of INTRO ? ['dig', 'idle'] : ['dig', P.today === 'win' ? 'win' : 'today']) clips[k] = await loadMocap(THREE, GLTFLoader, P[k]);
+    // place a clip: its hip at time c0 lands on (x, z), its facing turned by yaw (0 = as captured: towards the net, +z)
+    const facing = (M) => M.LShoulder.clone().sub(M.RShoulder).cross(V3(0, 1, 0)).setY(0).normalize();   // his chest direction
+    // the retarget takes its directions from the capture itself, so the yaw turns the capture's points; xf then scales and places them
+    function placer(clip, c0, x, z, yaw = 0) {
+      const M0 = clip.sample(c0), SC = LEG / legOf([M0.LThigh, M0.LShin, M0.LFoot]), piv = M0.Hip.clone().setY(0);
+      const up = V3(0, 1, 0), y0 = -clip.floor * SC + soleToToe;
+      const rot = (v) => v.clone().sub(piv).applyAxisAngle(up, yaw).add(piv), post = (v) => v.clone().sub(piv).multiplyScalar(SC).add(V3(x, y0, z));
+      const xf = (v) => post(rot(v)); xf.rot = rot; xf.post = post;
+      post.footDy = ANKLE_REST - post(clip.sample(0).LFoot).y;      // the capture's standing ankle height onto the character's (feet IK)
+      return xf; }
+    // additive layer (as in the spike's roar): both arms up and out in a V towards facing F
+    function raiseArms(M, w, F) {
+      const up = V3(0, 1, 0), L = up.clone().cross(F).normalize();
+      const VEE = { L: L.clone().multiplyScalar(0.55).addScaledVector(up, 0.82).addScaledVector(F, 0.18).normalize(),
+                    R: L.clone().multiplyScalar(-0.55).addScaledVector(up, 0.82).addScaledVector(F, 0.18).normalize() };
+      const out = Object.assign({}, M);
+      const swing = (a, b, dir, kids) => swingChain(THREE, out, a, b, dir, w, kids);   // rigid: the hand turns with the arm
+      for (const side of ['L', 'R']) {
+        const fingers = Object.keys(M).filter((n) => n.startsWith((side === 'L' ? 'Left' : 'Right') + 'Finger'));
+        swing(side + 'Shoulder', side + 'Forearm', VEE[side], [side + 'Hand', ...fingers]);
+        swing(side + 'Forearm', side + 'Hand', VEE[side].clone().add(V3(0, 0.6, 0)).normalize(), fingers);
+      }
+      return out;
+    }
+    function pose(clip, c, xf, head = 0, opt = {}) {
+      let M = {}; const R = clip.sample(c), A = opt.anchor !== undefined ? clip.sample(opt.anchor).Hip.clone().sub(R.Hip).setY(0) : V3(0, 0, 0);
+      for (const n in R) M[n] = xf.rot(R[n].clone().add(A));                 // anchor: cancel the capture's travel
+      if (opt.arms) M = raiseArms(M, opt.arms, facing(M));
+      if (head) { const d = M.Head_end.clone().sub(M.Head), f = facing(M); M.Head_end = M.Head.clone().add(d.normalize().lerp(f, head).normalize().multiplyScalar(0.2)); }
+      xf.post.fist = clip.bvh ? 1 : 0; retarget(M, xf.post, clip.stand); }
+
+    // ================= balls =================
+    const BR = 0.105 * 1.15;
+    const ball = new THREE.Group(); { const pro = await loadProBall(THREE); pro.scale.setScalar(BR); ball.add(pro); } scene.add(ball);
+    ball.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.material = new THREE.MeshToonMaterial({ map: o.material.map, gradientMap: ramp }); } });
+    const G = 9.81;
+    // a bouncing ball: lands at L with velocity v (at s = 0), restitution e, then rolls on
+    function bounce(L, v, s) {
+      let p = L.clone(), vx = v.x, vz = v.z, vy = -v.y * 0.5, ss = s;
+      for (let i = 0; i < 6; i++) { const d = 2 * vy / G;
+        if (ss < d || vy < 0.2) { const tt = vy < 0.2 ? ss : ss; return V3(p.x + vx * tt, BR + (vy < 0.2 ? 0 : vy * tt - 0.5 * G * tt * tt), p.z + vz * tt); }
+        p.x += vx * d; p.z += vz * d; ss -= d; vy *= 0.55; vx *= 0.8; vz *= 0.8; }
+      return p.setY(BR); }
+    // ground decal for today's cracked floor (outro)
+    const crackTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 1024; const g = c.getContext('2d'), R = VM.rand(91);
+      g.strokeStyle = 'rgba(255,236,190,1)'; g.lineCap = 'round'; g.shadowColor = 'rgba(255,200,120,0.9)'; g.shadowBlur = 18;
+      for (let i = 0; i < 22; i++) { let x = 512, y = 512, a = (i / 22) * Math.PI * 2 + R() * 0.2, w = 22;
+        g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 7; k++) { a += (R() - 0.5) * 0.7; const L = 30 + R() * 60; x += Math.cos(a) * L; y += Math.sin(a) * L; g.lineWidth = w; g.lineTo(x, y); w *= 0.75; }
+        g.stroke(); }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+    const crack = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: crackTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    crack.rotation.x = -Math.PI / 2; crack.visible = false; scene.add(crack);
+
+    // ================= overlays =================
+    const T1 = (sz, w = 600) => `${w} ${sz}vmin ${TEXT}`;
+    const kicker = el('div', { position: 'absolute', left: '7vw', top: '9vh', font: T1(1.8), letterSpacing: '0.5em', color: '#d9dde6', opacity: 0 }, stage);
+    const line = el('div', { bottom: '13vh', font: T1(3.2, 500), letterSpacing: '0.04em', opacity: 0 }, stage); line.className = 'line';
+    const title = el('div', { top: '47vh', font: T1(2.4), letterSpacing: '0.6em', textIndent: '0.6em', opacity: 0, zIndex: 6 }, stage, 'ONE YEAR AGO'); title.className = 'line';
+    const score = el('div', { position: 'absolute', left: '8vw', top: '30vh', font: `400 19vmin ${DISPLAY}`, lineHeight: 0.85, color: '#e9e9ee', opacity: 0, zIndex: 6, transformOrigin: '0% 50%', textShadow: '0 1vmin 5vmin rgba(0,0,0,0.6)' }, stage, '24<span style="opacity:.35"> : </span>26');
+    const scoreLbl = el('div', { position: 'absolute', left: '8vw', top: '25vh', font: T1(1.9), letterSpacing: '0.55em', color: '#b9bcc6', opacity: 0, zIndex: 6 }, stage, 'FINAL LOST');
+    const mp = el('div', { top: '78vh', font: `400 9vmin ${DISPLAY}`, letterSpacing: '0.02em', color: V200W.yellow, opacity: 0, zIndex: 6, WebkitTextStroke: '0.3vmin #0a1020', textShadow: '0.6vmin 0.6vmin 0 #0a1020' }, stage, 'MATCH POINT &nbsp;25 : 24'); mp.className = 'line';
+    const attack = el('div', { top: '72vh', font: `400 12vmin ${DISPLAY}`, lineHeight: 0.9, color: '#f3ede2', opacity: 0, zIndex: 6, textShadow: '0 1vmin 5vmin rgba(0,0,0,0.6)' }, stage, 'THIS TIME, HE ATTACKS.'); attack.className = 'line';
+    const card = el('div', { position: 'absolute', inset: 0, opacity: 0, background: 'radial-gradient(ellipse at 50% 40%, #13245e 0%, #0a1230 55%, #04060c 100%)' }, stage);
+    const cardTitle = el('div', { top: '57vh', font: `400 15vmin ${DISPLAY}`, letterSpacing: '0.01em', color: '#f3ede2', opacity: 0, zIndex: 5 }, stage, `NEVER GIVE <span style="color:${V200W.yellow}">UP.</span>`); cardTitle.className = 'line';
+    const cardSub = el('div', { top: '78vh', font: T1(1.9), letterSpacing: '0.55em', textIndent: '0.55em', color: '#d9dde6', opacity: 0, zIndex: 5 }, stage, 'EVERY SET &nbsp;·&nbsp; EVERY POINT &nbsp;·&nbsp; EVERY DAY'); cardSub.className = 'line';
+    const credit = el('div', { position: 'absolute', left: 0, right: 0, bottom: '4vh', textAlign: 'center', font: T1(1.2, 500), letterSpacing: '0.12em', color: 'rgba(243,237,226,0.6)', opacity: 0, zIndex: 5 }, stage,
+      'CHARACTER: VROID "HAIRSAMPLE_MALE" (PIXIV, CC0), KIT BY THE AUTHOR &nbsp;·&nbsp; MOTION CAPTURE: MOTION CAST' + (P.today === 'win' ? '' : ' &nbsp;·&nbsp; ROAR MOTION: BANDAI NAMCO RESEARCH MOTIONDATASET-2 (CC BY-NC 4.0)'));
+    addFinish({ grain: 0.07, vignette: 0.5 });
+    const flash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 50 }, document.body);
+    const black = el('div', { position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 51 }, document.body);
+    // the ball on the end card renders on top of the card
+    out.style.zIndex = 2; [kicker, line].forEach((e) => (e.style.zIndex = 6));
+
+    // ================= shots =================
+    // each shot: video [T0, T1]; keys map u (0..1 through the shot) to clip time piecewise-linearly
+    const lerpKeys = (keys, u) => { let i = 0; while (i < keys.length - 2 && u > keys[i + 1][0]) i++;
+      const [a, ta] = keys[i], [b, tb] = keys[i + 1]; return ta + (tb - ta) * Math.min(1, Math.max(0, (u - a) / (b - a))); };
+    const HIP = V3(0.4, 0, -4.2);                                    // last year: deep in his own court
+    const KNEEL = clips.dig.sample(2.6), fk = facing(KNEEL);
+    const digXf = placer(clips.dig, 1.0, HIP.x, HIP.z, -Math.atan2(fk.x, fk.z));
+    // the opponent's spike lands a hand beyond his reach
+    const C_LAND = 2.12, FLY = 0.24;
+    const LAND = (() => { const h = digXf(KNEEL.RHand).lerp(digXf(KNEEL.LHand), 0.5), hp = digXf(KNEEL.Hip); const f = h.clone().sub(hp).setY(0).normalize();
+      const left = V3(0, 1, 0).cross(f).normalize();                    // a step to his left: just beyond the platform
+      return h.add(f.multiplyScalar(0.3)).add(left.multiplyScalar(0.8)).setY(BR); })();
+    const B0 = LAND.clone().add(V3(-0.3, 2.9, 4.7)), VB = LAND.clone().sub(B0).divideScalar(FLY);   // bounces on away from him
+    const pastBall = (c) => c < C_LAND ? B0.clone().lerp(LAND, Math.max(0, (c - C_LAND + FLY) / FLY)) : bounce(LAND, VB, c - C_LAND);
+    const headW = () => wp('Head'), hipW = () => wp('Hips');
+    const faceDir = () => { const f = wp('LeftArm').sub(wp('RightArm')).cross(V3(0, 1, 0)).setY(0); return f.normalize(); };
+    let SHOTS;
+    if (INTRO) {
+      const idleXf = placer(clips.idle, 0.5, -0.6, -4.6);
+      const SETTER = V3(2.2, 2.25, 0.05);
+      SHOTS = [
+        { name: 'title', T: [0, 0.7], past: true, blank: true, cam: () => ({ p: [0, 1, 0], look: [0, 1, 1], fov: 40 }) },
+        { name: 'dig', T: [0.7, 3.0], past: true, clip: 'dig', xf: digXf, keys: [[0, 1.3], [0.5, 1.92], [0.66, C_LAND], [1, 2.42]],
+          ball: pastBall,
+          cam: (u) => ({ p: [HIP.x + 2.3 - 0.4 * u, 1.05 - 0.2 * u, HIP.z + 4.4 - 0.7 * u], look: [HIP.x + 0.1, 0.72 - 0.1 * u, HIP.z + 0.7], fov: 38 - 4 * u }) },   // front three-quarter: the platform reads
+        { name: 'floor', T: [3.0, 4.35], past: true, clip: 'dig', xf: digXf, keys: [[0, 2.42], [1, 2.95]], ball: pastBall,
+          cam: (u) => ({ p: [LAND.x - 0.8 + 0.2 * u, 0.16, LAND.z + 1.7 - 0.2 * u], look: [HIP.x, 0.55, HIP.z + 0.2], fov: 40 }) },
+        { name: 'kneel', T: [4.35, 5.5], past: true, clip: 'dig', xf: digXf, keys: P.kneelKeys || [[0, 2.62], [1, 2.95]],   // on one knee, arms dropped (the capture then lifts a held platform: arms aimed at the lens) head: -0.35, ball: pastBall,
+          cam: (u) => { const h = headW(), f = faceDir(); return { p: [h.x + f.x * (1.3 - 0.25 * u) + 0.3, h.y + 0.12, h.z + f.z * (1.3 - 0.25 * u)], look: [h.x, h.y - 0.02, h.z], fov: 30 }; } },
+        { name: 'eyes', T: [5.5, 6.95], clip: 'idle', xf: idleXf, keys: [[0, 0.6], [1, 2.0]],
+          cam: (u) => { const h = headW(), f = faceDir(), r = 0.75 - 0.1 * u; return { p: [h.x + f.x * r, h.y + 0.02, h.z + f.z * r], look: [h.x, h.y + 0.035, h.z], fov: 15 - 2 * u }; } },
+        { name: 'set', T: [6.95, 8.2], noAthlete: true,
+          ball: (c) => SETTER.clone().add(V3(-0.9 * c, 5.2 * c - 0.5 * G * c * c, -0.25 * c)), keys: [[0, 0.05], [1, 0.62]],
+          cam: (u) => { const b = SETTER.clone().add(V3(-0.9 * (0.05 + 0.57 * u), 0, -0.25 * (0.05 + 0.57 * u))); return { p: [b.x + 0.5, 1.2 + 1.2 * u, b.z - 1.6], look: [b.x - 0.1, 2.75 + 1.0 * u, b.z], fov: 36, roll: 0.1 }; } },
+      ];
+    } else {
+      // outro: one low framing used twice (match cut), then the end card
+      const K = digXf(clips.dig.sample(3.2).Hip).setY(0);                // where he knelt last year
+      const REST = V3(K.x + 1.0, BR, K.z + 2.0);                          // where last year's ball rolled to a stop
+      const CAMP = [K.x + 0.75, 0.2, K.z + 3.3], LOOK = [K.x + 0.1, 0.62, K.z];
+      const toCam = V3(CAMP[0] - K.x, 0, CAMP[2] - K.z).normalize();
+      // today: both fists thrown up into a V (Bandai Namco Research Motiondataset-2, CC BY-NC 4.0), the callback to the spike's roar;
+      // the camera finds him as they go up, then the V is held. P.today = 'win' brings back the won-point reaction.
+      let TODAY;
+      if (clips.today) { const C = clips.today, hy = (c) => { const M = C.sample(c); return Math.min(M.LHand.y, M.RHand.y) - M.Head.y; }, h0 = hy(0);
+        let hi = -1e9; for (let c = 0; c <= C.dur; c += 1 / 60) hi = Math.max(hi, hy(c));
+        let start = null, up0 = null, up1 = 0; for (let c = 0; c <= C.dur; c += 1 / 60) { const h = hy(c); if (start === null && h > h0 + 0.1) start = c; if (h >= hi - 0.05) { if (up0 === null) up0 = c; up1 = c; } }
+        const fw = facing(C.sample(0));
+        TODAY = { clip: 'today', xf: placer(C, 0, K.x, K.z, Math.atan2(toCam.x, toCam.z) - Math.atan2(fw.x, fw.z)), anchor: 0, keys: [[0, Math.max(0, start - 0.1)], [0.3, start], [0.5, up0], [1, up1]] }; }
+      else { const fw = facing(clips.win.sample(2.05));
+        TODAY = { clip: 'win', xf: placer(clips.win, 2.05, K.x, K.z, Math.atan2(toCam.x, toCam.z) - Math.atan2(fw.x, fw.z)), anchor: 2.05, keys: [[0, 1.75], [1, 2.3]] }; }
+      crack.position.copy(REST).setY(0.006);
+      const roll = (u) => { const k = 1 - Math.pow(1 - Math.min(1, u / 0.8), 3); return REST.clone().add(V3(1.8 * (1 - k), 0, -0.4 * (1 - k))); };
+      SHOTS = [
+        { name: 'rolls', T: [0, 2.0], past: true, clip: 'dig', xf: digXf, keys: [[0, 3.0], [1, 3.6]], head: -0.35,
+          ball: (c, u) => roll(u), spin: (u) => -1.8 * (1 - Math.pow(1 - Math.min(1, u / 0.8), 3)) / BR,
+          cam: (u) => ({ p: CAMP, look: LOOK, fov: 38 - 2 * u }) },
+        { name: 'today', T: [2.0, 4.2], ...TODAY, crack: true,
+          ball: () => REST.clone().setY(BR * 0.82), squash: 0.18,
+          cam: (u) => ({ p: [CAMP[0], CAMP[1] + 0.1 * u, CAMP[2] + 0.4 * u], look: [LOOK[0], LOOK[1] + 0.6 * VM.ease.inOutSine(Math.min(1, u / 0.45)), LOOK[2]], fov: 40 }) },   // tilt up from the ball to him
+        { name: 'card', T: [4.2, 7.6], card: true, noAthlete: true,
+          cam: () => ({ p: [0, 30.0, 3.2], look: [0, 30, 0], fov: 30 }) },
+      ];
+    }
+    const shotAt = (T) => SHOTS.find((s) => T < s.T[1]) || SHOTS[SHOTS.length - 1];
+    const uOf = (s, T) => Math.min(1, Math.max(0, (T - s.T[0]) / (s.T[1] - s.T[0])));
+    const clipT = (s, T) => s.keys ? lerpKeys(s.keys, uOf(s, T)) : 0;
+    // impact frame when last year's spike hits the floor
+    const digShot = SHOTS.find((s) => s.name === 'dig');
+    const T_LAND = digShot ? (() => { let lo = digShot.T[0], hi = digShot.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (clipT(digShot, m) < C_LAND) lo = m; else hi = m; } return lo; })() : -9;
+    const HOLD = 0.2, inHold = (T) => T >= T_LAND && T < T_LAND + HOLD;
+    const holdT = (T) => T < T_LAND ? T : T < T_LAND + HOLD ? T_LAND : (shotAt(T) === digShot ? T - HOLD : T);
+    window.STORY_TIMES = { land: T_LAND, cuts: SHOTS.map((s) => s.T[0]) };
+
+    // faces (VRoid expressions): grief last year, quiet resolve today, joy in the answer
+    const FACE = { floor: { sorrow: 0.6 }, kneel: { sorrow: 0.9 }, rolls: { sorrow: 0.8 }, eyes: { angry: 0.35 }, today: P.today === 'win' ? { joy: 1, a: 0.5 } : { angry: 0.55, a: 1 } };
+    let faceKey = null;
+    function renderAt(T, shot) {
+      const u = uOf(shot, T), c = clipT(shot, T);
+      if (gltf.isVRM && faceKey !== shot.name) { faceKey = shot.name; for (const n of ['sorrow', 'angry', 'joy', 'a']) gltf.expr(n, (FACE[shot.name] || {})[n] || 0); }
+      model.visible = !shot.noAthlete && !shot.blank;
+      if (model.visible) pose(clips[shot.clip], c, shot.xf, shot.head || 0, { anchor: shot.anchor, arms: shot.arms ? shot.arms(u) : 0 });
+      ball.visible = !!shot.ball && !shot.blank;
+      if (ball.visible) { ball.position.copy(shot.ball(c, u)); ball.scale.set(1, 1 - (shot.squash || 0), 1);
+        ball.rotation.set(shot.spin ? 0 : c * 7, 0.4, shot.spin ? shot.spin(u) : 0.2); }
+      if (shot.card) { ball.visible = true; ball.position.set(0, 30.3, 0); ball.scale.setScalar(2.2); ball.rotation.set(0.35, T * 1.1, -0.25); }
+      crack.visible = !!shot.crack;
+      env.forEach((m) => (m.visible = !shot.card && !shot.blank)); scene.background = shot.card || shot.blank ? null : arena.bgTex;
+      const k = P.dbgCam ? (() => { const h = hipW(); return { p: [h.x + P.dbgCam[0], h.y + P.dbgCam[1], h.z + P.dbgCam[2]], look: [h.x, h.y + (P.dbgCam[3] ?? 0.4), h.z], fov: P.dbgCam[4] ?? 35 }; })() : shot.cam(u); cam.position.set(...k.p); cam.fov = k.fov; cam.updateProjectionMatrix(); cam.lookAt(...k.look); cam.rotateZ(k.roll || 0);   // dbgCam: diagnostic view
+      if (shot.name === 'dig' && T >= T_LAND) { const e = Math.exp(-(T - T_LAND) * 8) * 0.05; cam.position.x += VM.noise(T * 50, 1) * e; cam.position.y += VM.noise(T * 50, 2) * e; }
+      camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(model.visible ? hipW() : ball.position);
+      lensMat.uniforms.k.value = shot.card ? 0 : 0.3; lensMat.uniforms.zoom.value = 0;
+      lensMat.uniforms.cel.value = P.cel; lensMat.uniforms.anime.value = P.anime ?? 1; lensMat.uniforms.time.value = T;   // anime: the full-film filter
+      lensMat.uniforms.sat.value = shot.past && !P.color ? 0.07 : 1; lensMat.uniforms.tint.value.set(...(shot.past ? [0.86, 0.9, 0.98] : [1, 1, 1]));
+      renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
+      renderer.setRenderTarget(null); renderer.clear(); renderer.render(postScene, postCam);
+    }
+    const dt = 1 / (VEDIT.fps || 30);
+    VM.onFrame((T0) => {
+      const T = holdT(T0), shot = shotAt(T0), hold = inHold(T0);
+      if (P.auditAll) window.AUDIT_ALL = 1; if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
+      const n = hold || shot.card ? 1 : Math.max(1, P.subframes);
+      og.clearRect(0, 0, W, H);
+      for (let k = 0; k < n; k++) { renderAt(hold ? T : Math.max(shot.T[0], T - dt * P.shutter * (k / n)), shot); og.globalAlpha = 1 / (k + 1); og.drawImage(renderer.domElement, 0, 0); }
+      og.globalAlpha = 1;
+      stage.style.filter = hold ? 'invert(1) grayscale(1) contrast(3.5)' : 'none';
+      const D = VM.duration;
+      if (INTRO) {
+        const past = T0 < 5.5;
+        title.style.opacity = VM.env(T0, 0.05, 0.75, 0.25, 0.12);
+        kicker.innerHTML = past ? 'ONE YEAR AGO &nbsp;·&nbsp; FINAL &nbsp;·&nbsp; SET 4 &nbsp;·&nbsp; 24 : 25' : 'TODAY &nbsp;·&nbsp; FINAL &nbsp;·&nbsp; SET 4';
+        kicker.style.color = past ? '#c9ccd4' : V200W.yellow;
+        kicker.style.opacity = past ? VM.env(T0, 0.9, 3.05, 0.4, 0.2) : VM.env(T0, 5.65, 6.95, 0.3, 0.15);
+        // 24 : 25 -> 24 : 26: lost by two
+        const sIn = VM.prog(T0, 3.3, 0.3, 'outBack');
+        score.style.opacity = Math.min(1, sIn) * (1 - VM.prog(T0, 4.2, 0.15)); score.style.transform = `scale(${1.5 - 0.5 * sIn})`;
+        scoreLbl.style.opacity = VM.env(T0, 3.45, 4.35, 0.3, 0.15);
+        line.innerHTML = 'He never forgot that point.';
+        line.style.opacity = VM.env(T0, 4.55, 5.45, 0.4, 0.2);
+        const mIn = VM.prog(T0, 5.95, 0.3, 'outBack');
+        mp.style.opacity = Math.min(1, mIn) * (1 - VM.prog(T0, 6.85, 0.1)); mp.style.transform = `scale(${1.4 - 0.4 * mIn})`;
+        const aIn = VM.prog(T0, 7.05, 0.3, 'outBack');
+        attack.style.opacity = Math.min(1, aIn); attack.style.transform = `scale(${1.4 - 0.4 * aIn})`;
+        flash.style.opacity = T0 >= 5.42 ? Math.max(0, 1 - (T0 - 5.42) / 0.3) : 0;
+      } else {
+        line.innerHTML = T0 < 2.0 ? 'He lost this point once.' : 'He never stopped coming back.';
+        line.style.opacity = T0 < 2.0 ? VM.env(T0, 0.35, 1.95, 0.4, 0.2) : VM.env(T0, 2.3, 4.15, 0.4, 0.2);
+        const cIn = VM.prog(T0, 4.2, 0.6, 'outCubic');
+        card.style.opacity = shot.card ? cIn : 0;
+        const tIn = VM.prog(T0, 4.55, 0.35, 'outBack');
+        cardTitle.style.opacity = shot.card ? Math.min(1, tIn) : 0; cardTitle.style.transform = `scale(${1.5 - 0.5 * tIn})`;
+        cardSub.style.opacity = shot.card ? VM.prog(T0, 5.1, 0.5) : 0;
+        credit.style.opacity = shot.card ? VM.prog(T0, 5.4, 0.5) : 0;
+        flash.style.opacity = T0 >= 2.0 && T0 < 2.25 ? 0.85 * (1 - (T0 - 2.0) / 0.25) : 0;
+        black.style.opacity = VM.prog(T0, D - 0.7, 0.6, 'inOutSine');
+      }
+    });
+    console.error('STORY_TIMES ' + JSON.stringify(window.STORY_TIMES));
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

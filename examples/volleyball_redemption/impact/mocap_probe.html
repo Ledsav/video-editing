@@ -1,0 +1,34 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="vedit:kind" content="scene"><meta name="vedit:duration" content="0.1"><meta name="vedit:libs" content="three">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="loadglb.js"></script><script src="mocap.js"></script></head><body>
+<script type="module">
+  // prints a clip's events and the hip / hand path (debug helper)
+  const P = VM.params({ file: 'mocap/1-IDLE.glb', step: 0.1 });
+  window.VM_READY = new Promise(async (res) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const m = await loadMocap(THREE, GLTFLoader, P.file); const f = (v) => v.toFixed(2);
+    let s = `CLIP ${P.file} dur ${f(m.dur)} floor ${f(m.floor)} takeoff ${f(m.takeoff)} land ${f(m.land)}\n`;
+    for (let t = 0; t <= m.dur; t += P.step) { const M = m.sample(t);
+      s += `t ${f(t)} hip ${f(M.Hip.x)} ${f(M.Hip.y)} ${f(M.Hip.z)} head ${f(M.Head.x)} ${f(M.Head.y)} ${f(M.Head.z)} rh ${f(M.RHand.x)} ${f(M.RHand.y)} ${f(M.RHand.z)}\n`; }
+    if (P.jitter) {   // per-frame angular change of hand / finger directions, and the hand's second difference (noise shows as spikes)
+      const ang = (a, b) => (a.angleTo(b) * 180 / Math.PI);
+      const dirs = (M) => ({ hand: M.RFinger2 ? 0 : M.RightFinger2.clone().sub(M.RHand).normalize(), palm: M.RightFinger1.clone().sub(M.RightFinger4).normalize(),
+        fore: M.RHand.clone().sub(M.RForearm).normalize(), fing: M.RightFinger21.clone().sub(M.RightFinger2).normalize(), lhand: M.LeftFinger2.clone().sub(M.LHand).normalize() });
+      s = 'JIT t hand palm fore fing lhand acc\n';
+      const [a, b] = P.jitter;
+      for (let i = Math.round(a * 60); i < Math.round(b * 60); i++) {
+        const M0 = m.sample((i - 1) / 60), M1 = m.sample(i / 60), M2 = m.sample((i + 1) / 60), d0 = dirs(M0), d1 = dirs(M1), d2 = dirs(M2);
+        const acc = M2.RHand.clone().add(M0.RHand).sub(M1.RHand.clone().multiplyScalar(2)).length() * 3600;
+        // jitter = change of angular velocity (second difference of direction)
+        const j = (k) => Math.abs(ang(d1[k], d2[k]) - ang(d0[k], d1[k])).toFixed(1);
+        s += `${(i / 60).toFixed(3)} ${j('hand')} ${j('palm')} ${j('fore')} ${j('fing')} ${j('lhand')} ${acc.toFixed(0)}\n`; }
+    }
+    if (P.feet) { s = 'FEET\n'; for (let i = 0; i <= m.dur * 60; i++) { const M = m.sample(i / 60); s += `${(i / 60).toFixed(3)} ${Math.min(M.LToe.y, M.LFoot.y).toFixed(3)} ${Math.min(M.RToe.y, M.RFoot.y).toFixed(3)}\n`; } }
+    if (P.arms) { s = 'ARMS t handGap elbowL elbowR handY wristToHip\n'; const ang = (a, b, c) => (b.clone().sub(a).angleTo(c.clone().sub(b)) * 57.3);
+      for (let i = 0; i <= m.dur * 20; i++) { const M = m.sample(i / 20);
+        s += `${(i / 20).toFixed(2)} ${(M.LHand.distanceTo(M.RHand) * 100).toFixed(0)} ${ang(M.LShoulder, M.LForearm, M.LHand).toFixed(0)} ${ang(M.RShoulder, M.RForearm, M.RHand).toFixed(0)} ${M.LHand.y.toFixed(2)} ${(M.LHand.clone().add(M.RHand).multiplyScalar(0.5).sub(M.Hip).setY(0).length() * 100).toFixed(0)}\n`; } }
+    console.error(s);
+  } catch (e) { console.error('ERR ' + e.message); } res(); });
+</script></body></html>

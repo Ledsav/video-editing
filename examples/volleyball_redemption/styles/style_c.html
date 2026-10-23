@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="1">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Style C, Riso Print: off-white paper, two inks (Mikasa blue + yellow) overprinting, halftone ball, slight misregistration, Bebas Neue + Cormorant Garamond italic. Retro sports-poster feel.">
+<script src="../scenes/common.js"></script>
+<script src="mikasa.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #efe7d6; } #stage { position: absolute; inset: 0; overflow: hidden; }</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ moment: 'fall' });
+  const Y = '#ffd21f', BL = '#1f4fb5', PAPER = '#efe7d6', RED = '#e8473a';
+  const COND = "'Bebas Neue', 'Oswald', sans-serif", SERIF = "'Cormorant Garamond', 'Playfair Display', serif";
+  const stage = document.getElementById('stage');
+  stage.style.background = PAPER;
+  const ink = (col, css) => el('div', Object.assign({ position: 'absolute', color: col, mixBlendMode: 'multiply' }, css));
+  // halftone a rendered ball: two inks, dot size from the source channel
+  async function halftoneBall(size, x, y, rot, { cell = 9, offset = [0.35, 0.25] } = {}) {
+    const m = await createMikasa({ size, look: 'print', key: [-3, 3, 4] });
+    const n = m.canvas.width;
+    const out = document.createElement('canvas'); out.width = out.height = n;
+    Object.assign(out.style, { position: 'absolute', width: `${size}vmin`, height: `${size}vmin`, left: `calc(${x}vw - ${size / 2}vmin)`, top: `calc(${y}vh - ${size / 2}vmin)`, mixBlendMode: 'multiply' });
+    stage.appendChild(out);
+    const tmp = document.createElement('canvas'); tmp.width = tmp.height = n; const tg = tmp.getContext('2d', { willReadFrequently: true });
+    VM.onFrame(() => {
+      m.render(rot); tg.clearRect(0, 0, n, n); tg.drawImage(m.canvas, 0, 0);
+      const px = tg.getImageData(0, 0, n, n).data, g = out.getContext('2d'); g.clearRect(0, 0, n, n);
+      const layers = [[BL, (r, gg, b) => 1 - (r + gg) / 510, 15, [0, 0]], [Y, (r, gg, b) => (Math.min(r, gg) - b) / 255 * 1.1, 75, offset]];
+      layers.forEach(([col, f, ang, off]) => {
+        g.fillStyle = col; g.globalCompositeOperation = 'multiply';
+        const a = ang * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+        for (let u = -n; u < n * 1.5; u += cell) for (let v = -n; v < n * 1.5; v += cell) {
+          const X = u * ca - v * sa, Yp = u * sa + v * ca; if (X < 0 || Yp < 0 || X >= n || Yp >= n) continue;
+          const k = ((Yp | 0) * n + (X | 0)) * 4; if (px[k + 3] < 128) continue;
+          const val = Math.max(0, Math.min(1, f(px[k], px[k + 1], px[k + 2])));
+          if (val < 0.04) continue;
+          g.beginPath(); g.arc(X + off[0] * cell, Yp + off[1] * cell, cell * 0.62 * Math.sqrt(val), 0, Math.PI * 2); g.fill();
+        }
+      });
+    });
+  }
+  window.VM_READY = (async () => {
+    if (P.moment === 'fall') {
+      ink(BL, { left: '7vw', top: '9vh', font: `400 3vmin ${COND}`, letterSpacing: '0.3em' }).textContent = 'Nº 02 — THE FALL — MATCH POINT 24 : 25';
+      ink(BL, { left: '6vw', top: '20vh', font: `italic 500 34vmin ${SERIF}`, lineHeight: 0.8 }).textContent = 'lost.';
+      ink(Y, { left: '6.6vw', top: '21vh', font: `italic 500 34vmin ${SERIF}`, lineHeight: 0.8, opacity: 0.9 }).textContent = 'lost.';
+      ink(BL, { left: '7vw', top: '76vh', width: '40vw', font: `italic 400 3.4vmin ${SERIF}`, lineHeight: 1.2 }).textContent = 'One point. One season. Gone in the time it takes a ball to fall.';
+      for (let i = 0; i < 4; i++) ink(BL, { left: `${66 + i * 2}vw`, top: `${6 + i * 4}vh`, width: '0.35vmin', height: `${20 - i * 3}vh`, background: BL });
+      await halftoneBall(40, 72, 56, { rx: 0.6, ry: 0.8, rz: 0.2 });
+    } else if (P.moment === 'grind') {
+      ink(Y, { left: '4vw', top: '6vh', font: `400 78vmin ${COND}`, lineHeight: 0.8 }).textContent = '365';
+      ink(BL, { left: '8vw', top: '50vh', font: `400 22vmin ${COND}`, lineHeight: 0.8, letterSpacing: '0.04em' }).textContent = 'DAYS. AGAIN.';
+      ink(BL, { left: '8vw', top: '72vh', font: `italic 500 4vmin ${SERIF}` }).textContent = '— five a.m., a thousand serves, no days off.';
+      ink(BL, { right: '6vw', top: '8vh', font: `400 3vmin ${COND}`, letterSpacing: '0.3em' }).textContent = 'Nº 04 — THE GRIND';
+      await halftoneBall(30, 80, 30, { rx: 0.3, ry: 2.4, rz: -0.3 }, { cell: 8 });
+    } else {
+      ink(Y, { left: '50vw', top: '62vh', width: '120vmin', height: '120vmin', margin: '-60vmin 0 0 -60vmin', borderRadius: '50%', opacity: 0.55,
+        background: `repeating-radial-gradient(circle, ${Y} 0 1.2vmin, transparent 1.2vmin 2.6vmin)` });
+      const wrap = el('div', { position: 'absolute', left: 0, right: 0, top: 0, height: '70vh', overflow: 'hidden' });
+      await halftoneBall(46, 50, 72, { rx: 0.3, ry: 0.4, rz: 0.1 }, { cell: 10 });
+      wrap.appendChild(stage.lastChild);
+      ink(BL, { left: '6vw', right: '6vw', top: '70vh', height: '0.5vmin', background: BL });
+      ink(BL, { left: 0, right: 0, top: '8vh', textAlign: 'center', font: `italic 500 22vmin ${SERIF}`, lineHeight: 0.9 }).textContent = 'Rise again.';
+      ink(BL, { left: 0, right: 0, top: '78vh', textAlign: 'center', font: `400 3.4vmin ${COND}`, letterSpacing: '0.5em' }).textContent = 'EVERY SET · EVERY POINT · EVERY DAY';
+    }
+    // paper texture: grain multiply
+    addFinish({ grain: 0.14, vignette: 0.12 });
+  })();
+</script></body></html>

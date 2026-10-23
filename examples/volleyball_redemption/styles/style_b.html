@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="1">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Style B, Bold Graphic: flat blue/yellow/white colour fields, oversized cropped type (Archivo Black + Space Grotesk), flat-lit ball with hard offset shadow, grid lines. No gradients, no grain.">
+<script src="../scenes/common.js"></script>
+<script src="mikasa.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #fff; } #stage { position: absolute; inset: 0; overflow: hidden; }</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ moment: 'fall' });
+  const Y = MIKASA.yellow, BL = MIKASA.blue, INK = '#0b1430', W = '#f7f5f0', RED = '#e8473a';
+  const HEAVY = "'Archivo Black', 'Anton', sans-serif", MONO = "'Space Grotesk', 'Inter', sans-serif";
+  const stage = document.getElementById('stage');
+  const grid = (col) => { for (let i = 1; i < 12; i++) el('div', { position: 'absolute', top: 0, bottom: 0, left: `${(i / 12) * 100}vw`, width: '1px', background: col }); };
+  const label = (txt, col, x = '4vw', y = '6vh') => el('div', { position: 'absolute', left: x, top: y, font: `500 1.8vmin ${MONO}`, letterSpacing: '0.12em', color: col }, stage, txt);
+  async function ball(size, x, y, shadowCol, rot) {
+    const sh = el('div', { position: 'absolute', width: `${size}vmin`, height: `${size}vmin`, borderRadius: '50%', background: shadowCol,
+      left: `calc(${x}vw - ${size / 2}vmin + ${size * 0.08}vmin)`, top: `calc(${y}vh - ${size / 2}vmin + ${size * 0.08}vmin)` });
+    const m = await createMikasa({ size, look: 'flat', key: [-3, 4, 4] });
+    m.canvas.style.left = `calc(${x}vw - ${size / 2}vmin)`; m.canvas.style.top = `calc(${y}vh - ${size / 2}vmin)`; stage.appendChild(m.canvas);
+    VM.onFrame(() => m.render(rot)); return m;
+  }
+  window.VM_READY = (async () => {
+    if (P.moment === 'fall') {
+      stage.style.background = W; grid('rgba(11,20,48,0.08)');
+      label('02 / THE FALL', INK); label('MATCH POINT', RED, '80vw');
+      el('div', { position: 'absolute', left: '-2vw', top: '12vh', font: `400 52vmin ${HEAVY}`, lineHeight: 0.8, color: BL, letterSpacing: '-0.04em' }, stage, '24');
+      el('div', { position: 'absolute', right: '-3vw', top: '12vh', font: `400 52vmin ${HEAVY}`, lineHeight: 0.8, color: RED, letterSpacing: '-0.04em' }, stage, '25');
+      for (let i = 0; i < 5; i++) el('div', { position: 'absolute', left: `${47 + i * 1.6}vw`, top: `${8 + i * 3}vh`, width: '0.5vmin', height: `${18 - i * 2}vh`, background: INK });
+      el('div', { position: 'absolute', left: 0, right: 0, bottom: 0, height: '13vh', background: INK });
+      el('div', { position: 'absolute', left: '4vw', bottom: '4vh', font: `400 5vmin ${HEAVY}`, color: W }, stage, 'LOST.');
+      await ball(22, 52, 60, INK, { rx: 0.6, ry: 0.8, rz: 0.2 });
+    } else if (P.moment === 'grind') {
+      stage.style.background = Y;
+      label('04 / THE GRIND', INK); label('365 DAYS', INK, '84vw');
+      ['AGAIN', 'AGAIN', 'AGAIN', 'AGAIN'].forEach((w, i) => el('div', { position: 'absolute', left: `${-3 + i * 6}vw`, top: `${10 + i * 21}vh`, font: `400 25vmin ${HEAVY}`,
+        lineHeight: 0.8, letterSpacing: '-0.03em', whiteSpace: 'nowrap', color: i === 3 ? BL : 'transparent', WebkitTextStroke: i === 3 ? '0' : `0.3vmin ${BL}` }, stage, w));
+      await ball(26, 80, 34, BL, { rx: 0.3, ry: 2.4, rz: -0.3 });
+    } else {
+      stage.style.background = BL; grid('rgba(255,255,255,0.07)');
+      label('07 / THE LESSON', W);
+      el('div', { position: 'absolute', left: '4vw', top: '14vh', font: `400 25vmin ${HEAVY}`, lineHeight: 0.82, letterSpacing: '-0.04em', color: Y }, stage, 'RISE<br>AGAIN.');
+      el('div', { position: 'absolute', left: '4vw', bottom: '8vh', font: `500 2.4vmin ${MONO}`, letterSpacing: '0.1em', color: W }, stage, 'EVERY SET — EVERY POINT — EVERY DAY');
+      el('div', { position: 'absolute', left: '78vw', top: '52vh', width: '46vmin', height: '46vmin', margin: '-23vmin 0 0 -23vmin', borderRadius: '50%', border: `1.2vmin solid ${Y}` });
+      await ball(33, 78, 52, INK, { rx: 1.4, ry: 0.2, rz: 0.1 });
+    }
+  })();
+</script></body></html>

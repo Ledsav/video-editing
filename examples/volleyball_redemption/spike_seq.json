@@ -1,0 +1,115 @@
+{
+  "brief": {
+    "prompt": "Spike as a shot sequence with the anime male (CC BY-SA 4.0, Ret.ouchs): set, feet, run-up, ground-level liftoff with power burst, rise, POV, comic impact, smash, landing and roar"
+  },
+  "output": {
+    "path": "out/spike_sequence.mp4",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "crf": 16
+  },
+  "timeline": [
+    {
+      "id": "spike",
+      "html": "impact/spike_seq.html",
+      "duration": 9.8
+    }
+  ],
+  "music": [
+    {
+      "path": "music/rise.wav",
+      "start": 0,
+      "in": 0,
+      "duration": 9.8,
+      "volume": 0.5,
+      "fade_in": 0.5,
+      "fade_out": 1.5
+    }
+  ],
+  "sfx": [
+    {
+      "name": "tick",
+      "start": 0.15,
+      "volume": 0.4
+    },
+    {
+      "name": "whoosh",
+      "start": 1.2,
+      "volume": 0.35
+    },
+    {
+      "name": "whoosh",
+      "start": 2.55,
+      "volume": 0.5
+    },
+    {
+      "name": "riser",
+      "start": 3.02,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 3.02,
+      "volume": 1.0
+    },
+    {
+      "name": "boom",
+      "start": 3.02,
+      "volume": 0.9
+    },
+    {
+      "name": "whoosh",
+      "start": 3.5,
+      "volume": 0.55
+    },
+    {
+      "name": "reverse_swell",
+      "start": 4.7,
+      "volume": 0.6
+    },
+    {
+      "name": "glitch",
+      "start": 5.35,
+      "volume": 0.5
+    },
+    {
+      "name": "riser",
+      "start": 6.19,
+      "volume": 0.6
+    },
+    {
+      "name": "impact",
+      "start": 6.19,
+      "volume": 1.0
+    },
+    {
+      "name": "boom",
+      "start": 6.19,
+      "volume": 0.8
+    },
+    {
+      "name": "whoosh",
+      "start": 7.2,
+      "volume": 0.7
+    },
+    {
+      "name": "impact",
+      "start": 7.91,
+      "volume": 1.0
+    },
+    {
+      "name": "boom",
+      "start": 7.91,
+      "volume": 0.9
+    },
+    {
+      "name": "glitch",
+      "start": 7.95,
+      "volume": 0.35
+    }
+  ],
+  "audio": {
+    "loudness": -14
+  }
+}

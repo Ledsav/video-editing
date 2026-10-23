@@ -1,0 +1,26 @@
+{
+  "song": "assets/audio/song.mp3",
+  "clean": true,
+  "out": "music/score.wav",
+  "duration": "ed:end",
+  "start": "op:end",
+  "align": {
+    "song": 14.0,
+    "at": "fight:impact0+0.8",
+    "fade_out": 0.6
+  },
+  "dips": [
+    {
+      "from": "fight:shot2-0.06",
+      "to": "fight:impact0+0.8",
+      "db": -10
+    }
+  ],
+  "stems": [
+    {
+      "out": "music/op.wav",
+      "from": 13.92,
+      "dur": 3.5
+    }
+  ]
+}

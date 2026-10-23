@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="1">
+<meta name="vedit:libs" content="three">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="../scenes/common.js"></script>
+<script src="loadglb.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #e9e6df; } canvas { position: absolute; inset: 0; }</style></head>
+<body><div id="stage"></div>
+<script type="module">
+  const LIST = [['models_cand/riggedmesh.glb', 'F · Retarget demo'], ['anime_male.glb', 'H · Anime male (yours)']];
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const { FBXLoader } = await import(VEDIT.libs.three_addons + 'loaders/FBXLoader.js');
+    const W = innerWidth, H = innerHeight;
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setSize(W, H); renderer.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x8890a0, 1.6));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-2, 4, 5); scene.add(key);
+    const n = LIST.length, gap = 1.25;
+    for (let i = 0; i < n; i++) {
+      const [file, label] = LIST[i]; let obj;
+      try {
+        if (file.endsWith('.fbx')) { const buf = await readBinary(file); obj = new FBXLoader().parse(buf, ''); }
+        else obj = (await loadGLB(GLTFLoader, file)).scene;
+      } catch (e) { console.error('ERR load ' + file + ' ' + e.message); continue; }
+      obj.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; if (o.material && o.material.name === 'Wolf3D_Headwear') o.visible = false; } });
+      // measure by the skeleton (head top vs toes): robust to Sketchfab root transforms
+      obj.updateMatrixWorld(true);
+      const find = (re) => { let f = null; obj.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
+      const top = find(/HeadTop_End/), toe = find(/LeftToe_End|LeftToeBase/), hips = find(/Hips/);
+      const P = (b) => new THREE.Vector3().setFromMatrixPosition(b.matrixWorld);
+      let h = top && toe ? P(top).y - P(toe).y : 1.8; obj.scale.multiplyScalar(1.8 / h); obj.updateMatrixWorld(true);
+      // facing: compare toe and heel/foot z, flip if the character looks away from the camera
+      const foot = find(/LeftFoot/); if (foot && toe && P(toe).z < P(foot).z) obj.rotation.y += Math.PI;
+      obj.rotation.y += 0.35; obj.updateMatrixWorld(true);
+      const hp = hips ? P(hips) : new THREE.Vector3(), low = toe ? P(toe).y : 0;
+      obj.position.set((i - (n - 1) / 2) * gap - hp.x, -low, -hp.z);
+      scene.add(obj);
+      el('div', { position: 'absolute', left: `${(i + 0.5) / n * 100}vw`, transform: 'translateX(-50%)', bottom: '6vh', font: `700 1.7vmin ${TEXT}`, color: '#0a1020', letterSpacing: '0.08em', whiteSpace: 'nowrap', zIndex: 2 }, undefined, label);
+    }
+    const cam = new THREE.OrthographicCamera(-n * gap / 2, n * gap / 2, n * gap / 2 * H / W + 0.5, -n * gap / 2 * H / W + 0.5, 0.1, 50);
+    cam.position.set(0, 1.3, 10); cam.lookAt(0, 0.9 + 0.4, 0);
+    // fit vertically: 1.8 m figures in ~75% of the height
+    const vh = 2.6, ar = W / H; cam.top = 0.9 + vh / 2 + 0.1; cam.bottom = 0.9 - vh / 2 + 0.1; cam.left = -vh / 2 * ar; cam.right = vh / 2 * ar;
+    if (cam.right - cam.left < n * gap) { const s = n * gap / (cam.right - cam.left); cam.left *= s; cam.right *= s; cam.top = 0.9 + (vh * s) / 2; cam.bottom = 0.9 - (vh * s) / 2; }
+    cam.position.set(0, 0.9, 10); cam.lookAt(0, 0.9, 0); cam.updateProjectionMatrix();
+    VM.onFrame(() => renderer.render(scene, cam));
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

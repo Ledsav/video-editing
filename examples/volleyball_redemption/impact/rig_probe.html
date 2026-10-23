@@ -1,0 +1,90 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="vedit:kind" content="scene"><meta name="vedit:duration" content="1"><meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Rig/animation diagnostic (analysis only): poses the VRoid character from a capture frame exactly like the scenes do, then measures mesh stretch (vertex distances inside rigid parts vs rest), bone world scales and upper-arm twist. Left: rest pose, right: posed. Toggles: shoulderW, rhythm, ik.">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="loadglb.js"></script><script src="mocap.js"></script>
+<style>html,body{margin:0;background:#e9e9ee;width:100vw;height:100vh;overflow:hidden} .lab{position:absolute;top:1vh;font:600 2vmin sans-serif;color:#223}</style></head><body>
+<script type="module">
+  const P = VM.params({ model: 'vrm/HairSample_Male.vrm', clip: 'mocap/12-Reaction_after_point_obtained-Take3.glb', t: 2.05, shoulderW: 1, ik: 1, view: 'front' });
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const W = innerWidth, H = innerHeight, V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+    window.RT_FLAGS = { ik: !!P.ik };
+    // two copies: rest (left) and posed (right)
+    const load = async () => { const g = await loadCharacter(THREE, GLTFLoader, P.model); const m = g.scene;
+      m.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.material = new THREE.MeshLambertMaterial({ name: o.material.name, map: o.material.map, transparent: o.material.transparent, alphaTest: o.material.alphaTest, side: THREE.DoubleSide }); } });
+      const find = (re) => { let f = null; m.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
+      const Pw = (b) => V3(0, 0, 0).setFromMatrixPosition(b.matrixWorld);
+      m.updateMatrixWorld(true);
+      const top = find(/^HeadTop_End$/), toe = find(/^LeftToeBase$/), foot = find(/^LeftFoot$/);
+      if (Pw(toe).z < Pw(foot).z) m.rotation.y = Math.PI;
+      m.scale.multiplyScalar(1.92 / (Pw(top).y - Pw(toe).y)); m.updateMatrixWorld(true);
+      m.traverse((o) => { if (o.isBone && /^(Left|Right)Arm$/.test(o.name)) o.position.multiplyScalar(P.shoulderW); });   // same as the scenes
+      m.updateMatrixWorld(true);
+      const bone = (n) => find(new RegExp('^' + n + '$'));
+      return { g, m, bone, Pw }; };
+    const R = await load(), A = await load();
+    const scene = new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xffffff, 0x777788, 2.4)); scene.add(R.m, A.m);
+    R.m.position.x = -0.9; A.m.position.x = 0.9; R.m.updateMatrixWorld(true); A.m.updateMatrixWorld(true);
+    const retarget = makeRetarget(THREE, A.m, A.bone);
+    const clip = await loadMocap(THREE, GLTFLoader, P.clip);
+    const legOf = (p) => p[0].distanceTo(p[1]) + p[1].distanceTo(p[2]);
+    const LEG = legOf(['LeftUpLeg', 'LeftLeg', 'LeftFoot'].map((n) => A.Pw(A.bone(n))));
+    const M0 = clip.sample(0), SC = LEG / legOf([M0.LThigh, M0.LShin, M0.LFoot]);
+    const M = clip.sample(P.t), piv = M.Hip.clone().setY(0);
+    const xf = (v) => v.clone().sub(piv).multiplyScalar(SC).add(V3(0.9, -clip.floor * SC + 0.04, 0));
+    retarget(M, xf);
+    // ---- measurements ----
+    const out = [];
+    // 1. bone world scale (should equal the model scale on all axes)
+    const S0 = A.m.scale.x; const bad = [];
+    A.m.traverse((o) => { if (!o.isBone) return; const s = new THREE.Vector3(); o.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
+      if (Math.abs(s.x / S0 - 1) > 0.01 || Math.abs(s.y / S0 - 1) > 0.01 || Math.abs(s.z / S0 - 1) > 0.01) bad.push(o.name + ' ' + s.toArray().map((v) => (v / S0).toFixed(3))); });
+    out.push('BONE_SCALE_OFF ' + bad.length + ' ' + bad.slice(0, 8).join(' | '));
+    // 2. bone lengths (parent->child) posed vs rest
+    const lens = [];
+    A.m.traverse((o) => { if (!o.isBone || !o.parent || !o.parent.isBone) return; const r = R.bone(o.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      if (!r) return; const la = A.Pw(o).distanceTo(A.Pw(o.parent)), lr = R.Pw(r).distanceTo(R.Pw(r.parent)); if (lr > 0.01 && Math.abs(la / lr - 1) > 0.01) lens.push(`${o.parent.name}->${o.name} ${(la / lr).toFixed(3)}`); });
+    out.push('BONE_LEN_CHANGED ' + lens.length + ' ' + lens.slice(0, 10).join(' | '));
+    // 3. mesh stretch: for each region (vertices whose dominant bone is X), the spread of the region measured in X's own frame, posed / rest
+    const regions = {};
+    const collect = (rig, key) => rig.m.traverse((o) => { if (!o.isSkinnedMesh) return; const geo = o.geometry, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, pos = geo.attributes.position, bones = o.skeleton.bones;
+      const v = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i += 3) { let best = 0, b = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > best) { best = w; b = si.getComponent(i, k); } }
+        if (best < 0.95) continue; const bn = bones[b].name; if (!/^(Head|Neck|Spine2|Spine1|Spine|Hips|LeftArm|RightArm|LeftShoulder|RightShoulder|LeftForeArm|LeftUpLeg)$/.test(bn)) continue;
+        v.fromBufferAttribute(pos, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld);
+        const inv = new THREE.Matrix4().copy(bones[b].matrixWorld).invert(); const local = v.clone().applyMatrix4(inv);
+        ((regions[bn] = regions[bn] || {})[key] = regions[bn][key] || []).push(local); } });
+    collect(R, 'rest'); collect(A, 'pose');
+    const spread = (pts) => { const b = new THREE.Box3().setFromPoints(pts); return b.getSize(new THREE.Vector3()); };
+    for (const bn in regions) { const r = regions[bn]; if (!r.rest || !r.pose) continue; const a = spread(r.rest), b = spread(r.pose);
+      out.push(`REGION ${bn} n=${r.pose.length} rest=${a.toArray().map((x) => x.toFixed(3))} pose/rest=${[b.x / a.x, b.y / a.y, b.z / a.z].map((x) => x.toFixed(3))}`); }
+    // 4. twist of upper arms / thighs vs a plain swing from rest (deg)
+    for (const n of ['LeftArm', 'RightArm', 'LeftUpLeg', 'RightUpLeg', 'LeftForeArm', 'RightForeArm']) {
+      const b = A.bone(n), child = b.children.find((c) => c.isBone); if (!child) continue;
+      const q = new THREE.Quaternion(); b.getWorldQuaternion(q); const qr = new THREE.Quaternion(); R.bone(n).getWorldQuaternion(qr);
+      const d = qr.clone().invert().multiply(q), axis = child.position.clone().normalize();
+      const tw = 2 * Math.atan2(new THREE.Vector3(d.x, d.y, d.z).dot(axis), d.w) * 57.3;
+      out.push(`TWIST ${n} ${(((tw + 540) % 360) - 180).toFixed(0)} deg`); }
+    if (P.radius) { // body radius around the hips->neck axis, by height fraction (vertices skinned to torso/hip bones only)
+      const h0 = R.Pw(R.bone('Hips')), h1 = R.Pw(R.bone('Neck')), ax = h1.clone().sub(h0), L = ax.length(); ax.normalize();
+      const bins = Array(12).fill(null);
+      R.m.traverse((o) => { if (!o.isSkinnedMesh || !/Body_00_SKIN/.test(o.material.name)) return; const geo = o.geometry, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, pos = geo.attributes.position, bones = o.skeleton.bones, v = new THREE.Vector3();
+        for (let i = 0; i < pos.count; i += 2) { let best = 0, b = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > best) { best = w; b = si.getComponent(i, k); } }
+          if (!/^(Hips|Spine|Spine1|Spine2|LeftUpLeg|RightUpLeg)$/.test(bones[b].name)) continue;
+          v.fromBufferAttribute(pos, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld);
+          const d = v.clone().sub(h0), k = d.dot(ax) / L; if (k < -0.3 || k > 1) continue; const bi = Math.min(11, Math.floor((k + 0.3) / 1.3 * 12));
+          const r = d.sub(ax.clone().multiplyScalar(d.dot(ax))); bins[bi] = bins[bi] || [1, -1, 1, -1]; const B = bins[bi]; B[0] = Math.min(B[0], r.x); B[1] = Math.max(B[1], r.x); B[2] = Math.min(B[2], r.z); B[3] = Math.max(B[3], r.z); } });
+      out.push('BOX (k: x min..max / z min..max, m, rest model faces ' + (R.m.rotation.y ? '-z' : '+z') + ') ' + bins.map((r, i) => `${(-0.3 + (i + 0.5) * 1.3 / 12).toFixed(2)}:${r ? r.map((v) => v.toFixed(2)).join(',') : '-'}`).join(' ')); }
+    console.error(out.join('\n'));
+    // ---- picture ----
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); renderer.setSize(W, H); document.body.appendChild(renderer.domElement);
+    scene.background = new THREE.Color(0xe9e9ee); scene.add(new THREE.GridHelper(6, 24, 0x999999, 0xcccccc));
+    const cam = new THREE.PerspectiveCamera(28, W / H, 0.05, 50);
+    const dir = { front: V3(0, 0.15, 1), back: V3(0, 0.15, -1), side: V3(1, 0.1, 0) }[P.view];
+    cam.position.copy(dir.clone().normalize().multiplyScalar(7.5).add(V3(0, 1.1, 0))); cam.lookAt(0, 1.1, 0);
+    VM.onFrame(() => renderer.render(scene, cam));
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

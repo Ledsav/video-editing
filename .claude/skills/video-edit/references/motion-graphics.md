@@ -14,6 +14,7 @@ Chromium frame by frame (deterministic, any resolution) and composited with alph
 <meta name="vedit:blend" content="normal">        <!-- normal (alpha) | screen (draw on black: light, glow, flares) -->
 <meta name="vedit:description" content="...">
 <meta name="vedit:params" content="title; accent: CSS color">
+<meta name="vedit:deps" content="lib.js">          <!-- local scripts/data the page loads: part of the render cache key -->
 <style>
   html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: transparent; }
   /* use vw / vh units only so the design works at any resolution and aspect ratio */

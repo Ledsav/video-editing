@@ -35,6 +35,7 @@ Rendering is deterministic: every frame is produced by seeking the page to time 
 <meta name="vedit:kind" content="scene">          <!-- full-screen, opaque: rendered fast (JPEG frames, H.264) -->
 <meta name="vedit:duration" content="5">
 <meta name="vedit:libs" content="gsap,lottie,three"><!-- only what you use; all offline -->
+<meta name="vedit:deps" content="lib.js,data.json"> <!-- local files the page loads: part of the render cache key -->
 <script>
   const P = VM.params({ title: 'Hello' });          // spec params override these defaults
   // Option A: GSAP. Build timelines at load; the renderer seeks the (paused) global timeline.
@@ -54,6 +55,8 @@ Rendering is deterministic: every frame is produced by seeking the page to time 
 - three.js: `new THREE.WebGLRenderer({ preserveDrawingBuffer: true, alpha: true })` and render inside
   `VM.onFrame`. WebGL is software-rendered: keep geometry moderate (< ~300k triangles).
 - Overlays (not full-screen) omit `vedit:kind scene`; they render with alpha (see video-edit skill).
+- Renders are cached by the page's text and params. A page that loads its own scripts or data lists them in
+  `vedit:deps` (relative to the page) so editing them re-renders it; without it, edits to those files reuse stale renders.
 
 Runtime helpers (`VM`): `params`, `duration`, `prog`, `tween`, `env`, `keys` (keyframes),
 `spring`, `stagger`, `split` (chars/words), `draw` (SVG line drawing), `count` (number counters),
