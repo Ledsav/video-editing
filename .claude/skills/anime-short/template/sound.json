@@ -1,0 +1,67 @@
+{
+  "out": "sfx/sfx.wav",
+  "peak": 0.9,
+  "cues": [
+    {
+      "type": "stamp",
+      "at": [
+        "op+0.509",
+        "op+0.937",
+        "op+1.366"
+      ],
+      "gain": 0.6
+    },
+    {
+      "type": "whoosh",
+      "at": "fight:shot1+0.1",
+      "dur": 0.5,
+      "f0": 300,
+      "f1": 2400,
+      "gain": 0.5
+    },
+    {
+      "type": "charge",
+      "end": "fight:impact0",
+      "dur": 1.0,
+      "gain": 0.8
+    },
+    {
+      "type": "swish",
+      "at": "fight:impact0-0.12",
+      "gain": 0.6
+    },
+    {
+      "type": "cannon",
+      "at": "fight:impact0"
+    },
+    {
+      "type": "punch",
+      "at": "fight:impact0",
+      "gain": 0.7
+    },
+    {
+      "type": "ring",
+      "at": "fight:impact0",
+      "dur": 1.0,
+      "gain": 0.35
+    },
+    {
+      "type": "taiko",
+      "at": [
+        "fight:impact0+0.25",
+        "fight:impact0+0.5"
+      ],
+      "gain": 0.3
+    },
+    {
+      "type": "debris",
+      "at": "fight:impact0+0.8",
+      "gain": 0.4
+    },
+    {
+      "type": "sparkle",
+      "at": "ed+0.08",
+      "gain": 0.4
+    }
+  ]
+}

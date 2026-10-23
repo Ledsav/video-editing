@@ -1,0 +1,192 @@
+{
+  "brief": {
+    "prompt": "Demo anime short: a boxer's one punch. Title card (一撃！) -> the stance (close-up, slow) -> the wind-up -> the punch as an ink impact frame (three drawings) -> the release -> the end card (つづく).",
+    "sound": "sound.json: a power charge into the punch, a cannon on contact, time-freeze ring and taiko hits on each new drawing; music.json: the song cut to the picture"
+  },
+  "output": {
+    "path": "out/anime_short.mp4",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "crf": 16
+  },
+  "timeline": [
+    {
+      "id": "op",
+      "hyperframes": "anime_pages.html",
+      "duration": 3.5,
+      "variables": {
+        "page": "op",
+        "bpm": 140,
+        "down": 0.08,
+        "title": [
+          "一",
+          "撃",
+          "！"
+        ],
+        "romaji": "ICHIGEKI!",
+        "english": "ONE PUNCH",
+        "ep": "第1話",
+        "epTitle": "最初の一撃",
+        "epEn": "EPISODE 1 &nbsp;·&nbsp; THE FIRST PUNCH",
+        "art": "assets/art/op_key.png",
+        "artNeg": "assets/art/op_key_neg.png"
+      }
+    },
+    {
+      "id": "fight",
+      "hyperframes": "anime_shot.html",
+      "duration": 6.2,
+      "variables": {
+        "character": "assets/characters/HairSample_Male.vrm",
+        "materials": {
+          "Tops": "#b8141f",
+          "Bottoms": "#1a1d29"
+        },
+        "clips": {
+          "box": "assets/mocap/cmu/13_17.bvh"
+        },
+        "shots": [
+          {
+            "name": "stance",
+            "dur": 1.6,
+            "clip": "box",
+            "from": 20.85,
+            "to": 21.25,
+            "face": {
+              "angry": 0.5
+            },
+            "cam": {
+              "target": "Head",
+              "orbit": 20,
+              "dist": 0.75,
+              "height": 0.03,
+              "lookY": 0.07,
+              "fov": 30,
+              "to": {
+                "orbit": 8,
+                "dist": 0.6
+              }
+            }
+          },
+          {
+            "name": "wind",
+            "dur": 0.9,
+            "clip": "box",
+            "from": 21.25,
+            "to": 21.6,
+            "speed": 0.4,
+            "face": {
+              "angry": 0.7
+            },
+            "cam": {
+              "target": "Hips",
+              "orbit": 70,
+              "dist": 3.0,
+              "height": 0.2,
+              "fov": 36,
+              "to": {
+                "orbit": 85,
+                "dist": 2.6
+              }
+            }
+          },
+          {
+            "name": "hit",
+            "dur": 2.2,
+            "clip": "box",
+            "from": 21.6,
+            "to": 22.3,
+            "fist": 1,
+            "face": {
+              "angry": 0.8,
+              "a": 1
+            },
+            "impact": {
+              "at": {
+                "clip": 21.83
+              },
+              "hold": 0.8,
+              "target": "RightHand",
+              "angles": true
+            },
+            "cam": {
+              "target": "RightHand",
+              "orbit": 40,
+              "dist": 2.2,
+              "height": 0.1,
+              "fov": 40,
+              "follow": false,
+              "to": {
+                "orbit": 30,
+                "dist": 1.9
+              }
+            }
+          },
+          {
+            "name": "after",
+            "dur": 1.5,
+            "clip": "box",
+            "from": 22.3,
+            "to": 23.5,
+            "speed": 0.3,
+            "face": {
+              "angry": 0.4
+            },
+            "cam": {
+              "target": "Hips",
+              "orbit": -30,
+              "dist": 4.5,
+              "height": 0.4,
+              "fov": 34,
+              "to": {
+                "orbit": -40
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ed",
+      "hyperframes": "anime_pages.html",
+      "duration": 3.4,
+      "variables": {
+        "page": "ed",
+        "title": [
+          "一",
+          "撃",
+          "！"
+        ],
+        "romaji": "ICHIGEKI!",
+        "panel": "assets/art/ed_panel.png",
+        "motto": "負けない",
+        "mottoEn": "NEVER BACK DOWN.",
+        "mottoAccent": "DOWN.",
+        "tbc": "つづく",
+        "tbcEn": "TO BE CONTINUED",
+        "credit": "CHARACTER: VROID \"HAIRSAMPLE_MALE\" (PIXIV, CC0) &nbsp;·&nbsp; MOTION CAPTURE: CMU GRAPHICS LAB MOTION CAPTURE DATABASE (MOCAP.CS.CMU.EDU) &nbsp;·&nbsp; FONTS: DELA GOTHIC ONE, YUJI BOKU (SIL OFL)"
+      }
+    }
+  ],
+  "music": [
+    {
+      "path": "music/op.wav",
+      "start": 0,
+      "volume": 0.85
+    },
+    {
+      "path": "music/score.wav",
+      "start": 0,
+      "volume": 0.85
+    },
+    {
+      "path": "sfx/sfx.wav",
+      "start": 0,
+      "volume": 1.0
+    }
+  ],
+  "audio": {
+    "loudness": -14
+  }
+}

@@ -127,17 +127,28 @@ class TimelineTests(unittest.TestCase):
         self.assertEqual(p.clips[1].frames, 150)                       # its own data-duration (5 s)
         self.assertEqual(p.clips[0].grade_start["saturation"], 1.0)   # scenes keep their own colours
 
-    def test_old_formats_explain_the_migration(self):
-        with self.assertRaisesRegex(Exception, "hyperframes"):
-            self.plan(timeline=[{"id": "s", "scene": "scene_kinetic"}])
-        with self.assertRaisesRegex(Exception, "hyperframes"):
-            self.plan(timeline=[{"id": "a", "source": "a", "in": 0, "out": 1},
+    def test_old_renderer_keys_still_work(self):
+        p = self.plan(timeline=[{"id": "s", "scene": "scene_kinetic", "params": {"lines": ["A"]}},
                                 {"id": "b", "source": "b", "in": 0, "out": 1,
-                                 "transition": {"type": "mograph", "template": "shape_wipe"}}])
+                                 "transition": {"type": "mograph", "template": "shape_wipe", "params": {"colors": ["#fff"]}}}])
+        self.assertEqual(p.clips[0].kind, "scene")
+        self.assertEqual(p.clips[0].raw["variables"], {"lines": ["A"]})
+        self.assertEqual(p.clips[1].transition.overlay, {"hyperframes": "shape_wipe", "variables": {"colors": ["#fff"]}})
 
     def test_bad_source_range(self):
         with self.assertRaises(Exception):
             build_plan(base_spec(timeline=[{"source": "a", "in": 10, "out": 12}]), self.dir)
+
+    def test_page_deps_enter_the_cache_key(self):
+        page = self.dir / "dep_page.html"
+        page.write_text('<meta name="vedit:deps" content="lib.js, missing.js">')
+        (self.dir / "lib.js").write_text("const A = 1;")
+        before = HF.deps(page)
+        (self.dir / "lib.js").write_text("const A = 2;")
+        self.assertEqual(before, ["const A = 1;"])
+        self.assertNotEqual(before, HF.deps(page))
+        page.write_text("<p>no deps</p>")
+        self.assertEqual(HF.deps(page), [])
 
 
 class HyperFramesTests(unittest.TestCase):
@@ -188,6 +199,64 @@ class HyperFramesTests(unittest.TestCase):
             html = (b / "index.html").read_text()
             self.assertNotIn('"pic.png"', html)
             self.assertEqual(len(list((b / "assets/media").glob("*.png"))), 1)
+
+
+class PageTests(unittest.TestCase):
+    """Single vedit pages (the old renderer's contract) built to run inside HyperFrames."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp(prefix="vedit_page_"))
+        (self.dir / "lib").mkdir()
+        (self.dir / "scenes").mkdir()
+        (self.dir / "lib" / "shared.js").write_text("window.SHARED = 1;")
+        (self.dir / "scenes" / "pic.png").write_bytes(b"png")
+        self.page = self.dir / "scenes" / "a.html"
+        self.page.write_text('<!doctype html><html><head><meta charset="utf-8">\n'
+                             '<meta name="vedit:duration" content="2.5"><meta name="vedit:libs" content="gsap">\n'
+                             '<script src="../lib/shared.js"></script></head>\n'
+                             '<body><script>window.VM_READY = Promise.resolve(); VM.onFrame(() => {});</script></body></html>')
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_page_is_resolved_and_described(self):
+        page = HF.resolve("scenes/a.html", self.dir)
+        self.assertTrue(HF.is_page(page))
+        self.assertEqual(HF.meta(page)["duration"], 2.5)
+
+    def test_page_build(self):
+        b = HF.build(self.page, self.dir / "work", {"img": "scenes/pic.png", "n": 3}, size=(640, 360), base=self.dir)
+        html = (b / "index.html").read_text()
+        # the tree its ../ references reach is mirrored, and the page addresses it from its own folder
+        self.assertTrue((b / "lib" / "shared.js").exists())
+        self.assertFalse((b / "work").exists())
+        self.assertIn('<base href="scenes/">', html)
+        self.assertIn('src="../_vedit/vendor/gsap/dist/gsap.min.js"', html)
+        self.assertLess(html.index("_vedit/runtime.js"), html.index("../lib/shared.js"))
+        self.assertRegex(html, r'<body data-composition-id="vedit-page" [^>]*data-duration="2.5000" '
+                               r'data-width="640" data-height="360" data-no-timeline')
+        self.assertIn('"img": "pic.png"', html)          # edit-relative asset, addressed from the page
+        self.assertIn('"waitReady": true', html)
+        self.assertGreater(html.index("window.VM.__register();"), html.index("window.VM_READY ="))   # after page scripts
+        self.assertEqual(HF.meta(b)["duration"], 2.5)
+
+    @unittest.skipUnless(HF.available()[0], "HyperFrames not installed")
+    def test_page_console(self):
+        self.page.write_text('<html><head><meta name="vedit:duration" content="2"></head><body><script>'
+                             'VM.onFrame((t) => { if (t > 0) console.error("FRAME " + t.toFixed(1)); });'
+                             'console.error("LOADED"); missing();</script></body></html>')
+        lines = HF.page_console(self.page, self.dir / "work", times=[0.5])
+        self.assertIn("[page console] LOADED", lines)
+        self.assertIn("[page error] missing is not defined", lines)
+        self.assertIn("[page console] FRAME 0.5", lines)
+
+    def test_page_keys_cover_declared_deps(self):
+        b1 = HF.build(self.page, self.dir / "work")
+        self.page.write_text(self.page.read_text().replace('<meta name="vedit:libs"', '<meta name="vedit:deps" content="../lib/shared.js"><meta name="vedit:libs"'))
+        b2 = HF.build(self.page, self.dir / "work")
+        (self.dir / "lib" / "shared.js").write_text("window.SHARED = 2;")
+        b3 = HF.build(self.page, self.dir / "work")
+        self.assertEqual(len({b1, b2, b3}), 3)
 
 
 class RenderTests(unittest.TestCase):

@@ -1,0 +1,125 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="3.5">
+<meta name="vedit:deps" content="anime.js">
+<meta name="vedit:description" content="Anime opening / ending pages. page 'op': the title card, the Japanese title stamped character by character on the song's beats over ink key art (flipping to its negative on the last stamp), the romaji and English titles, the episode badge. page 'ed': the end card, a tilted manga panel, a vertical brush motto, the English motto, つづく / TO BE CONTINUED, the logo and a credits strip. Every text, colour, font and image is a param.">
+<script src="anime.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #000; } #stage { position: absolute; inset: 0; overflow: hidden; }
+  .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .stamp { position: absolute; will-change: transform; line-height: 1; white-space: nowrap; }</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ page: 'op', bpm: 140, down: 0.08,
+    title: ['打', 'ち', '返', 'せ！'], romaji: 'UCHIKAESE!', english: 'HIT IT BACK',
+    ep: '第1話', epTitle: '最後の一点', epEn: 'EPISODE 1 &nbsp;·&nbsp; THE LAST POINT',
+    art: 'assets/art/op_key.png', artNeg: 'assets/art/op_key_neg.png', panel: 'assets/art/ed_panel.png',
+    motto: '諦めない', mottoEn: 'NEVER GIVE UP.', mottoAccent: 'UP.', tbc: 'つづく', tbcEn: 'TO BE CONTINUED',
+    credit: 'CREDITS', colors: {}, fonts: {}, flashOut: 3.32, fadeAt: 2.95 });
+  const C = Object.assign({ accent: '#f6c300', band: '#1f3fa8', ink: '#05070d', paper: '#f1ece0', red: '#c8102e' }, P.colors);
+  const F = Object.assign({ jp: 'assets/fonts/DelaGothicOne-Regular.ttf', brush: 'assets/fonts/YujiBoku-Regular.ttf' }, P.fonts);
+  const Y = C.accent, B = C.band, INK = C.ink, CR = C.paper;
+  const JP = "'Dela Gothic One', 'Noto Sans CJK JP', sans-serif", BRUSH = "'Yuji Boku', 'Noto Serif CJK JP', serif";
+  const DISPLAY = "'Anton', 'Bebas Neue', sans-serif", TEXT = "'Montserrat', 'Inter', sans-serif";
+  const stage = document.getElementById('stage'), W = innerWidth, H = innerHeight;
+  const BEAT = 60 / P.bpm, beat = (k) => P.down + k * BEAT;
+  const clamp = (x) => Math.min(1, Math.max(0, x));
+  const stampAt = (T, a) => (T < a ? null : VM.prog(T, a, 0.13, 'outBack'));
+  window.VM_READY = (async () => {
+    await loadFonts([['Dela Gothic One', F.jp], ['Yuji Boku', F.brush]]);
+    // an image, or (missing file) a halftone ink gradient in its place
+    const img = (src, css = {}, parent = stage) => { const i = document.createElement('img'); i.className = 'art'; Object.assign(i.style, css);
+      i.onerror = () => { i.removeAttribute('src'); i.style.background = `radial-gradient(ellipse at 60% 40%, ${B} 0%, ${INK} 75%)`; };
+      i.src = src; parent.appendChild(i); return i; };
+    const halftone = (op, col = 'rgba(5,7,13,0.9)') => el('div', { position: 'absolute', inset: 0, mixBlendMode: 'multiply', opacity: op, pointerEvents: 'none',
+      backgroundImage: `radial-gradient(circle, ${col} 0.28vmin, transparent 0.32vmin)`, backgroundSize: '0.95vmin 0.95vmin' });
+    const sl = el('canvas', { position: 'absolute', inset: 0, width: '100vw', height: '100vh', pointerEvents: 'none' }); sl.width = W; sl.height = H; const sg = sl.getContext('2d');
+    const speed = (T, a, cx, cy, col) => { sg.clearRect(0, 0, W, H); if (a <= 0) return; const R = VM.rand(3 + Math.floor(T * 12)), diag = Math.hypot(W, H);
+      sg.fillStyle = col; for (let i = 0; i < 70; i++) { const th = R() * Math.PI * 2, w = 0.002 + R() * 0.008, r0 = diag * (0.28 + R() * 0.2);
+        sg.globalAlpha = a * (0.4 + R() * 0.6); sg.beginPath(); sg.moveTo(cx + Math.cos(th) * r0, cy + Math.sin(th) * r0);
+        sg.lineTo(cx + Math.cos(th - w) * diag, cy + Math.sin(th - w) * diag); sg.lineTo(cx + Math.cos(th + w) * diag, cy + Math.sin(th + w) * diag); sg.closePath(); sg.fill(); }
+      sg.globalAlpha = 1; };
+    addFinish({ grain: 0.07, vignette: 0.35 });
+    const flash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 40 });
+    const black = el('div', { position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 41 });
+    const portrait = H > W;
+
+    if (P.page === 'op') {
+      // ======== the title card ========
+      const art = img(P.art), neg = img(P.artNeg, { opacity: 0 });
+      halftone(0.25);
+      const band = el('div', { position: 'absolute', left: '-10vw', width: '120vw', top: '50vh', height: '30vh', background: B, transform: 'rotate(-7deg) translateX(-130vw)', zIndex: 3 });
+      const rule = el('div', { position: 'absolute', left: '-10vw', width: '120vw', top: '79vh', height: '1.6vh', background: Y, transform: 'rotate(-7deg) translateX(130vw)', zIndex: 3 });
+      // the logo, one stamp per beat; sized so the whole title fits the frame
+      const adv = P.title.map((c) => (c.length > 1 ? 29 : 17)), sc = Math.min(1, (portrait ? 84 : 80) / adv.reduce((a, b) => a + b, 0)) * (portrait ? 0.55 : 1);
+      const logo = el('div', { position: 'absolute', left: '7vw', top: portrait ? '40vh' : '38vh', height: '30vh', zIndex: 6, transform: 'rotate(-7deg)', transformOrigin: '0 50%' });
+      let x = 0;
+      const chars = P.title.map((c, i) => { const d = el('div', { font: `400 ${27 * sc}vh ${JP}`, color: '#fff', WebkitTextStroke: `${1.4 * sc}vh ${INK}`, paintOrder: 'stroke fill',
+          textShadow: `${1.1 * sc}vh ${1.1 * sc}vh 0 ${Y}, ${2.2 * sc}vh ${2.2 * sc}vh 0 ${INK}`, left: `${x}vw`, top: `${[0, 3.5, -1.5, 2.5][i % 4] * sc}vh`, opacity: 0 }, logo, c); d.className = 'stamp'; x += adv[i] * sc * (portrait ? 1.75 : 1); return d; });
+      const romaji = el('div', { position: 'absolute', left: '10vw', top: '79vh', font: `400 ${portrait ? 5 : 9.5}vh ${DISPLAY}`, letterSpacing: '0.12em', color: Y, WebkitTextStroke: '0.35vh ' + INK, paintOrder: 'stroke fill',
+        transform: 'rotate(-7deg)', transformOrigin: '0 50%', zIndex: 6, opacity: 0, clipPath: 'inset(0 100% 0 0)', whiteSpace: 'nowrap' }, stage, P.romaji);
+      const eng = el('div', { position: 'absolute', left: portrait ? '12vw' : '44vw', top: portrait ? '86vh' : '79vh', font: `800 ${portrait ? 2.2 : 3.6}vh ${TEXT}`, letterSpacing: '0.45em', color: '#fff', WebkitTextStroke: '0.25vh ' + INK, paintOrder: 'stroke fill',
+        transform: 'rotate(-7deg)', transformOrigin: '0 50%', zIndex: 6, opacity: 0, whiteSpace: 'nowrap' }, stage, `— ${P.english} —`);
+      const badge = el('div', { position: 'absolute', right: '5vw', top: portrait ? '12vh' : '7vh', zIndex: 7, opacity: 0, transform: 'translateX(40vw)' });
+      el('div', { background: INK, padding: '1.4vh 3.2vh 1.6vh 4vh', clipPath: 'polygon(4% 0, 100% 0, 96% 100%, 0 100%)' }, badge,
+        `<div style="display:flex;align-items:baseline;gap:2.2vh"><span style="font:400 ${portrait ? 3.4 : 6}vh ${JP};color:${Y}">${P.ep}</span><span style="font:400 ${portrait ? 4 : 7.2}vh ${BRUSH};color:#fff">「${P.epTitle}」</span></div>`
+        + `<div style="font:700 ${portrait ? 1.2 : 2}vh ${TEXT};letter-spacing:0.45em;color:#fff;text-align:right;margin-top:0.6vh">${P.epEn}</div>`);
+      const N = P.title.length, STAMPS = P.title.map((_, i) => beat(i + 1)), NEG_AT = STAMPS[N - 1];
+      VM.onFrame((T) => {
+        const s0 = T < beat(0) ? 0 : 1, push = 1.06 - 0.06 * clamp((T - beat(0)) / 3.4), slam = T >= beat(0) ? 0.18 * Math.exp(-(T - beat(0)) * 14) : 0;
+        art.style.opacity = s0 * (T < NEG_AT ? 1 : 0); neg.style.opacity = T >= NEG_AT ? 1 : 0;
+        const shake = STAMPS.reduce((a, t) => a + (T >= t ? Math.exp(-(T - t) * 22) : 0), 0) * 1.2;
+        const sx = VM.noise(T * 60, 1) * shake, sy = VM.noise(T * 60, 2) * shake;
+        [art, neg].forEach((e) => (e.style.transform = `translate(${sx}vh, ${sy}vh) scale(${push + slam})`));
+        const flick = STAMPS.some((t) => T >= t && T < t + 1 / 30);           // a one-frame invert on each stamp
+        stage.style.filter = flick ? 'invert(1)' : 'none';
+        speed(T, T >= beat(0) ? Math.exp(-(T - beat(0)) * 2.2) * 0.9 + (flick ? 0.6 : 0) : 0, W * 0.62, H * 0.38, T >= NEG_AT ? INK : '#fff');
+        band.style.transform = `rotate(-7deg) translateX(${-130 * (1 - VM.prog(T, beat(1) - 0.05, 0.22, 'outCubic'))}vw)`;
+        rule.style.transform = `rotate(-7deg) translateX(${130 * (1 - VM.prog(T, beat(2) - 0.05, 0.22, 'outCubic'))}vw)`;
+        chars.forEach((d, i) => { const k = stampAt(T, STAMPS[i]); d.style.opacity = k === null ? 0 : 1;
+          if (k !== null) d.style.transform = `scale(${2.4 - 1.4 * k}) rotate(${(1 - k) * (i % 2 ? 8 : -8)}deg)`;
+          if (T >= NEG_AT) { d.style.color = Y; d.style.textShadow = `${1.1 * sc}vh ${1.1 * sc}vh 0 ${B}, ${2.2 * sc}vh ${2.2 * sc}vh 0 ${INK}`; } });
+        const r = VM.prog(T, beat(N + 1), 0.25, 'outCubic');
+        romaji.style.opacity = T >= beat(N + 1) ? 1 : 0; romaji.style.clipPath = `inset(0 ${100 - 100 * r}% 0 0)`;
+        eng.style.opacity = VM.prog(T, beat(N + 1) + 0.12, 0.2);
+        const b = VM.prog(T, beat(N + 2), 0.28, 'outBack'); badge.style.opacity = T >= beat(N + 2) ? 1 : 0; badge.style.transform = `translateX(${(1 - b) * 40}vw)`;
+        flash.style.opacity = T >= beat(0) && T < beat(0) + 0.12 ? 1 - (T - beat(0)) / 0.12 : Math.max(0, VM.prog(T, P.flashOut, 0.14));
+      });
+    } else {
+      // ======== the end card ========
+      el('div', { position: 'absolute', inset: 0, background: CR });
+      halftone(0.18);
+      const band = el('div', { position: 'absolute', left: '-10vw', width: '130vw', top: '74vh', height: '22vh', background: B, transform: 'rotate(-5deg)', zIndex: 2 });
+      const rule = el('div', { position: 'absolute', left: '-10vw', width: '130vw', top: '71vh', height: '1.4vh', background: Y, transform: 'rotate(-5deg)', zIndex: 2 });
+      const panel = el('div', { position: 'absolute', left: '5vw', top: portrait ? '16vh' : '7vh', width: portrait ? '64vw' : '62vw', height: portrait ? '40vh' : '58vh', overflow: 'hidden', border: '1.1vh solid ' + INK, boxShadow: `1.6vh 1.6vh 0 ${INK}`,
+        transform: 'rotate(-3deg)', zIndex: 3, background: INK });
+      const pic = img(P.panel, { left: '-6%', top: '-12%', width: '112%', height: '124%', inset: 'auto' }, panel);
+      const motto = el('div', { position: 'absolute', right: portrait ? '4vw' : '9vw', top: portrait ? '18vh' : '6vh', writingMode: 'vertical-rl', font: `400 ${Math.min(portrait ? 7 : 14, (portrait ? 34 : 56) / Math.max(1, [...P.motto].length))}vh ${BRUSH}`, color: INK, letterSpacing: '0.05em', zIndex: 4, clipPath: 'inset(0 0 100% 0)' }, stage, P.motto);
+      const mottoRed = el('div', { position: 'absolute', right: portrait ? '2vw' : '6.2vw', top: portrait ? '19vh' : '8vh', width: '1.1vh', height: portrait ? '36vh' : '52vh', background: C.red, zIndex: 3, transform: 'scaleY(0)', transformOrigin: '50% 0' });
+      const en = P.mottoAccent ? P.mottoEn.replace(P.mottoAccent, `<span style="color:${Y}">${P.mottoAccent}</span>`) : P.mottoEn;
+      const never = el('div', { position: 'absolute', left: '6vw', top: portrait ? '62vh' : '76vh', font: `400 ${portrait ? 6.5 : 13}vh ${DISPLAY}`, letterSpacing: '0.02em', color: '#fff', WebkitTextStroke: '0.5vh ' + INK, paintOrder: 'stroke fill',
+        textShadow: `0.9vh 0.9vh 0 ${INK}`, transform: 'rotate(-5deg)', transformOrigin: '0 50%', zIndex: 5, opacity: 0, whiteSpace: 'nowrap' }, stage, en);
+      const tbc = el('div', { position: 'absolute', right: '5vw', bottom: portrait ? '12vh' : '8vh', textAlign: 'right', zIndex: 6 });
+      const tbcJ = el('div', { font: `400 ${portrait ? 8 : 16}vh ${BRUSH}`, color: '#fff', WebkitTextStroke: `${portrait ? 0.8 : 1.5}vh ${INK}`, paintOrder: 'stroke fill', textShadow: `1vh 1vh 0 ${INK}`, clipPath: 'inset(-5vh 100% -5vh -5vh)', lineHeight: 1 }, tbc, P.tbc);
+      const tbcE = el('div', { font: `800 ${portrait ? 1.5 : 2.6}vh ${TEXT}`, letterSpacing: '0.5em', color: Y, WebkitTextStroke: '0.3vh ' + INK, paintOrder: 'stroke fill', marginTop: '0.6vh', opacity: 0 }, tbc, P.tbcEn);
+      const logo = el('div', { position: 'absolute', left: '3vw', top: portrait ? '8vh' : '3vh', zIndex: 7, transform: 'rotate(-7deg)', transformOrigin: '0 50%', opacity: 0 });
+      el('div', { font: `400 ${portrait ? 5.5 : 11}vh ${JP}`, color: Y, WebkitTextStroke: `${portrait ? 0.5 : 1}vh ${INK}`, paintOrder: 'stroke fill', textShadow: `0.7vh 0.7vh 0 ${B}, 1.4vh 1.4vh 0 ${INK}`, whiteSpace: 'nowrap' }, logo, P.title.join(''));
+      el('div', { font: `400 ${portrait ? 2 : 4}vh ${DISPLAY}`, letterSpacing: '0.14em', color: '#fff', WebkitTextStroke: '0.4vh ' + INK, paintOrder: 'stroke fill', marginTop: '-0.4vh', marginLeft: '1vh' }, logo, P.romaji);
+      el('div', { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: '3.4vh', padding: '0.6vh 2vw', boxSizing: 'border-box', background: INK, textAlign: 'center', font: `600 ${portrait ? 0.9 : 1.25}vh ${TEXT}`, letterSpacing: '0.14em', lineHeight: 1.6, color: 'rgba(241,236,224,0.85)', zIndex: 8 }, stage, P.credit);
+      VM.onFrame((T) => {
+        const a = P.down, p = VM.prog(T, a, 0.22, 'outBack');
+        panel.style.transform = `rotate(${-3 - 6 * (1 - p)}deg) scale(${1.25 - 0.25 * p})`;
+        pic.style.transform = `scale(${1 + 0.05 * clamp((T - a) / 3.3)})`;
+        band.style.transform = `rotate(-5deg) translateX(${-140 * (1 - VM.prog(T, a + 0.05, 0.25, 'outCubic'))}vw)`;
+        rule.style.transform = `rotate(-5deg) translateX(${140 * (1 - VM.prog(T, a + 0.12, 0.25, 'outCubic'))}vw)`;
+        motto.style.clipPath = `inset(0 0 ${100 - 100 * VM.prog(T, a + 0.35, 0.6, 'inOutSine')}% 0)`;
+        mottoRed.style.transform = `scaleY(${VM.prog(T, a + 0.3, 0.5, 'outCubic')})`;
+        const n = VM.prog(T, a + 0.7, 0.18, 'outBack'); never.style.opacity = T >= a + 0.7 ? 1 : 0; never.style.transform = `rotate(-5deg) scale(${1.6 - 0.6 * n})`;
+        logo.style.opacity = VM.prog(T, a + 0.9, 0.2);
+        tbcJ.style.clipPath = `inset(-5vh ${100 - 100 * VM.prog(T, a + 1.45, 0.45, 'inOutSine')}% -5vh -5vh)`; tbcE.style.opacity = VM.prog(T, a + 1.85, 0.25);
+        flash.style.opacity = T >= a && T < a + 0.1 ? 1 - (T - a) / 0.1 : 0;
+        black.style.opacity = VM.prog(T, P.fadeAt, 0.4);
+      });
+    }
+  })();
+</script></body></html>

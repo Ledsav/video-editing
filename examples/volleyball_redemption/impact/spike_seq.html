@@ -1,0 +1,737 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="10.3">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Spike as a shot sequence (male athlete): behind-the-hitter set, close-up, wide approach and jump, POV hand, comic-book impact frame, ball into the court, landing roar. Based on: 3-step approach, double-arm swing, load, takeoff, bow-and-arrow arch, arm whip and wrist snap at contact, follow-through, landing, roar. Speed ramps (near-freeze at contact), crane/punch-in/whip camera, sub-frame motion blur, V200W ball, net, court, flash, shockwave, sweat, ball trail.">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="../scenes/common.js"></script>
+<script src="../styles/mikasa.js"></script>
+<script src="loadglb.js"></script>
+<script src="mocap.js"></script>
+<script src="ballpro.js"></script>
+<script src="stage.js"></script>
+<script src="kit.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #04060c; } #stage { position: absolute; inset: 0; overflow: hidden; }
+  canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }</style></head>
+<body><div id="stage"></div>
+<script type="module">
+  const P = VM.params({ smash: 'mocap/8-Smash-Take2.glb', win: 'mocap/12-Reaction_after_point_obtained-Take3.glb', model: 'vrm/HairSample_Male.vrm', subframes: 5, shutter: 0.5, cel: 0.75 });
+  const stage = document.getElementById('stage'); if (P.volLog) window.RT_VOLLOG = 1; if (P.rtFlags) window.RT_FLAGS = P.rtFlags; if (P.rtLog) window.RT_LOG = 1;   // debug: {ik: false} / {hinge: false}
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const W = innerWidth, H = innerHeight, V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+    // ================= renderer + accumulation canvas (sub-frame motion blur) =================
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const { rt, lensMat, postScene, postCam } = makeAnimePost(THREE, W, H);
+    const { inkMat, inkScene, inkCam } = makeInkPass(THREE, W, H, rt.texture);
+    const INK = (P.ink ?? 1) && !P.clean;
+    if (P.art) { const st = document.createElement('style'); st.textContent = '#stage > :not(canvas), body > :not(#stage):not(script) { display: none !important; }'; document.head.appendChild(st); }   // key-art stills: the picture without any text or overlay            // the comic shot as an ink impact sequence (0: the pop-art comic panel)
+    const env = []; let bgTexRef = null;
+    const comicBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });
+    const rageBg = el('div', { position: 'absolute', inset: 0, opacity: 0 });         // rage close-up: red field + black rays
+    const out = document.createElement('canvas'); out.width = W; out.height = H; out.className = 'out'; stage.appendChild(out);
+    const og = out.getContext('2d');
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(32, W / H, 0.05, 200);
+
+    // ================= arena =================
+    const { bgTex: bgTexRef0, NETZ } = buildArena(THREE, scene, env); bgTexRef = bgTexRef0;
+    // lights
+    scene.add(new THREE.HemisphereLight(0x8a9cd0, 0x3a2016, 0.75));
+    const keyL = new THREE.SpotLight(0xfff2da, 90, 30, 0.38, 0.7, 1.6); keyL.position.set(-2.5, 9, 2.5); keyL.target.position.set(0, 1, 0);
+    keyL.castShadow = true; keyL.shadow.mapSize.set(2048, 2048); keyL.shadow.bias = -0.0004; scene.add(keyL, keyL.target);
+    const rimW = new THREE.DirectionalLight(0xffc062, 9); rimW.position.set(4, 4, 3); scene.add(rimW);
+    const rimW2 = new THREE.DirectionalLight(0xffb24a, 7); rimW2.position.set(-4, 3.5, -4); scene.add(rimW2);
+    const rimB = new THREE.DirectionalLight(0x6f9cff, 2.5); rimB.position.set(3, 2, -4); scene.add(rimB);
+    const fill = new THREE.DirectionalLight(0x9db4ff, 0.6); fill.position.set(-4, 1.5, 1); scene.add(fill);
+    const hitLight = new THREE.PointLight(0xfff0c0, 0, 6, 1.5); scene.add(hitLight);
+    const inkHit = new THREE.PointLight(0xffffff, 0, 0, 1.2), inkRim = new THREE.DirectionalLight(0xffffff, 0); scene.add(inkHit, inkRim, inkRim.target);
+    const camFill = new THREE.DirectionalLight(0xfff1e2, 1.4); scene.add(camFill, camFill.target);
+
+    // ================= athlete =================
+    const gltf = await loadCharacter(THREE, GLTFLoader, P.model);
+    const model = gltf.scene; scene.add(model);
+    if (gltf.isVRM) { await document.fonts.ready; paintKit(THREE, model, { number: '7', bakeK: P.bakeK, skin: P.skin }); }   // VRoid: volleyball kit painted on the body
+    if (P.dumpKit) model.traverse((o) => { if (o.isMesh && /Body_00/.test(o.material.name)) { const c = o.material.map.image, n = o.material.normalMap && o.material.normalMap.image;
+      const sm = (im) => { const k = document.createElement('canvas'); k.width = k.height = 1024; k.getContext('2d').drawImage(im, 0, 0, 1024, 1024); return k.toDataURL('image/jpeg', 0.85); };
+      console.error('KITMAP ' + sm(c)); if (n) console.error('KITNRM ' + sm(n)); } });
+    const bones0 = new Map(); model.traverse((o) => { if (o.isBone) bones0.set(o.name, o); });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xd4d8e0, roughness: 0.45, metalness: 0.05 });
+    const kitMat = new THREE.MeshStandardMaterial({ color: 0x2140a6, roughness: 0.4, metalness: 0.1 });
+    const toonSkin = new THREE.MeshToonMaterial({ color: 0xe6e8ee }), toonKit = new THREE.MeshToonMaterial({ color: 0x2b4fc4 });
+    const bodyMeshes = [];
+    const ramp = (() => { const d = new Uint8Array([125, 190, 255]); const t = new THREE.DataTexture(d, 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
+    const KIT = { Wolf3D_Outfit_Top: 0x2140a6, Wolf3D_Outfit_Bottom: 0x0f1d4a, Wolf3D_Outfit_Footwear: 0xf2f2f2,
+                  N00_007_01_Tops_01_CLOTH: 0x2140a6, N00_001_02_Bottoms_01_CLOTH: 0x0f1d4a, N00_004_01_Shoes_01_CLOTH: 0xf4f4f4 };   // Mikasa kit
+    model.traverse((o) => { if (o.isMesh && o.material && o.material.name === 'Wolf3D_Headwear') o.visible = false; });   // no hat on court
+    model.traverse((o) => { if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false; bodyMeshes.push(o);
+      if (P.model.startsWith('Xbot')) { o.userData.std = o.name.includes('Joints') ? kitMat : skinMat; o.userData.toon = o.name.includes('Joints') ? toonKit : toonSkin; }
+      else {
+        o.userData.src = o.material.name;
+        const m = o.material.clone(); m.roughness = Math.max(0.45, m.roughness ?? 0.6); m.metalness = 0;
+        const kk = KIT[o.name] ?? KIT[o.material.name];
+        if (kk !== undefined) { m.color = new THREE.Color(kk); m.map = null; }
+        const skin = /_(SKIN|FACE)$/.test(o.material.name) && !(gltf.isVRM && /(Body|Face)_00/.test(o.material.name));   // lit skin over-exposes the unlit textures: pull it down a stop (not the VRoid skin: tinted by paintKit, face and body alike)
+        const hair = gltf.isVRM && /_HAIR$/.test(o.material.name);   // VRoid hair: keep it blue-black under the warm rims
+        o.userData.toon = new THREE.MeshToonMaterial({ normalMap: P.relief === 0 ? null : m.normalMap, normalScale: m.normalScale, color: kk ?? (skin ? 0xbcb0aa : hair ? 0x55607a : 0xffffff), map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite, gradientMap: ramp });   // keep double-sided: the face is culled otherwise
+        // painted face details (eyes, brows, lashes, eye lines, mouth) stay unlit like the source: lit, the rim lights turn them orange
+        // (the eye white and iris are single-sided with inverted winding in this export: culled, the eyes rendered as empty holes)
+        if (/_EYE$|Face(Brow|Eyelash|Eyeline|Mouth)/.test(o.material.name)) o.userData.toon = new THREE.MeshBasicMaterial({ map: m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: /_EYE$/.test(o.material.name) ? THREE.DoubleSide : m.side, depthWrite: m.depthWrite });
+        o.userData.std = P.cel > 0 ? o.userData.toon : m;      // anime: the player is cel-shaded in every shot
+        // ink frames: the light alone decides the drawing (white, lit), the face details keep their own lines
+        if (/Face(Brow|Eyelash|Eyeline|Mouth)/.test(o.material.name)) o.userData.ink = o.userData.toon;
+        else if (/_EYE$|EyeHighlight|EyeIris|EyeWhite/.test(o.material.name) && (P.inkEyes ?? 0) === 0) o.userData.ink = new THREE.MeshBasicMaterial({ visible: false });
+        else { const im = new THREE.MeshLambertMaterial({ color: 0xffffff, map: kk !== undefined ? null : m.map, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side, depthWrite: m.depthWrite });
+          im.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#ifdef USE_MAP\n diffuseColor.a *= texture2D( map, vMapUv ).a;\n#endif'); };
+          o.userData.ink = im; if (P.inkLog) console.error(`INKMAT ${o.material.name} type=${o.material.type} map=${!!m.map} transparent=${m.transparent} alphaTest=${m.alphaTest} side=${m.side} visible=${o.visible}`); }
+      }
+      o.material = o.userData.std; });
+    // ---- rage expression, painted into the model's own face textures (it deforms and shades with the face) ----
+    // Face skin: the mouth line becomes a wide-open scream; brows: angled down hard at the centre; irises: shrunk to small pupils
+    const RAGE_TEX = new Map();
+    if (!gltf.isVRM) { const byMat = (re) => bodyMeshes.filter((o) => re.test(o.userData.src || ''));
+      const repaint = (meshes, paint) => { for (const o of meshes) { const src = o.userData.toon.map; if (!src || !src.image) continue;
+        const im = src.image, c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d');
+        paint(g, im, c.width, c.height);
+        const t = new THREE.CanvasTexture(c); t.flipY = src.flipY; t.colorSpace = src.colorSpace; t.wrapS = src.wrapS; t.wrapT = src.wrapT; t.needsUpdate = true;
+        RAGE_TEX.set(o, [src, t]); } };
+      // face skin: erase the closed mouth, paint the scream (dark cavity, upper/lower teeth, tongue, ink outline)
+      repaint(byMat(/Face_00_SKIN$/), (g, im, W, H) => {
+        g.drawImage(im, 0, 0);
+        const cx = 0.5 * W, cy = (P.mouthV ?? 0.775) * H, w = (P.mouthW ?? 0.16) * W, h = (P.mouthH ?? 0.12) * H;
+        g.fillStyle = g.getImageData(cx, cy - 0.04 * H, 1, 1).data.slice(0, 3).reduce((a, v, i) => a + (i ? ',' : '') + v, 'rgb(') + ')';
+        g.fillRect(cx - 0.06 * W, cy - 0.035 * H, 0.12 * W, 0.03 * H);              // the old mouth line
+        // the shout: upper lip pulled up in the middle, corners dragged down, a deep square jaw
+        const shape = () => { g.beginPath(); g.moveTo(cx - w / 2, cy - h * 0.18);
+          g.quadraticCurveTo(cx - w * 0.25, cy - h * 0.62, cx, cy - h * 0.6);
+          g.quadraticCurveTo(cx + w * 0.25, cy - h * 0.62, cx + w / 2, cy - h * 0.18);
+          g.lineTo(cx + w * 0.3, cy + h * 0.52);
+          g.quadraticCurveTo(cx, cy + h * 0.66, cx - w * 0.3, cy + h * 0.52);
+          g.closePath(); };
+        shape(); g.fillStyle = '#14030a'; g.fill();
+        g.save(); shape(); g.clip();
+        g.fillStyle = '#2a070e'; g.beginPath(); g.ellipse(cx, cy + h * 0.25, w * 0.3, h * 0.25, 0, 0, Math.PI * 2); g.fill();      // throat shade
+        g.fillStyle = '#6a1a26'; g.beginPath(); g.ellipse(cx, cy + h * 0.58, w * 0.2, h * 0.12, 0, 0, Math.PI * 2); g.fill();     // tongue
+        g.fillStyle = '#fbf6f2'; g.beginPath(); g.moveTo(cx - w / 2, cy - h * 0.7); g.lineTo(cx + w / 2, cy - h * 0.7);           // upper teeth
+        g.lineTo(cx + w * 0.4, cy - h * 0.3); g.quadraticCurveTo(cx, cy - h * 0.4, cx - w * 0.4, cy - h * 0.3); g.closePath(); g.fill();
+        g.fillStyle = '#f1e8e4'; g.beginPath(); g.moveTo(cx - w * 0.3, cy + h * 0.7); g.lineTo(cx + w * 0.3, cy + h * 0.7);       // lower teeth
+        g.lineTo(cx + w * 0.27, cy + h * 0.44); g.quadraticCurveTo(cx, cy + h * 0.5, cx - w * 0.27, cy + h * 0.44); g.closePath(); g.fill();
+        g.fillStyle = '#fbf6f2'; for (const sx of [-1, 1]) { g.beginPath(); g.moveTo(cx + sx * w * 0.3, cy - h * 0.34);              // canines
+          g.lineTo(cx + sx * w * 0.36, cy - h * 0.34); g.lineTo(cx + sx * w * 0.33, cy - h * 0.12); g.closePath(); g.fill(); }
+        g.restore();
+        shape(); g.lineWidth = Math.max(2, 0.006 * W); g.strokeStyle = '#2a0a0e'; g.lineJoin = 'round'; g.stroke();
+        g.strokeStyle = 'rgba(120,40,40,0.35)'; g.lineWidth = Math.max(1.5, 0.004 * W);                                         // strain lines at the corners
+        for (const sx of [-1, 1]) { g.beginPath(); g.moveTo(cx + sx * w * 0.56, cy - h * 0.1); g.lineTo(cx + sx * w * 0.66, cy + h * 0.12); g.stroke(); }
+      });
+      // brows: each brow redrawn rotated so its inner end drops (anger), slightly thicker
+      repaint(byMat(/FaceBrow/), (g, im, W, H) => {
+        for (const [x0, x1, sgn] of [[0, 0.5, 1], [0.5, 1, -1]]) {
+          const sx = x0 * im.width, sw = (x1 - x0) * im.width;
+          g.save(); g.translate(sx + sw / 2, H * 0.5); g.rotate(sgn * (P.browAng ?? 0.32)); g.scale(1, 1.6);
+          g.drawImage(im, sx, 0, sw, im.height, -sw / 2, -H * 0.5 + H * 0.06 * sgn * 0, sw, H); g.restore(); }
+      });
+      // upper eye lines and lashes: each side rotated so the inner end drops (the glare); this is what reads as anger under the fringe
+      const glare = (g, im, W, H, ang) => { for (const [x0, x1, sgn] of [[0, 0.5, 1], [0.5, 1, -1]]) {
+          const sx = x0 * im.width, sw = (x1 - x0) * im.width, pivx = sgn > 0 ? sx + sw * 0.8 : sx + sw * 0.2;
+          g.save(); g.translate(pivx, H * 0.5); g.rotate(sgn * ang); g.translate(-pivx, -H * 0.5); g.drawImage(im, sx, 0, sw, im.height, sx, 0, sw, H); g.restore(); } };
+      repaint(byMat(/FaceEyeline/), (g, im, W, H) => glare(g, im, W, H, P.lidAng ?? 0.28));
+      repaint(byMat(/FaceEyelash/), (g, im, W, H) => glare(g, im, W, H, P.lidAng ?? 0.28));
+      // the glare: the upper lid comes down, slanted towards the nose (skin over the top of the eye, an ink line on its edge);
+      // painted identically into the eye white and the iris disc, which share the same eye layout
+      const lid = (g, W, H) => { for (const x of [0.25, 0.75]) {
+        const cx = x * W, sw = W * 0.25, inner = (x < 0.5 ? 1 : -1) * (P.lidFlip ? -1 : 1), xo = cx - inner * sw, xi = cx + inner * sw;
+        const yo = (P.lidOuter ?? 0.22) * H, yi = (P.lidInner ?? 0.6) * H;
+        g.fillStyle = P.lidSkin || '#efc8ad'; g.beginPath(); g.moveTo(xo, 0); g.lineTo(xi, 0); g.lineTo(xi, yi); g.lineTo(xo, yo); g.closePath(); g.fill();
+        g.strokeStyle = '#1b0b09'; g.lineWidth = H * 0.04; g.lineCap = 'round'; g.beginPath(); g.moveTo(xo, yo); g.lineTo(xi, yi); g.stroke(); } };
+      repaint(byMat(/EyeWhite/), (g, im, W, H) => { g.drawImage(im, 0, 0); lid(g, W, H); });
+      // irises: small pupils on white
+      repaint(byMat(/EyeIris/), (g, im, W, H) => {
+        // the iris layer covers the whole eye opening (nothing white behind it): paint the white in, then a small pupil
+        const k = P.irisK ?? 0.62;
+        for (const x of [0.25, 0.75]) { const cx = x * W, cy = 0.5 * H, sw = W * 0.25, sh = H * 0.5;
+          const grd = g.createRadialGradient(cx, cy, 0, cx, cy, W * 0.16); grd.addColorStop(0, 'rgba(160,40,40,0)'); grd.addColorStop(1, 'rgba(160,40,40,0.25)');
+          g.fillStyle = grd; g.fillRect(cx - sw, cy - sh, 2 * sw, 2 * sh);                       // a hint of bloodshot at the rims
+          g.drawImage(im, cx - sw, cy - sh, 2 * sw, 2 * sh, cx - sw * k, cy - sh * k, 2 * sw * k, 2 * sh * k);
+          lid(g, W, H); }
+      });
+    }
+    if (P.dbgIris) { model.updateMatrixWorld(true); let hp = V3(0, 0, 0); model.traverse((o) => { if (/Head_40/.test(o.name)) hp = V3(0, 0, 0).setFromMatrixPosition(o.matrixWorld); });
+      for (const o of bodyMeshes) { const b = new THREE.Box3().setFromObject(o); const c = b.getCenter(V3(0, 0, 0)), sz = b.getSize(V3(0, 0, 0));
+        console.error(`MESH ${o.userData.src} skinned=${o.isSkinnedMesh} parent=${o.parent && o.parent.name} ctr-head=(${(c.x - hp.x).toFixed(2)},${(c.y - hp.y).toFixed(2)},${(c.z - hp.z).toFixed(2)}) size=(${sz.x.toFixed(2)},${sz.y.toFixed(2)},${sz.z.toFixed(2)}) vis=${o.visible} side=${o.material.side} transp=${o.material.transparent} dw=${o.material.depthWrite} order=${o.renderOrder}`); } }
+    if (P.dumpTex) for (const [o, [a, b]] of RAGE_TEX) console.error('TEX ' + o.userData.src + ' ' + b.image.toDataURL('image/png'));
+    let faceRage = null;
+    const highlights = bodyMeshes.filter((o) => /EyeHighlight/.test(o.userData.src || ''));
+    const setRageFace = (on) => { if (gltf.isVRM) { gltf.expr('angry', on ? (P.angryW ?? 1) : 0); gltf.expr(P.screamVowel ?? 'a', on ? (P.screamOpen ?? 0.8) : 0); gltf.expr('blink', on ? (P.glare ?? 0.3) : 0); return; }   // rage: brows down, mouth open, eyes narrowed
+      if (faceRage === on) return; faceRage = on; if (P.dbgIris) console.error('SETFACE ' + on + ' ' + [...RAGE_TEX.keys()].map((o) => o.userData.src.slice(10, 22) + '=' + (o.material.map === RAGE_TEX.get(o)[1]) + '/' + o.material.type + '/' + o.visible + '/' + (o.material === o.userData.toon)).join(' ')); highlights.forEach((o) => (o.visible = !on || !!P.keepHL));   // dead-eyed fury
+      for (const [o, [a, b]] of RAGE_TEX) for (const m of [o.userData.toon, o.userData.std]) if (m && m.map) { m.map = on ? b : a; m.needsUpdate = true; } };
+    { model.updateMatrixWorld(true);
+      const find = (re) => { let f = null; model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
+      const Pw = (b) => new THREE.Vector3().setFromMatrixPosition(b.matrixWorld);
+      const top = find(/HeadTop_End/), toe = find(/LeftToe_End/) || find(/LeftToeBase/), foot = find(/LeftFoot(_\d+)?$/);
+      const h = top && toe ? Pw(top).y - Pw(toe).y : new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()).y;
+      if (foot && toe && Pw(toe).z < Pw(foot).z) model.rotation.y = Math.PI;      // make the athlete face +z
+      model.scale.multiplyScalar(1.92 / h); model.updateMatrixWorld(true); }
+    const boneRe = (n) => new RegExp('^(mixamorig:?)?' + n + '(_\\d+)?$');                      // Mixamo, Ready Player Me, Sketchfab exports ("mixamorigHips_103")
+    const boneCache = new Map();
+    const bone = (n) => { if (!boneCache.has(n)) { let f = null; const re = boneRe(n); model.traverse((o) => { if (!f && o.isBone && re.test(o.name)) f = o; }); boneCache.set(n, f); } return boneCache.get(n); };
+    const bones = []; model.traverse((o) => { if (o.isBone) bones.push(o); });
+    const rest = new Map(bones.map((b) => [b, b.quaternion.clone()]));
+
+    // ================= the athlete: real mocap (Motion Cast "8-Smash-Take2" + "12-Reaction after point obtained") =================
+    // Action time t keeps the old event markers (takeoff 0.74, contact 1.12, landing 1.86) so the shots stay valid;
+    // it is mapped piecewise-linearly onto the capture's own detected events.
+    const T_OFF = 0.74, T_CONTACT = 1.12, T_LAND = 1.86;
+    const smash = await loadMocap(THREE, GLTFLoader, P.smash), win = await loadMocap(THREE, GLTFLoader, P.win);
+    const retarget = makeRetarget(THREE, model, bone);
+    const TK = [[-0.65, Math.max(0, smash.takeoff - 1.42)], [T_OFF, smash.takeoff], [T_CONTACT, smash.contact], [T_LAND, smash.land]];
+    const tauAt = (t) => { let i = 0; while (i < TK.length - 2 && t > TK[i + 1][0]) i++;
+      const [a, ta] = TK[i], [b, tb] = TK[i + 1]; return t <= TK[0][0] ? TK[0][1] : ta + (tb - ta) * (t - a) / (b - a); };
+    // scale: leg length of the character vs the capture
+    const legOf = (pts) => pts[0].distanceTo(pts[1]) + pts[1].distanceTo(pts[2]);
+    model.updateMatrixWorld(true);
+    const Pw0 = (n) => V3(0, 0, 0).setFromMatrixPosition(bone(n).matrixWorld);
+    const M0 = smash.sample(0);
+    const SC = legOf([Pw0('LeftUpLeg'), Pw0('LeftLeg'), Pw0('LeftFoot')]) / legOf([M0.LThigh, M0.LShin, M0.LFoot]);
+    // place the capture so the hitting hand meets the ball just in front of the net
+    const Mc = smash.sample(smash.contact);
+    const soleToToe = Pw0('LeftToeBase').y - new THREE.Box3().setFromObject(model).min.y;    // character's toe joint height above its sole
+    const OFF = V3(-Mc.RHand.x * SC, -smash.floor * SC + soleToToe, -0.05 - Mc.RHand.z * SC);
+    const xf = (v) => v.clone().multiplyScalar(SC).add(OFF);
+    const FOOT_DY = (Pw0('LeftFoot').y - new THREE.Box3().setFromObject(model).min.y) - xf(smash.sample(0).LFoot).y;   // feet IK: ankle height
+    // after landing: blend into the won-point reaction (fist pump), re-based on the landing spot and facing
+    const BLEND_AT = smash.land + 0.45, WIN_FROM = 0.9, BLEND = 0.4;
+    const Ma = smash.sample(BLEND_AT), Mb = win.sample(WIN_FROM);
+    const yawOf = (M) => { const d = M.LShoulder.clone().sub(M.RShoulder); return Math.atan2(d.x, d.z); };
+    const align = { from: Mb.Hip.clone().setY(0), to: Ma.Hip.clone().setY(0), yaw: yawOf(Ma) - yawOf(Mb) };
+    // the roar is its own shot (a cut): pure won-point capture, on the landing spot, turned to his own team (-z)
+    const ROAR_T = 1.95, ROAR_FROM = P.roarFrom ?? 1.25, ROAR_PEAK = P.roarPeak ?? 2.05;   // capture window of the celebration; facing measured at the peak
+    const Mland = smash.sample(smash.land), Mw0 = win.sample(ROAR_FROM), Mpk = win.sample(ROAR_PEAK);
+    const dW = Mpk.LShoulder.clone().sub(Mpk.RShoulder);          // facing measured at the peak, so the release opens towards the camera
+    const roarAlign = { from: Mw0.Hip.clone().setY(0), to: Mland.Hip.clone().setY(0), yaw: -Math.PI / 2 - 0.35 - Math.atan2(dW.x, dW.z) };
+    // the roar take (default: Bandai Namco Research Motiondataset-2, "raise up both hands", masculine, CC BY-NC 4.0): both fists
+    // thrown up into a V and held. Re-based onto the landing spot, scaled to the smash performer (leg length), turned to his own
+    // team like the won-point capture; P.roar = 'win' brings back the won-point reaction.
+    const roar = P.roar === 'win' ? null : await loadMocap(THREE, GLTFLoader, P.roar ?? 'mocap/bandai/dataset-2_raise-up-both-hands_masculine_007.bvh');
+    let roarRebase = null, ROAR_KEYS = null, ROAR_FOOT_DY = FOOT_DY;
+    if (roar) {
+      const R0 = roar.sample(0), legLen = (M) => M.LThigh.distanceTo(M.LShin) + M.LShin.distanceTo(M.LFoot), UP = V3(0, 1, 0);
+      const k = legLen(smash.sample(0)) / legLen(R0), dR = R0.LShoulder.clone().sub(R0.RShoulder), from = R0.Hip.clone().setY(0);
+      const yaw = -Math.PI / 2 - 0.35 - Math.atan2(dR.x, dR.z), to = V3(Mland.Hip.x, smash.floor, Mland.Hip.z);
+      roarRebase = (M) => { const out = {}; for (const n in M) { const v = M[n].clone().sub(from); v.y = M[n].y - roar.floor; out[n] = v.multiplyScalar(k).applyAxisAngle(UP, yaw).add(to); } return out; };
+      ROAR_FOOT_DY = FOOT_DY + xf(smash.sample(0).LFoot).y - xf(roarRebase(R0).LFoot).y;
+      // timing from the take itself: still, the throw up (near real speed), then the V held through the push-in
+      const hy = (c) => { const M = roar.sample(c); return Math.min(M.LHand.y, M.RHand.y) - M.Head.y; }, h0 = hy(0);
+      let hi = -1e9; for (let c = 0; c <= roar.dur; c += 1 / 60) hi = Math.max(hi, hy(c));
+      let start = null, up0 = null, up1 = 0;
+      for (let c = 0; c <= roar.dur; c += 1 / 60) { const h = hy(c); if (start === null && h > h0 + 0.1) start = c; if (h >= hi - 0.05) { if (up0 === null) up0 = c; up1 = c; } }
+      ROAR_KEYS = [[0, Math.max(0, start - 0.15)], [0.08, start], [0.25, up0], [1, up1]];
+      console.error('ROAR take ' + roar.dur.toFixed(2) + 's scale ' + k.toFixed(3) + ' keys ' + JSON.stringify(ROAR_KEYS.map(([u, c]) => [u, +c.toFixed(2)]))); }
+    const roarClipT = (t) => { const u = Math.min(1, Math.max(0, (t - ROAR_T) / 2.2)); let i = 0; while (i < ROAR_KEYS.length - 2 && u > ROAR_KEYS[i + 1][0]) i++;
+      const [a, ca] = ROAR_KEYS[i], [b, cb] = ROAR_KEYS[i + 1]; return ca + (cb - ca) * Math.min(1, Math.max(0, (u - a) / (b - a))); };
+    // additive layer on the hitting arm (in the chest's own frame): a deeper bow-and-arrow cock before contact
+    // (elbow high and well back, hand by the ear) and a complete follow-through after it (arm all the way down, across the body)
+    const rampW = (x, a, d) => VM.ease.inOutSine(Math.min(1, Math.max(0, (x - a) / d)));
+    const cockW = (tau) => { const c = smash.contact; return rampW(tau, c - 0.42, 0.3) * (1 - rampW(tau, c - 0.12, 0.105)); };
+    const followW = (tau) => { const c = smash.contact; return rampW(tau, c + 0.01, 0.08) * (1 - rampW(tau, smash.land + 0.05, 0.35)); };
+    // the hitting arm, keyed (the capture's own swing is weak: at contact its hand is only 45 deg up, in front of the face).
+    // Directions in his chest frame [right, up, forward] for the upper arm and forearm, from the bow to the follow-through.
+    // keyed as [tau - contact, upper-arm direction, elbow flexion (deg), upper-arm rotation (deg)]: the elbow only folds in its
+    // natural direction (the rest hinge carried by a plain swing of the upper arm) plus at most 30 deg of upper-arm rotation.
+    // (Forearm-up-behind-the-head needs ~90 deg of rotation, which this rig's shoulder skin can't take.)
+    const ARM_KEYS = [
+      [-0.42, [0.6, 0.6, -0.5], 90, -30],      // bow drawn: elbow high, out and back; forearm up, hand above the shoulder
+      [-0.20, [0.6, 0.62, -0.5], 95, -30],     // held
+      [-0.07, [0.3, 0.9, -0.3], 90, -30],      // whip: the elbow leads up, the forearm still folded
+      [0.00, [0.12, 0.96, 0.24], 5, -10],      // contact: arm fully extended, high and just ahead
+      [0.03, [-0.05, 0.25, 0.97], 10, 0],      // snap through
+      [0.065, [-0.3, -0.55, 0.78], 20, 0],     // down across the body
+      [0.10, [-0.12, -0.72, 0.68], 25, 0],     // finished low, in front of the body (not into it; a real arm swing is ~0.1 s)
+    ];
+    const keyAt = (x) => { let i = 0; while (i < ARM_KEYS.length - 2 && x > ARM_KEYS[i + 1][0]) i++;
+      const A = ARM_KEYS[i], B = ARM_KEYS[i + 1], v0 = Math.min(1, Math.max(0, (x - A[0]) / (B[0] - A[0]))), u = A[0] >= 0 ? v0 : VM.ease.inOutSine(v0);   // after contact: constant speed
+      const up = V3(...A[1]).normalize().lerp(V3(...B[1]).normalize(), u).normalize();
+      const flex = THREE.MathUtils.degToRad(A[2] + (B[2] - A[2]) * u), tw = THREE.MathUtils.degToRad(A[3] + (B[3] - A[3]) * u);
+      const n = V3(0, 0, 1).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V3(1, 0, 0), up)).applyAxisAngle(up, tw);   // natural fold direction
+      return [up, up.clone().multiplyScalar(Math.cos(flex)).addScaledVector(n, Math.sin(flex)).normalize()]; };
+    // the swing plane (contact -> snap-through) and the wrist angle through the attack, in degrees
+    const SNAP_FROM = V3(0.12, 0.96, 0.24).normalize(), SNAP_TO = V3(-0.05, 0.25, 0.97).normalize();
+    const WRIST_KEYS = [[-0.20, 0], [-0.07, -35], [-0.01, -10], [0.02, 40], [0.05, 45], [0.10, 25], [0.25, 0]];
+    const wristAt = (x) => { if (x <= WRIST_KEYS[0][0]) return 0; let i = 0; while (i < WRIST_KEYS.length - 2 && x > WRIST_KEYS[i + 1][0]) i++;
+      const [a, va] = WRIST_KEYS[i], [b, vb] = WRIST_KEYS[i + 1]; return va + (vb - va) * VM.ease.inOutSine(Math.min(1, Math.max(0, (x - a) / (b - a)))); };
+    const armW = (tau) => { const x = tau - smash.contact; return rampW(x, -0.8, 0.38) * (1 - rampW(tau, smash.land + 0.15, 0.4)); };
+    function attackArm(M, tau) {
+      const w = P.armW ?? armW(tau); if (w <= 0) return M;
+      const x = tau - smash.contact;
+      const up = M.Neck.clone().sub(M.Chest).normalize(), rt = M.RShoulder.clone().sub(M.LShoulder).normalize();
+      const fwd = V3(0, 0, 0).crossVectors(up, rt).normalize(), side = V3(0, 0, 0).crossVectors(fwd, up).normalize();
+      const toW = (d) => side.clone().multiplyScalar(d.x).addScaledVector(up, d.y).addScaledVector(fwd, d.z).normalize();
+      const out = Object.assign({}, M), fingers = Object.keys(M).filter((n) => n.startsWith('RightFinger'));
+      const swing = (a, b, dir, kids) => swingChain(THREE, out, a, b, dir, w, kids);
+      const [ku, kf] = keyAt(x);
+      swing('RShoulder', 'RForearm', toW(ku), ['RHand', ...fingers]);
+      swing('RForearm', 'RHand', toW(kf), fingers);
+      // wrist snap: the hand's angle to the forearm in the swing plane (+ = flexed towards the court, - = cocked back)
+      const th = THREE.MathUtils.degToRad(P.wristDeg ?? wristAt(x)) * w;
+      if (out.RightFinger2) {
+        const f = out.RHand.clone().sub(out.RForearm).normalize();
+        const n = V3(0, 0, 0).crossVectors(toW(SNAP_FROM), toW(SNAP_TO)); n.sub(f.clone().multiplyScalar(n.dot(f)));
+        if (n.lengthSq() > 1e-8) {
+          const want = f.clone().applyAxisAngle(n.normalize(), th), have = out.RightFinger2.clone().sub(out.RHand).normalize();
+          const q = new THREE.Quaternion().setFromUnitVectors(have, want), h = out.RHand;
+          for (const k of fingers) out[k] = out[k].clone().sub(h).applyQuaternion(q).add(h);
+        }
+      }
+      return out;
+    }
+    // the hitting hand open and flat (the capture's fingers curl into a claw): each finger straightened along its knuckle line
+    function openHand(M, w) {
+      if (w <= 0) return M;
+      const out = Object.assign({}, M), h = M.RHand;
+      for (let i = 0; i < 5; i++) {
+        const j = [`RightFinger${i}`, `RightFinger${i}1`, `RightFinger${i}2`, `RightFinger${i}2_end`].filter((n) => M[n]);
+        const dir = M[j[0]].clone().sub(h).normalize();
+        for (let k = 1; k < j.length; k++) { const len = M[j[k]].distanceTo(M[j[k - 1]]);
+          out[j[k]] = out[j[k - 1]].clone().add(M[j[k]].clone().sub(M[j[k - 1]]).normalize().lerp(dir, w).normalize().multiplyScalar(len)); }
+      }
+      return out;
+    }
+    const openW = (tau) => rampW(tau, smash.takeoff, 0.15) * (1 - rampW(tau, smash.land, 0.3));
+    const mocapAt = (t) => {
+      if (t >= ROAR_T && roar) return roarRebase(roar.sample(roarClipT(t)));
+      if (t >= ROAR_T) return blendMocap(THREE, win.sample(ROAR_FROM + t - ROAR_T), win.sample(ROAR_FROM + t - ROAR_T), 1, roarAlign);   // the celebration as captured
+      const tau = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND);
+      const A = openHand(attackArm(smash.sample(Math.min(tau, smash.dur)), tau), openW(tau));
+      if (tau <= BLEND_AT) return A;
+      return blendMocap(THREE, A, win.sample(WIN_FROM + tau - BLEND_AT), VM.ease.inOutSine(Math.min(1, (tau - BLEND_AT) / BLEND)), align); };
+    console.error('MOCAP events takeoff ' + smash.takeoff.toFixed(2) + ' contact ' + smash.contact.toFixed(2) + ' land ' + smash.land.toFixed(2) + ' scale ' + SC.toFixed(3));
+    const EXTRA = P.extraLift ?? 0.6;                 // stylised: the body clears the net (metres added at contact)
+    const liftAt = (t) => { const tau = t <= T_LAND ? tauAt(t) : 1e9;
+      if (tau <= smash.takeoff || tau >= smash.land) return 0;
+      const u = (tau - smash.takeoff) / (smash.land - smash.takeoff), pc = (smash.contact - smash.takeoff) / (smash.land - smash.takeoff);
+      return EXTRA * (u < pc ? Math.sin(Math.PI / 2 * u / pc) : Math.cos(Math.PI / 2 * (u - pc) / (1 - pc))); };
+    function placeAthlete(t) { window.AUDIT_TAU = t <= T_LAND ? tauAt(t) : smash.land + (t - T_LAND); const up = liftAt(t), f = (v) => xf(v).add(V3(0, up, 0)); const roarOn = !!roar && t >= ROAR_T;
+      f.footDy = roarOn ? ROAR_FOOT_DY : FOOT_DY; f.fist = roarOn ? 1 : 0; retarget(mocapAt(t), f, roarOn ? roar.stand : null); }
+
+    // ================= ball =================
+    const BR = 0.105 * 1.15;
+    const ball = new THREE.Group(); { const pro = await loadProBall(THREE); pro.scale.setScalar(BR); ball.add(pro); }
+    scene.add(ball);
+    placeAthlete(T_CONTACT);
+    const C = (() => {                                                                   // ball centre at contact: on the palm, in front of it
+      const w = (n) => V3(0, 0, 0).setFromMatrixPosition(bone(n).matrixWorld);
+      const h = w('RightHand'), mid = w('RightHandMiddle1'), across = w('RightHandIndex1').sub(w('RightHandPinky1'));
+      let nrm = V3(0, 0, 0).crossVectors(mid.clone().sub(h), across).normalize(); if (nrm.z < 0) nrm.negate();
+      return h.clone().lerp(mid, 0.6).add(nrm.multiplyScalar(BR * 1.05)); })();
+    const D = V3(0.06, -0.5, 1).normalize(), SPEED = 39;                              // ~140 km/h, down the line
+    const G = V3(0, -9.81, 0);
+    const SET_T0 = -0.55, Ps = V3(2.2, 2.25, 0.05);                      // the set comes from the setter (her left)
+    const vSet = C.clone().sub(Ps).sub(G.clone().multiplyScalar(0.5 * (T_CONTACT - SET_T0) ** 2)).divideScalar(T_CONTACT - SET_T0);
+    // after the hit: straight line + gravity until the floor, then a bounce
+    const tFloor = (() => { const vy = D.y * SPEED, y0 = C.y - BR; return (-vy - Math.sqrt(vy * vy + 2 * 9.81 * y0)) / -9.81; })();
+    const hitPoint = C.clone().add(D.clone().multiplyScalar(SPEED * tFloor)).add(G.clone().multiplyScalar(0.5 * tFloor * tFloor));
+    const HITSTOP = 0.035;   // action seconds the ball stays crushed on the floor
+    function ballAt(t) {
+      if (t < T_CONTACT) { const s = Math.max(0, t - SET_T0); return Ps.clone().add(vSet.clone().multiplyScalar(s)).add(G.clone().multiplyScalar(0.5 * s * s)); }
+      const s = t - T_CONTACT;
+      if (s < tFloor) return C.clone().add(D.clone().multiplyScalar(SPEED * s)).add(G.clone().multiplyScalar(0.5 * s * s));
+      if (s < tFloor + HITSTOP) return hitPoint.clone().setY(BR * 0.5);              // stuck to the floor, squashed
+      const s2 = s - tFloor - HITSTOP, v = D.clone().multiplyScalar(SPEED).add(G.clone().multiplyScalar(tFloor));
+      const vb = V3(v.x * 0.7, -v.y * 0.55, v.z * 0.7);
+      return hitPoint.clone().add(vb.multiplyScalar(s2)).add(G.clone().multiplyScalar(0.5 * s2 * s2));
+    }
+    // trail behind the spiked ball
+    const trailMat = new THREE.MeshBasicMaterial({ color: 0xffe7a8, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
+    let trail = null;
+    // ---- liftoff power: where the feet leave the floor ----
+    placeAthlete(T_OFF - 0.005);
+    const LIFT = (() => { const a = V3(0, 0, 0).setFromMatrixPosition(bone('LeftToeBase').matrixWorld), b = V3(0, 0, 0).setFromMatrixPosition(bone('RightToeBase').matrixWorld); return a.add(b).multiplyScalar(0.5).setY(0); })();
+    const crackTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 1024; const g = c.getContext('2d'), R = VM.rand(91);
+      g.strokeStyle = 'rgba(255,236,190,1)'; g.lineCap = 'round'; g.shadowColor = 'rgba(255,200,120,0.9)'; g.shadowBlur = 18;
+      for (let i = 0; i < 22; i++) { let x = 512, y = 512, a = (i / 22) * Math.PI * 2 + R() * 0.2, w = 22;
+        g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 7; k++) { a += (R() - 0.5) * 0.7; const L = 30 + R() * 60; x += Math.cos(a) * L; y += Math.sin(a) * L; g.lineWidth = w; g.lineTo(x, y); w *= 0.75; }
+        g.stroke(); }
+      const rg = g.createRadialGradient(512, 512, 0, 512, 512, 140); rg.addColorStop(0, 'rgba(255,230,170,0.9)'); rg.addColorStop(1, 'rgba(255,200,120,0)');
+      g.fillStyle = rg; g.fillRect(0, 0, 1024, 1024);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+    const crack = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshBasicMaterial({ map: crackTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    crack.rotation.x = -Math.PI / 2; crack.position.copy(LIFT).setY(0.006); scene.add(crack);
+    const liftRing = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 96), new THREE.MeshBasicMaterial({ color: 0xffe9b8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    liftRing.rotation.x = -Math.PI / 2; liftRing.position.copy(LIFT).setY(0.02); scene.add(liftRing);
+    const column = (() => { const c = document.createElement('canvas'); c.width = 8; c.height = 256; const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 256, 0, 0);
+      gr.addColorStop(0, 'rgba(255,236,180,1)'); gr.addColorStop(1, 'rgba(255,236,180,0)'); g.fillStyle = gr; g.fillRect(0, 0, 8, 256);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.35, 3, 48, 1, true), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      m.position.copy(LIFT).setY(1.5); m.visible = false; scene.add(m); return m; })();   // light column: off (read as a solid pillar)
+    const ND = 260, dr = VM.rand(55), dv = [];
+    const dGeo = new THREE.BufferGeometry(); dGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ND * 3), 3));
+    for (let i = 0; i < ND; i++) { const a = dr() * Math.PI * 2, sp = 0.8 + dr() * 2.6, up = 0.3 + dr() * 1.8; dv.push(V3(Math.cos(a) * sp, up, Math.sin(a) * sp)); }
+    const dust = new THREE.Points(dGeo, new THREE.PointsMaterial({ color: 0xf6e7cc, size: 0.055, transparent: true, depthWrite: false }));
+    scene.add(dust);
+    const crack2 = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.MeshBasicMaterial({ map: crackTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    crack2.rotation.x = -Math.PI / 2; crack2.rotation.z = 1.1; scene.add(crack2);
+    // floor impact ring
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 64), new THREE.MeshBasicMaterial({ color: 0xfff0c8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.position.copy(hitPoint).setY(0.01); scene.add(ring); crack2.position.copy(hitPoint).setY(0.007);
+    // contact shockwave (in the plane facing the hit direction)
+    const shock = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 96), new THREE.MeshBasicMaterial({ color: 0xfff4d8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    shock.position.copy(C); shock.lookAt(C.clone().add(D)); scene.add(shock);
+    // sweat / chalk spray at contact
+    const NP = 70, pr = VM.rand(77), pv = [];
+    const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NP * 3), 3));
+    for (let i = 0; i < NP; i++) { const a = pr() * Math.PI * 2, b = (pr() - 0.5) * Math.PI;
+      pv.push(V3(Math.cos(a) * Math.cos(b), Math.sin(b) + 0.3, Math.sin(a) * Math.cos(b)).multiplyScalar(1.2 + pr() * 3.2).add(D.clone().multiplyScalar(1.5))); }
+    const spray = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xfff3dc, size: 0.026, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    scene.add(spray);
+
+    // ================= shots =================
+    // each shot: video [T0, T1] maps to action [t0, t1] (with an ease for slow-mo ramps) and has its own camera
+    const headPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Head').matrixWorld);
+    const faceDir = () => { const l = V3(0, 0, 0).setFromMatrixPosition(bone('LeftArm').matrixWorld), r = V3(0, 0, 0).setFromMatrixPosition(bone('RightArm').matrixWorld);
+      return l.sub(r).cross(V3(0, 1, 0)).setY(0).normalize(); };
+    const hipPos = () => V3(0, 0, 0).setFromMatrixPosition(bone('Hips').matrixWorld);
+    // the impact frame's drawings, each from its own angle (anime impact frames cut between close drawings): around the line from
+    // the comic camera to the contact; [turn about up (rad), distance (m), height (m), target: 0 = contact .. 1 = head .. 2 = hips, fov]
+    const INK_ANGLES = [[0.0, 1.35, -0.25, 0.45, 52], [0.85, 1.25, -0.75, 0.6, 58], [-0.35, 0.8, -0.1, 0.1, 50], [-0.6, 2.4, -0.4, 1.3, 46]];
+    function inkCamAt(T0, base) {
+      const s = T0 - T_HIT_VIDEO; if (s < 0 || s >= HIT_HOLD || P.inkAngles === 0) return null;
+      const [turn, dist, hgt, tg, fov] = INK_ANGLES[Math.floor(s / 0.25) % INK_ANGLES.length];
+      const head = headPos(), tgt = tg <= 1 ? C.clone().lerp(head, tg) : head.clone().lerp(hipPos(), tg - 1);
+      const d = V3(...base.p).sub(C).setY(0).normalize().applyAxisAngle(V3(0, 1, 0), turn);
+      const push = 1 - 0.08 * ((s % 0.25) / 0.25);                              // a slow push inside each drawing
+      const p = tgt.clone().addScaledVector(d, dist * push).add(V3(0, hgt, 0));
+      return { p: p.toArray(), look: tgt.toArray(), fov, roll: [0.12, -0.18, 0.08, -0.1][Math.floor(s / 0.25) % 4] };
+    }
+    const orbit = (c, r, h, a) => [c.x + Math.sin(a) * r, h, c.z + Math.cos(a) * r];   // a = 0: in front of him (+z), PI: behind
+    const SHOTS = [
+      { name: 'runup', T: [0, 1.45], t: [-0.62, 0.6], ease: 'linear', lens: 0.35,         // dolly-orbit from behind him round to his side as he accelerates (real speed)
+        cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.92 - 0.45 * VM.ease.inOutSine(u)), r = 3.4 + 0.8 * u;
+          return { p: orbit(h, r, 0.55 + 0.45 * u, a), look: [h.x, 1.0 + 0.3 * u, h.z + 0.9], fov: 44 - 4 * u, roll: 0.08 * Math.sin(u * Math.PI) }; } },
+      { name: 'liftoff', T: [1.45, 2.2], t: [0.6, 0.86], lens: 0.85,                       // ground level: fast into the plant, slow on the explosion, then up
+        keys: [[0, 0.6], [0.32, 0.705], [0.55, 0.745], [1, 0.86]],
+        cam: (t, u) => { const f = LIFT; return { p: [f.x - 1.45, 0.95 + 0.6 * u, f.z + 1.15], look: [f.x, 0.3 + 1.7 * VM.ease.inCubic(u), f.z - 0.1], fov: 60, roll: 0.1 }; } },
+      { name: 'rise', T: [2.2, 2.85], t: [0.86, 0.94], ease: 'outQuad', lens: 0.3,           // sweeping orbit as he climbs above the net and draws the bow
+        cam: (t, u) => { const h = hipPos(), a = Math.PI * (0.72 - 0.14 * u), r = 4.4 - 1.0 * u;
+          return { p: orbit(h, r, 1.6 + 0.8 * u, a), look: [h.x, h.y + 0.5, h.z], fov: 32 - 3 * u, roll: -0.1 + 0.06 * u }; } },
+      { name: 'rage', T: [2.85, 3.65], t: [0.94, 0.965], ease: 'linear', lens: 0.25, rage: true,   // at the top: his face, screaming, the world turns red
+        cam: (t, u) => { const h = headPos(), f = faceDir(), r = 0.78 - 0.18 * VM.ease.inOutSine(u);
+          return { p: [h.x + f.x * r, h.y + 0.05, h.z + f.z * r], look: [h.x, h.y + 0.04, h.z], fov: 26 - 4 * u, roll: 0.06 * Math.sin(u * 9) * u }; } },
+      // the comic frame: the drawn bow held, then the whip snaps to contact in ~3 frames, the 1 s impact frame, the arm all the way down.
+      // T inside the shot skips the hold (holdT), so the action keys only span the first (T1 - T0 - HIT_HOLD) of it
+      { name: 'comic', T: [3.65, 5.55], t: [0.965, 1.36], comic: true, lens: 0.75,
+        keys: [[0, 0.965], [0.19, 1.0], [0.237, 1.12, 'inQuad'], [0.2895, 1.37, 'linear'], [0.474, 1.42, 'outQuad'], [1, 1.44]],   // whip in, 1 s hold, 3-frame swing, settle
+        cam: (t, u) => { const v = Math.min(1, u / 0.47); return { p: [C.x - 2.45 + 0.25 * v, C.y - 0.35 - 0.2 * v, C.z - 0.25], look: [C.x, C.y - 0.38 - 0.4 * v, C.z - 0.15], fov: 52 - 6 * v, roll: -0.08 + 0.14 * v }; } },
+      { name: 'smash', T: [5.55, 5.85], t: [1.125, 1.2], ease: 'linear', lens: 0.5,         // the ball's flight again, near real speed (anime overlap)
+        cam: (t, u) => { const b = ballAt(t); return { p: [b.x - 1.3, b.y + 0.7, b.z - 1.6], look: [b.x, b.y, b.z + 0.6], fov: 50, roll: 0.12 }; } },
+      { name: 'floor', T: [5.85, 7.1], t: [0, 0], lens: 0.6,                                  // low by the impact: hit-stop, crush, BAM, then the bounce
+        keys: [[0, 0], [1, 0]],
+        cam: (t, u) => { const a = 2.2 + 0.35 * u; return { p: orbit(hitPoint, 1.9 - 0.3 * u, 0.32 + 0.1 * u, a), look: [hitPoint.x, 0.12, hitPoint.z], fov: 46, roll: 0.1 - 0.12 * u }; } },
+      { name: 'roar', T: [7.1, 10.3], t: [1.95, 4.15], ease: 'linear', lens: 0.35,            // the release: arms flung wide, chest up (slowed to 0.6x)
+        cam: (t, u) => { const h = hipPos(); return { p: [h.x - 0.35 + 0.15 * u, 0.95, h.z - 3.3 + 0.9 * u], look: [h.x, 1.4 + (roar ? 0.25 * u : 0), h.z], fov: 44 - (roar ? 4 : 8) * u, roll: 0.04 }; } },   // low, frontal, slow push-in (the V of fists stays in frame)
+    ];
+    // flight and floor timing depend on tFloor: fill them in now
+    { const sm = SHOTS.find((x) => x.name === 'smash'), fl = SHOTS.find((x) => x.name === 'floor'), tf = T_CONTACT + tFloor;
+      sm.t = [1.125, tf - 0.004];
+      fl.keys = [[0, tf - 0.004], [0.12, tf], [0.7, tf + HITSTOP * 0.9], [1, tf + HITSTOP + 0.22]]; fl.t = [tf - 0.004, tf + HITSTOP + 0.22]; }
+    const shotAt = (T) => SHOTS.find((s) => T < s.T[1]) || SHOTS[SHOTS.length - 1];
+    const warp = (keys, u) => { let i = 0; while (i < keys.length - 2 && u > keys[i + 1][0]) i++;
+      const [a, ta] = keys[i], [b, tb, e] = keys[i + 1], v = Math.min(1, Math.max(0, (u - a) / (b - a))); return ta + (tb - ta) * VM.ease[e || 'inOutSine'](v); };
+    const actionAt = (T) => { const s = shotAt(T), u = Math.min(1, Math.max(0, (T - s.T[0]) / (s.T[1] - s.T[0])));
+      if (s.keys) return warp(s.keys, u);
+      return s.t[0] + (s.t[1] - s.t[0]) * VM.ease[s.ease](u); };
+    const shotBy = (n) => SHOTS.find((s) => s.name === n);
+    const T_HIT_VIDEO = (() => { const s = shotBy('comic'); let lo = s.T[0], hi = s.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_CONTACT) lo = m; else hi = m; } return lo; })();
+    const T_FLOOR_VIDEO = (() => { const s = shotBy('floor'); let lo = s.T[0], hi = s.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_CONTACT + tFloor) lo = m; else hi = m; } return lo; })();
+    const ATH_AFTER = 1.42;   // athlete's action time at the end of the comic shot (its last reached key)
+    window.SPIKE_TIMES = { hit: T_HIT_VIDEO, floor: T_FLOOR_VIDEO, cuts: SHOTS.map((s) => s.T[0]) };
+
+    // ================= comic layer: burst, halftone, speed lines =================
+    { const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('viewBox', '-960 -540 1920 1080'); svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+      Object.assign(svg.style, { position: 'absolute', inset: 0, width: '100%', height: '100%' });
+      const R = VM.rand(19); let h = `<rect x="-960" y="-540" width="1920" height="1080" fill="${V200W.blue}"/>`;
+      for (let i = 0; i < 40; i++) { const a0 = (i / 40) * Math.PI * 2 + R() * 0.05, w = 0.03 + R() * 0.06, L = 2400, r0 = 120 + R() * 200;
+        h += `<path d="M${Math.cos(a0) * r0} ${Math.sin(a0) * r0} L${Math.cos(a0 - w) * L} ${Math.sin(a0 - w) * L} L${Math.cos(a0 + w) * L} ${Math.sin(a0 + w) * L}Z" fill="${i % 3 ? '#f4f1ea' : V200W.yellow}"/>`; }
+      h += `<circle r="260" fill="#fffaf0"/>`;
+      svg.innerHTML = h; svg.classList.add('burst'); comicBg.appendChild(svg);
+      el('div', { position: 'absolute', inset: 0, mixBlendMode: 'multiply', opacity: 0.55,
+        backgroundImage: 'radial-gradient(circle, rgba(10,20,60,0.9) 0.32vmin, transparent 0.36vmin)', backgroundSize: '1.1vmin 1.1vmin' }, comicBg);
+    }
+    const halftoneFg = el('div', { position: 'absolute', inset: 0, mixBlendMode: 'multiply', opacity: 0, pointerEvents: 'none',
+      backgroundImage: 'radial-gradient(circle, rgba(20,30,80,0.5) 0.22vmin, transparent 0.26vmin)', backgroundSize: '0.9vmin 0.9vmin' });
+    const floorWord = el('div', { position: 'absolute', right: '8vw', top: '16vh', font: `400 22vmin ${DISPLAY}`, color: V200W.yellow, opacity: 0, zIndex: 30,
+      WebkitTextStroke: '0.6vmin #0a1020', letterSpacing: '0.02em', textShadow: '1.4vmin 1.4vmin 0 #0a1020' }, stage, 'BAM!');
+    const comicWord = el('div', { position: 'absolute', left: '6vw', bottom: '10vh', font: `400 18vmin ${DISPLAY}`, color: V200W.yellow, opacity: 0,
+      WebkitTextStroke: '0.5vmin #0a1020', transform: 'rotate(-8deg)', letterSpacing: '0.02em', textShadow: '1.2vmin 1.2vmin 0 #0a1020' }, stage, 'BAM!');
+
+    // ================= overlay: flash + type =================
+    const flash = el('div', { position: 'absolute', inset: 0, background: 'radial-gradient(circle at var(--x) var(--y), rgba(255,250,235,1), rgba(255,226,150,0.6) 12%, rgba(255,200,90,0) 45%)', opacity: 0, mixBlendMode: 'screen' });
+    const kicker = el('div', { position: 'absolute', left: '7vw', top: '9vh', font: `600 1.8vmin ${TEXT}`, letterSpacing: '0.5em', color: V200W.yellow, opacity: 0 }, stage, 'MATCH POINT &nbsp;·&nbsp; 25 : 24');
+    const score = el('div', { position: 'absolute', right: '7vw', bottom: '9vh', textAlign: 'right', font: `400 17vmin ${DISPLAY}`, lineHeight: 0.85, color: '#f3ede2', opacity: 0, textShadow: '0 1vmin 4vmin rgba(0,0,0,0.5)' }, stage,
+      `26<span style="opacity:.35"> : </span>24`);
+    const finish = addFinish({ grain: 0.06, vignette: 0.5 });
+    const hitFlash = el('div', { position: 'absolute', inset: 0, background: '#fff', opacity: 0, zIndex: 46, pointerEvents: 'none' }, document.body);
+    const redOverlay = el('div', { position: 'absolute', inset: 0, background: '#e3121b', mixBlendMode: 'multiply', opacity: 0, zIndex: 45, pointerEvents: 'none' }, document.body);
+    const credit = el('div', { position: 'absolute', left: '7vw', bottom: '5vh', font: `500 1.3vmin ${TEXT}`, letterSpacing: '0.12em', color: 'rgba(243,237,226,0.7)', opacity: 0, zIndex: 60 }, document.body,
+      'CHARACTER: VROID "HAIRSAMPLE_MALE" (PIXIV, CC0), KIT BY THE AUTHOR' + (roar ? ' · ROAR MOTION: BANDAI NAMCO RESEARCH MOTIONDATASET-2 (CC BY-NC 4.0)' : ''));
+    VM.onFrame((T) => { credit.style.opacity = shotAt(T).name === 'roar' ? VM.prog(T, shotBy('roar').T[1] - 1.5, 0.5) : 0; });
+
+    // ================= frame =================
+    let comicMode = null;
+    // frame modes: the arena (normal), the comic panel (pop-art, without ink), ink drawings ('hit': the whole comic shot; 'takeoff'
+    // and 'floor': the impact frames of the jump and of the ball on the court). Ink frames are lit by the impact alone (and a rim
+    // from behind) so the drawing splits into light and shadow; the arena goes, the white decals (cracks, rings) stay.
+    let modeKey = null, inkSaved = null;
+    function setMode(comic, ink) {
+      const key = `${comic}|${ink}`; if (modeKey === key) return; modeKey = key;
+      const inkOn = !!ink, flat = comic || inkOn; comicMode = flat;   // (setRage leaves the arena off while this is on)
+      if (inkOn && !inkSaved) { inkSaved = []; scene.traverse((o) => { if (o.isLight && o !== inkHit && o !== inkRim) { inkSaved.push([o, o.intensity]); o.intensity = 0; } }); }
+      if (!inkOn && inkSaved) { inkSaved.forEach(([o, i]) => (o.intensity = i)); inkSaved = null; }
+      inkHit.intensity = inkOn ? (P.inkHit ?? 10) * (ink === 'hit' ? 1 : 1.6) : 0; inkRim.intensity = inkOn ? (P.inkRim ?? 1.2) : 0;
+      inkMat.uniforms.thr.value = P.inkThr ?? 0.95; inkMat.uniforms.lineW.value = P.inkLine ?? 2.4;
+      finish.vig.style.opacity = inkOn ? 0 : 1;
+      env.forEach((m) => (m.visible = !flat));
+      scene.background = flat ? null : bgTexRef;
+      bodyMeshes.forEach((m) => (m.material = inkOn ? m.userData.ink || m.userData.toon : comic ? m.userData.toon : m.userData.std));
+      [crack, liftRing, ring, crack2].forEach((m) => (m.visible = !comic));
+      ball.traverse((o) => { if (!o.isMesh) return; o.userData.std = o.userData.std || o.material;
+        o.userData.toon = o.userData.toon || new THREE.MeshToonMaterial({ map: o.material.map, gradientMap: ramp });
+        o.material = flat ? o.userData.toon : o.userData.std; });
+      comicBg.style.opacity = comic && !inkOn ? 1 : 0; halftoneFg.style.opacity = comic && !inkOn ? 0.6 : 0; speed.style.opacity = inkOn ? 0 : 1;
+      // pop-art panel: ink outline + misregistered colour fringe on the 3D layer
+      out.style.filter = comic && !inkOn ? 'drop-shadow(0.35vmin 0 0 #0a1020) drop-shadow(-0.35vmin 0 0 #0a1020) drop-shadow(0 0.35vmin 0 #0a1020) drop-shadow(0 -0.35vmin 0 #0a1020) drop-shadow(0.8vmin 0.3vmin 0 rgba(255,60,90,0.55)) drop-shadow(-0.8vmin -0.3vmin 0 rgba(0,190,255,0.55))' : 'none';
+    }
+    // which ink drawing (if any) this video time is
+    let INK_KIND = null;
+    const inkKindAt = (T0, shot) => !INK ? null : shot.comic ? 'hit'
+      : (shot.name === 'liftoff' && T0 >= T_TAKEOFF && T0 < T_TAKEOFF + 0.13 + 1 / 30) ? 'takeoff'
+      : (shot.name === 'floor' && T0 >= T_FLOOR_VIDEO && T0 < T_FLOOR_VIDEO + 0.25 + 1 / 30) ? 'floor' : null;
+    // ---- rage close-up: red field with black rays, red-graded character, red glow, a drawn scream ----
+    { const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('viewBox', '-960 -540 1920 1080'); svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+      Object.assign(svg.style, { position: 'absolute', inset: 0, width: '100%', height: '100%' });
+      const R = VM.rand(23);
+      let h = '<defs><radialGradient id="rageG"><stop offset="0" stop-color="#ff4a1c"/><stop offset="0.5" stop-color="#c00a0e"/><stop offset="1" stop-color="#240003"/></radialGradient></defs>'
+        + '<rect x="-960" y="-540" width="1920" height="1080" fill="url(#rageG)"/>';
+      for (let i = 0; i < 56; i++) { const a0 = (i / 56) * Math.PI * 2 + R() * 0.05, w = 0.01 + R() * 0.035, L = 2400, r0 = 160 + R() * 260;
+        h += `<path d="M${Math.cos(a0) * r0} ${Math.sin(a0) * r0} L${Math.cos(a0 - w) * L} ${Math.sin(a0 - w) * L} L${Math.cos(a0 + w) * L} ${Math.sin(a0 + w) * L}Z" fill="rgba(20,0,2,${0.45 + R() * 0.4})"/>`; }
+      svg.innerHTML = h; svg.classList.add('rays'); rageBg.appendChild(svg); }
+    // the scream: the model has no jaw or face shapes, so the open mouth is drawn and tracked onto the face
+    const mouth = el('div', { position: 'absolute', left: 0, top: 0, width: '10px', height: '8px', opacity: 0, zIndex: 25, transformOrigin: '50% 20%', pointerEvents: 'none' }, stage,
+      `<svg viewBox="-50 -40 100 100" width="100%" height="100%" style="overflow:visible">
+        <path d="M-40,-14 L40,-14 Q46,-12 44,0 L30,44 Q0,56 -30,44 L-44,0 Q-46,-12 -40,-14Z" fill="#2a0204" stroke="#070001" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M-37,-11 L37,-11 L34,-3 L22,-5 L18,1 L13,-5 L-13,-5 L-18,1 L-22,-5 L-34,-3Z" fill="#fff4ef"/>
+        <path d="M-27,40 L27,40 L25,33 L16,35 L12,30 L8,35 L-8,35 L-12,30 L-16,35 L-25,33Z" fill="#f3e4de"/>
+        <path d="M-20,38 Q0,22 20,38 Q0,44 -20,38Z" fill="#a1203a"/>
+        <path d="M-50,-18 L-58,-26 M-50,-6 L-60,-6 M50,-18 L58,-26 M50,-6 L60,-6" stroke="#160003" stroke-width="3.5" stroke-linecap="round"/></svg>`);
+    // rage brows + the shadow over the eyes (drawn, tracked like the mouth)
+    const brows = el('div', { position: 'absolute', left: 0, top: 0, width: '10px', height: '6px', opacity: 0, zIndex: 24, transformOrigin: '50% 50%', pointerEvents: 'none' }, stage,
+      `<svg viewBox="-100 -30 200 60" width="100%" height="100%" style="overflow:visible">
+        <defs><radialGradient id="kage" cx="0.5" cy="0.25" r="0.6"><stop offset="0" stop-color="#120002" stop-opacity="0.75"/><stop offset="1" stop-color="#120002" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="0" cy="-6" rx="104" ry="40" fill="url(#kage)"/>
+        <path d="M-88,-22 L-14,4 L-18,14 L-86,-8Z" fill="#090001"/>
+        <path d="M88,-22 L14,4 L18,14 L86,-8Z" fill="#090001"/>
+</svg>`);
+    let rageMode = null;
+    function setRage(on) {
+      if (rageMode === on) return; rageMode = on;
+      if (on) { env.forEach((m) => (m.visible = false)); scene.background = null; }
+      else if (!comicMode) { env.forEach((m) => (m.visible = true)); scene.background = bgTexRef; }
+      [crack, liftRing].forEach((m) => (m.visible = !on && !comicMode));
+      rageBg.style.opacity = on ? 1 : 0;
+      if (on) out.style.filter = 'drop-shadow(0 0 1.4vmin rgba(255,40,20,0.95)) drop-shadow(0.35vmin 0 0 #140002) drop-shadow(-0.35vmin 0 0 #140002) drop-shadow(0 0.35vmin 0 #140002)';
+      else if (!comicMode) out.style.filter = 'none';
+      rimW.color.set(on ? 0xff2a12 : 0xffc062); rimW2.color.set(on ? 0xff3a1a : 0xffb24a); camFill.color.set(on ? 0xff7a62 : 0xfff1e2);
+    }
+    function placeMouth(T, shot) {
+      mouth.style.opacity = 0; brows.style.opacity = 0;
+      return;
+      const h = headPos(), top = V3(0, 0, 0).setFromMatrixPosition(bone('HeadTop_End').matrixWorld), up = top.clone().sub(h).normalize(), f = faceDir();
+      const side = V3(0, 0, 0).crossVectors(up, f).normalize();
+      const m = h.clone().addScaledVector(up, P.mouthUp ?? 0.02).addScaledVector(f, P.mouthFwd ?? 0.085);
+      cam.updateMatrixWorld();
+      const toPx = (v) => { const q = v.clone().project(cam); return [(q.x + 1) / 2 * W, (1 - q.y) / 2 * H]; };
+      const [mx, my] = toPx(m), [ax, ay] = toPx(m.clone().addScaledVector(side, 0.03)), [bx, by] = toPx(m.clone().addScaledVector(side, -0.03));
+      const wpx = Math.hypot(ax - bx, ay - by) * (P.mouthScale ?? 1.9), ang = Math.atan2(ay - by, ax - bx);
+      const u = (T - shot.T[0]) / (shot.T[1] - shot.T[0]), open = VM.prog(u, 0.12, 0.14, 'outBack'), shake = 1 + 0.06 * Math.sin(T * 70) * open;
+      mouth.style.width = `${wpx}px`; mouth.style.height = `${wpx * 0.8}px`; mouth.style.opacity = open > 0.02 ? 1 : 0;
+      const rot = ang + (Math.abs(ang) > Math.PI / 2 ? Math.PI : 0);
+      mouth.style.transform = `translate(${mx - wpx / 2}px, ${my - wpx * 0.2}px) rotate(${rot}rad) scale(${shake}, ${Math.max(0.05, open) * shake})`;
+      const e = h.clone().addScaledVector(up, P.browUp ?? 0.14).addScaledVector(f, P.browFwd ?? 0.09);
+      const [ex, ey] = toPx(e), bw = wpx * (P.browScale ?? 1.6), anger = VM.prog(u, 0.05, 0.2, 'outCubic');
+      brows.style.width = `${bw}px`; brows.style.height = `${bw * 0.3}px`; brows.style.opacity = anger;
+      brows.style.transform = `translate(${ex - bw / 2}px, ${ey - bw * 0.15}px) rotate(${rot}rad) scale(1, ${0.6 + 0.4 * anger})`;
+    }
+    function renderAt(T, shot) {
+      const t = actionAt(T);
+      placeAthlete((shot.name === 'smash' || shot.name === 'floor') ? Math.min(T_LAND, ATH_AFTER + (T - shotBy('smash').T[0]) * 0.35) : t);
+      ball.visible = true;
+      const bp = ballAt(t); ball.position.copy(bp);
+      const s = t - T_CONTACT;
+      ball.rotation.set(t < T_CONTACT ? t * 3 : 3 * T_CONTACT + s * 90, 0.4, 0.2);
+      const sq = s >= 0 && s < 0.02 ? Math.sin(s / 0.02 * Math.PI) : 0;
+      if (sq > 0) { ball.lookAt(ball.position.clone().add(D)); }
+      ball.scale.set(1 + 0.2 * sq, 1 + 0.2 * sq, 1 - 0.4 * sq);
+      const fs = s - tFloor;
+      if (fs >= 0 && fs < HITSTOP + 0.05) {                                       // floor: flatten, then spring back
+        const k = fs < HITSTOP ? Math.min(1, fs / 0.006) : Math.max(0, 1 - (fs - HITSTOP) / 0.05);
+        ball.rotation.set(0, 0, 0); ball.scale.set(1 + 0.6 * k, 1 - 0.55 * k, 1 + 0.6 * k);
+      } else if (s >= 0.02 && s < 0.25) { const st = Math.exp(-(s - 0.02) * 14); ball.lookAt(ball.position.clone().add(D)); ball.scale.set(1 - 0.22 * st, 1 - 0.22 * st, 1 + 0.75 * st); }
+      if (trail) { scene.remove(trail); trail.geometry.dispose(); trail = null; }
+      if (!shot.comic && s > 0.004 && s < tFloor) {
+        const pts = []; for (let k = 0; k <= 12; k++) pts.push(ballAt(Math.max(T_CONTACT, t - (k / 12) * 0.05)));
+        trail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, BR * 0.28, 8, false), trailMat);
+        trailMat.opacity = 0.28 * (1 - Math.max(0, (s - tFloor) / 0.25)); scene.add(trail);
+      }
+      const sh = s >= 0 ? Math.min(1, s / 0.06) : 0;
+      shock.visible = !shot.comic; shock.scale.setScalar(0.05 + sh * 1.1); shock.material.opacity = s >= 0 ? (1 - sh) * 0.9 : 0;
+      if (INK_KIND) { inkHit.position.copy(INK_KIND === 'takeoff' ? LIFT.clone().add(V3(0, 0.25, 0)) : INK_KIND === 'floor' ? hitPoint.clone().add(V3(0, 0.3, 0)) : C); const back = C.clone().sub(cam.position).setY(0).normalize(); inkRim.position.copy(C).addScaledVector(back, 4).add(V3(0, 3, 0)); inkRim.target.position.copy(hipPos()); }
+      hitLight.position.copy(C); hitLight.intensity = INK_KIND ? 0 : s >= 0 ? (shot.comic ? 8 : 60) * Math.exp(-s * 40) : 0;
+      const pos = pGeo.attributes.position.array;
+      for (let i = 0; i < NP; i++) { const v = pv[i], ss = Math.max(0, s) * 0.6;
+        pos[i * 3] = C.x + v.x * ss; pos[i * 3 + 1] = C.y + v.y * ss - 4.9 * ss * ss; pos[i * 3 + 2] = C.z + v.z * ss; }
+      pGeo.attributes.position.needsUpdate = true; spray.visible = !shot.comic; spray.material.opacity = s > 0 ? Math.max(0, 1 - s / 0.5) : 0;
+      { const lo = t - T_OFF, lp = lo > 0 ? Math.min(1, lo / 0.25) : 0;
+        crack.material.opacity = lo > 0 ? Math.min(1, lo / 0.02) * (1 - VM.prog(t, T_OFF + 0.9, 0.6)) : 0; crack.scale.setScalar(0.3 + 0.7 * Math.min(1, Math.max(0, lo) / 0.06));
+        liftRing.scale.setScalar(0.1 + lp * 2.6); liftRing.material.opacity = lo > 0 ? (1 - lp) : 0;
+        column.material.opacity = lo > 0 ? 0.28 * Math.exp(-lo * 14) : 0; column.scale.set(0.6 + lp * 0.5, 0.3 + lp, 0.6 + lp * 0.5);
+        const dp = dGeo.attributes.position.array, ss = Math.max(0, lo);
+        for (let i = 0; i < ND; i++) { const v = dv[i]; dp[i * 3] = LIFT.x + v.x * ss; dp[i * 3 + 1] = Math.max(0.01, v.y * ss - 4.9 * ss * ss); dp[i * 3 + 2] = LIFT.z + v.z * ss; }
+        dGeo.attributes.position.needsUpdate = true; dust.material.opacity = lo > 0 ? Math.max(0, 1 - lo / 0.7) : 0; dust.visible = !shot.comic && !shot.rage; }
+      const sf = s - tFloor, rf = sf > 0 ? Math.min(1, sf / 0.35) : 0;
+      ring.scale.setScalar(0.1 + rf * 2.4); ring.material.opacity = sf > 0 ? (1 - rf) * 0.95 : 0;
+      crack2.material.opacity = sf > 0 ? Math.min(1, sf / 0.01) * (1 - VM.prog(t, T_CONTACT + tFloor + 0.6, 0.4)) : 0; crack2.scale.setScalar(0.3 + 0.7 * Math.min(1, Math.max(0, sf) / 0.03));
+      const u = Math.min(1, Math.max(0, (T - shot.T[0]) / (shot.T[1] - shot.T[0])));
+      const ic = INK && shot.comic ? inkCamAt(REAL_T, shot.cam(t, u)) : null;
+      const c = ic || P.sideCam ? ic || (() => { const h = hipPos(); return { p: [h.x + P.sideCam[0], h.y + P.sideCam[1], h.z + P.sideCam[2]], look: [h.x, h.y + (P.sideCam[3] ?? 0.45), h.z], fov: P.sideCam[4] ?? 40 }; })() : shot.cam(t, u);   // DEBUG
+      const punch = P.clean ? 0 : REAL_T > T_HIT_VIDEO ? 10 * Math.exp(-(REAL_T - T_HIT_VIDEO) * 9) * (shot.comic ? 1 : 0.5) : 0;
+      cam.position.set(...c.p); cam.fov = Math.max(12, c.fov * (1 + 0.35 * (shot.lens || 0)) - punch); cam.updateProjectionMatrix(); cam.lookAt(...c.look);
+      cam.rotateZ((c.roll || 0) + (T > T_FLOOR_VIDEO ? 0.05 * Math.exp(-(T - T_FLOOR_VIDEO) * 5) * Math.sin((T - T_FLOOR_VIDEO) * 40) : 0));
+      const shakeK = (T > T_TAKEOFF ? Math.exp(-(T - T_TAKEOFF) * 5) * 0.06 : 0) + (T > T_HIT_VIDEO ? Math.exp(-(T - T_HIT_VIDEO) * 6) * 0.08 : 0) + (T > T_FLOOR_VIDEO ? Math.exp(-(T - T_FLOOR_VIDEO) * 7) * 0.12 : 0);
+      cam.position.x += VM.noise(T * 50, 1) * shakeK; cam.position.y += VM.noise(T * 50, 2) * shakeK;
+      camFill.position.copy(cam.position).add(V3(0, 0.6, 0)); camFill.target.position.copy(hipPos()); camFill.intensity = INK_KIND ? 0 : shot.name === 'roar' ? 2.6 : 1.4;
+      lensMat.uniforms.k.value = (shot.lens || 0) + (REAL_T > T_HIT_VIDEO ? 0.45 * Math.exp(-(REAL_T - T_HIT_VIDEO) * 6) : 0);
+      lensMat.uniforms.zoom.value = HOLDING || P.clean ? 0 : zoomAt(REAL_T) + smearAt(REAL_T);       // impact frames are crisp drawings
+      lensMat.uniforms.cel.value = shot.comic ? 0.35 : P.cel; lensMat.uniforms.anime.value = P.anime ?? 1; lensMat.uniforms.time.value = REAL_T;   // anime: the full-film filter
+      lensMat.uniforms.sat.value = 1; lensMat.uniforms.tint.value.set(...(shot.rage ? [1.08, 0.88, 0.86] : [1, 1, 1]));   // rage: the world goes red
+      { const f = (shot.name === 'smash' && T > T_FLOOR_VIDEO - 0.2) ? hitPoint : (T > T_HIT_VIDEO - 0.7 && T < T_FLOOR_VIDEO + 0.5) ? (shot.name === 'smash' ? ball.position : C) : hipPos();
+        cam.updateMatrixWorld(); const pf = f.clone().project(cam); lensMat.uniforms.center.value.set((pf.x + 1) / 2, (pf.y + 1) / 2); }
+      renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, cam);
+      renderer.setRenderTarget(null); renderer.clear();
+      if (INK_KIND && !P.inkRaw) { inkMat.uniforms.time.value = REAL_T; inkMat.uniforms.dbg.value = P.inkDbg ? 1 : 0;
+        const fp = (INK_KIND === 'takeoff' ? LIFT : INK_KIND === 'floor' ? hitPoint : C).clone().project(cam); inkMat.uniforms.center.value.set((fp.x + 1) / 2, (fp.y + 1) / 2);
+        renderer.render(inkScene, inkCam); }
+      else renderer.render(postScene, postCam);
+    }
+    const dt = 1 / (VEDIT.fps || 30);
+    const T_TAKEOFF = (() => { const s = shotBy('liftoff'); let lo = s.T[0], hi = s.T[1]; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_OFF) lo = m; else hi = m; } return lo; })();
+    const pulse = (T, at, amp, decay) => (T >= at ? amp * Math.exp(-(T - at) * decay) : 0);
+    // zoom blur: takeoff, the whip building into contact, the hit, the floor
+    const zoomAt = (T) => pulse(T, T_TAKEOFF, 0.22, 6) + (shotAt(T).name === 'pov' ? 0.01 : 0)
+      + pulse(T, T_HIT_VIDEO, 0.3, 4.5) + pulse(T, T_FLOOR_VIDEO, 0.22, 5) + (shotAt(T).name === 'smash' ? 0.05 : 0);
+    // speed lines (anime): density per shot, focus follows the action
+    const speed = el('canvas', { position: 'absolute', inset: 0, width: '100vw', height: '100vh', pointerEvents: 'none', mixBlendMode: 'screen' });
+    speed.width = W; speed.height = H; const sg = speed.getContext('2d');
+    const linesAt = (T) => { const n = shotAt(T).name;
+      const sh = shotAt(T), u = (T - sh.T[0]) / (sh.T[1] - sh.T[0]);
+      return n === 'liftoff' ? (T > T_TAKEOFF ? 1 : 0.25) : n === 'rise' ? 0.7 * (1 - u) : n === 'runup' ? 0.35 * u : n === 'floor' ? (T > T_FLOOR_VIDEO ? 1 : 0.3) : n === 'pov' ? 0.9 : n === 'smash' ? 1 : n === 'rage' ? 1 : n === 'feet' ? 0.35 : 0; };
+    function drawSpeed(T, fx, fy) {
+      sg.clearRect(0, 0, W, H); const a = linesAt(T); if (a <= 0) return;
+      const R = VM.rand(1 + Math.floor(T * 12)), diag = Math.hypot(W, H);
+      for (let i = 0; i < 90; i++) { const ang = R() * Math.PI * 2, r0 = diag * (0.22 + R() * 0.25), r1 = diag * (0.75 + R() * 0.3), w = 0.6 + R() * 3.2;
+        sg.strokeStyle = shotAt(T).rage ? `rgba(255,${60 + R() * 80},30,${(0.2 + R() * 0.5) * a})` : `rgba(255,248,230,${(0.12 + R() * 0.45) * a})`; sg.lineWidth = w;
+        sg.beginPath(); sg.moveTo(fx + Math.cos(ang) * r0, fy + Math.sin(ang) * r0); sg.lineTo(fx + Math.cos(ang) * r1, fy + Math.sin(ang) * r1); sg.stroke(); }
+    }
+    const shutterOf = (shot) => ({ runup: 0.6, rise: 0.7, liftoff: 0.45, pov: 0.15, smash: 1.0, floor: 0.2 }[shot.name] ?? P.shutter);
+    // anime impact frames: the action holds on one drawing, then continues where it stopped (no flicker)
+    const HIT_HOLD = 1.0;
+    // the impact frame's four drawings (0.25 s each): white on black, the negative, black brush on red, mint on black
+    const INK_PALETTES = [[0xffffff, 0x000000], [0x0b0b0b, 0xf6f3ec], [0x120000, 0xd0101c], [0xcff2e0, 0x040807]];
+    const HOLDS = [[T_TAKEOFF, 0.13], [T_HIT_VIDEO, HIT_HOLD], [T_FLOOR_VIDEO + 0.05, 0.2]];
+    const holdT = (T) => { let out = T;
+      for (const [a, h] of HOLDS) { const sh = shotAt(a); if (T < a || T >= sh.T[1]) continue; out = T < a + h ? a : Math.max(a, out - h); }
+      return out; };
+    const inHold = (T) => HOLDS.some(([a, h]) => T >= a && T < a + h);
+    const smearAt = (T) => HOLDS.some(([a]) => T >= a - 1 / 30 && T < a) ? 0.14 : 0;
+    let HOLDING = false, REAL_T = 0;
+    // the impact: a heavy fisheye on the ball that punches in at contact and settles through the hold (re-punched at each new
+    // drawing), and a flash out of the ball that fills the frame and collapses back into it (smaller at each new drawing)
+    function inkState(T0, kind) {
+      const U = inkMat.uniforms, B = P.bulge ?? 0.85, FL = P.inkFlash ?? 1;
+      if (kind === 'hit') {
+        const s = T0 - T_HIT_VIDEO;
+        let k = -1, f = 0; if (s >= 0 && s < HIT_HOLD) { const x = s / 0.25; k = Math.floor(x); f = (x - k) * 0.25; }
+        const [ik, pa] = k >= 0 ? INK_PALETTES[k % INK_PALETTES.length] : INK_PALETTES[0];
+        U.ink.value.set(ik); U.paper.value.set(pa); U.seed.value = Math.max(0, k); U.core.value = s >= 0 ? 1 : 0;
+        U.bulge.value = s < 0 ? B * 0.25 * Math.max(0, 1 + s / 0.25) : s < HIT_HOLD ? B * (0.45 + 0.55 * Math.exp(-s * 5)) + (k > 0 ? 0.25 * B * Math.exp(-f * 18) : 0) : B * 0.45 * Math.exp(-(s - HIT_HOLD) * 12);
+        U.flashR.value = FL * (s < 0 ? 0 : s < HIT_HOLD ? (k === 0 ? 0.07 + 1.6 * Math.exp(-f * 32) : 0.07 + 0.22 * Math.exp(-f * 45)) : Math.max(0, 0.07 * (1 - (s - HIT_HOLD) / 0.06)));
+        return; }
+      // the jump and the floor: a short drawing that flips to the negative (and, on the floor, to red), fisheye and flash on the impact
+      const at = kind === 'takeoff' ? T_TAKEOFF : T_FLOOR_VIDEO, step = kind === 'takeoff' ? 0.07 : 0.09, s = T0 - at;
+      const k = Math.floor(s / step), f = s - k * step, seq = kind === 'takeoff' ? [0, 1] : [0, 1, 2];
+      const [ik, pa] = INK_PALETTES[seq[Math.min(k, seq.length - 1)]];
+      U.ink.value.set(ik); U.paper.value.set(pa); U.seed.value = 7 + k; U.core.value = 1;
+      U.bulge.value = B * (kind === 'takeoff' ? 0.6 : 0.95) * Math.exp(-s * 5);
+      U.flashR.value = FL * (k === 0 ? 0.05 + (kind === 'takeoff' ? 0.8 : 1.3) * Math.exp(-f * 30) : 0.05 + 0.15 * Math.exp(-f * 45));
+    }
+    VM.onFrame((T0) => {
+      const T = holdT(T0); HOLDING = inHold(T0); REAL_T = T0;
+      const shot = shotAt(T0);
+      INK_KIND = inkKindAt(T0, shot);
+      if (INK_KIND) inkState(T0, INK_KIND);
+      if (P.auditAll) window.AUDIT_ALL = 1; if (P.audit) { window.AUDIT = 1; window.AUDIT_T = T0; window.AUDIT_SHOT = shot.name; }
+      setMode(!!shot.comic && !P.clean, INK_KIND); setRage(!!shot.rage && !P.clean); setRageFace(P.forceRage ?? (!!shot.rage && (T - shot.T[0]) > 0.1));
+      if (shot.name === 'roar' && roar && gltf.isVRM && !P.forceRage) { const w = rampW((T - shot.T[0]) / (shot.T[1] - shot.T[0]), 0.1, 0.12);   // the shout opens as the fists go up
+        gltf.expr('angry', 0.55 * w); gltf.expr('a', w); }
+      const swingSmear = shot.comic && T0 > T_HIT_VIDEO + HIT_HOLD && T0 < T_HIT_VIDEO + HIT_HOLD + 0.12;   // the 3 swing frames
+      const n = INK_KIND ? 1 : swingSmear ? 6 : shot.comic ? 1 : Math.max(1, P.subframes);   // ink frames: no smear (the drawing carries the motion)
+      og.clearRect(0, 0, W, H);
+      for (let k = 0; k < n; k++) {
+        const Tk = inHold(T0) ? T : Math.max(shot.T[0], T - dt * (swingSmear ? 1 : shutterOf(shot)) * (k / n));   // never blur across a cut; holds are crisp
+        renderAt(Tk, shot);
+        og.globalAlpha = 1 / (k + 1); og.drawImage(renderer.domElement, 0, 0);
+      }
+      og.globalAlpha = 1;
+      placeMouth(T, shot);
+      if (shot.rage) rageBg.querySelector('.rays').style.transform = `scale(${1.05 + 0.06 * Math.sin(T * 31)}) rotate(${T * 25}deg)`;
+      if (shot.comic) {
+        const u = (T - shot.T[0]) / (shot.T[1] - shot.T[0]);
+        comicBg.querySelector('.burst').style.transform = `scale(${1 + 0.15 * u}) rotate(${u * 8}deg)`;
+        const w = T > T_HIT_VIDEO ? VM.prog(T, T_HIT_VIDEO, 0.18, 'outBack') : 0;
+        comicWord.style.opacity = w > 0 && !INK && P.bam ? 1 : 0;   // no BAM! by default (bam: 1 brings it back) comicWord.style.transform = `rotate(-8deg) scale(${0.3 + 0.7 * w})`;
+      } else comicWord.style.opacity = 0;
+      // speed lines around the point of action
+      { const c0 = lensMat.uniforms.center.value; drawSpeed(T, c0.x * W, (1 - c0.y) * H); }
+      // impact frames: 3 frames of inverted, high-contrast black/white on the hit and a hard one on the floor
+      const fi = Math.floor((T - T_HIT_VIDEO) * 30), ff = Math.floor((T - T_FLOOR_VIDEO) * 30);
+      const fl = Math.floor((T - T_TAKEOFF) * 30);
+      // the hit's impact frame holds 1 s and alternates inverted black-and-white / red, blending at each switch with a zoom punch
+      if (T0 >= T_HIT_VIDEO && T0 < T_HIT_VIDEO + HIT_HOLD) {
+        const x = (T0 - T_HIT_VIDEO) / 0.25, k = Math.floor(x), f = x - k, red = k % 2;     // hard switch every 0.25 s ...
+        if (INK) { stage.style.filter = 'none'; redOverlay.style.opacity = 0; }
+        else { stage.style.filter = `grayscale(1) contrast(3.5) invert(${1 - red})`; redOverlay.style.opacity = red; }
+        stage.style.transform = `scale(${1 + 0.06 * Math.exp(-f * 10)})`;                   // ... with a zoom punch
+        hitFlash.style.opacity = INK ? (k > 0 && f * 0.25 < 1 / 30 ? 1 : 0) : k > 0 ? Math.max(0, 1 - f * 0.25 / 0.07) : 0;   // ... and a white flash: the transition (ink: one hard frame)
+      } else {
+        stage.style.filter = inHold(T0) && !INK_KIND ? 'invert(1) grayscale(1) contrast(3.5)' : 'none'; redOverlay.style.opacity = 0; stage.style.transform = ''; hitFlash.style.opacity = 0;
+      }
+      // BAM on the floor
+      const wf = T > T_FLOOR_VIDEO ? VM.prog(T, T_FLOOR_VIDEO, 0.2, 'outBack') : 0;
+      floorWord.style.opacity = P.bam && shot.name === 'floor' && wf > 0 ? 1 - VM.prog(T, shot.T[1] - 0.25, 0.25) : 0;
+      floorWord.style.transform = `rotate(6deg) scale(${0.3 + 0.9 * wf})`;
+      cam.updateMatrixWorld(); const pc = C.clone().project(cam);
+      flash.style.setProperty('--x', `${(pc.x + 1) * 50}%`); flash.style.setProperty('--y', `${(1 - pc.y) * 50}%`);
+      flash.style.opacity = T0 > T_HIT_VIDEO && !INK_KIND ? 0.9 * Math.exp(-(T0 - T_HIT_VIDEO) * 9) : 0;
+      kicker.style.opacity = VM.env(T, 0.2, T_HIT_VIDEO - 0.2, 0.4, 0.3);
+      const sc = shot.name === 'roar' ? VM.prog(T, shot.T[0] + 0.25, 0.35, 'outBack') : 0;   // the scoreboard lands with the roar
+      score.style.opacity = Math.min(1, sc); score.style.bottom = '74vh'; score.style.transform = `scale(${1.6 - 0.6 * sc})`; score.style.transformOrigin = '100% 0';
+    });
+    console.error('SPIKE_TIMES ' + JSON.stringify(window.SPIKE_TIMES) + ' takeoff ' + T_TAKEOFF.toFixed(3));
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

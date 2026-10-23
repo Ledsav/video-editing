@@ -84,7 +84,7 @@ Export any look as a LUT for other software: `bin/vedit lut teal_orange --out te
 - `out` or `duration` (output seconds). Stills (`.jpg/.png`) default to 3 s; use `motion` on them.
 - Solid slug: `{"id": "black", "color": "#000000", "duration": 1.0}`.
 - Motion-design scene: `{"id": "s1", "hyperframes": "hf/opener", "variables": {...}}` (or a built-in
-  such as `"scene-kinetic"`): a HyperFrames composition rendered full-screen as a clip, lasting its
+  such as `"scene-kinetic"`, or a vedit page such as `"scenes/s1.html"`): a HyperFrames composition rendered full-screen as a clip, lasting its
   own `data-duration` unless `duration`/`out` is given (see [hyperframes.md](hyperframes.md) and the
   motion-design skill). Scenes keep their own colours unless `"graded": true`.
 - `speed` 0.5 = slow motion, 2 = double speed (audio pitch-preserved).
@@ -141,7 +141,8 @@ and `effect`/`overlay` to layer extras.
  "blend": "normal|screen", "opacity": 1.0}
 {"hyperframes": "hf/logo-reveal", "start": "90%", "duration": 3}
 ```
-`hyperframes` is a composition folder relative to the edit, or a built-in (`bin/vedit hf list`).
+`hyperframes` is a composition folder relative to the edit, a vedit page (`.html`), or a built-in
+(`bin/vedit hf list`). The old keys (`html`, `template`, `params`) are still read.
 `duration` defaults to the composition's own and stretches it when different. Identical graphics
 (same composition, variables and length) render once. See [hyperframes.md](hyperframes.md).
 

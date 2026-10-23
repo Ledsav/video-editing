@@ -242,12 +242,27 @@ def resolve_sfx(base: Path, name: str) -> Path:
 # Transitions
 # ----------------------------------------------------------------------------
 
+def legacy_keys(item: dict) -> dict:
+    """Specs written for the old Playwright renderer: `html` (a vedit page), `scene` / `template` (now built-ins)
+    and `params` map onto `hyperframes` and `variables`."""
+    ref = item.get("html") or item.get("scene") or item.get("template")
+    if not ref or "hyperframes" in item or "source" in item:
+        return item
+    out = {k: v for k, v in item.items() if k not in ("html", "scene", "template", "params")}
+    out["hyperframes"] = ref
+    if "params" in item and "variables" not in item:
+        out["variables"] = item["params"]
+    return out
+
+
 def resolve_transition(raw, fps: float) -> Transition:
     if raw is None:
         return Transition()
     if isinstance(raw, str):
         raw = {"type": raw}
     raw = dict(raw)
+    if raw.get("type") == "mograph":            # old renderer: a template or vedit page covering the cut
+        raw = {**legacy_keys(raw), "type": "hyperframes"}
     name = raw.get("type", "cut")
     base: dict
     if name in TRANSITION_PRESETS:
@@ -257,13 +272,10 @@ def resolve_transition(raw, fps: float) -> Transition:
     elif name == "hyperframes":
         project = raw.get("project") or raw.get("hyperframes")
         if not project:
-            raise VeditError("hyperframes transition needs 'project' (a HyperFrames project directory)")
+            raise VeditError("hyperframes transition needs 'project' (a HyperFrames project, vedit page or built-in)")
         base = {"kind": "cut", "overlay": {"hyperframes": project,
                                            **{k: raw[k] for k in ("variables", "blend", "cover_at", "duration", "opacity")
                                               if k in raw}}}
-    elif name == "mograph":
-        raise VeditError("the 'mograph' transition was replaced by 'hyperframes': "
-                         '{"type": "hyperframes", "project": "<HyperFrames project dir>", "cover_at": 0.5}')
     else:
         raise VeditError(f"unknown transition {name!r}. Use a preset ({', '.join(TRANSITION_PRESETS)}), "
                          f"an ffmpeg xfade name, or 'hyperframes'.")
@@ -382,6 +394,7 @@ def build_plan(spec_or_path, base_dir: Path | None = None) -> Plan:
     for i, rc in enumerate(raw_clips):
         if not isinstance(rc, dict):
             raise VeditError(f"timeline[{i}] must be an object")
+        rc = legacy_keys(rc)
         cid = str(rc.get("id", f"c{i + 1}"))
         speed = float(rc.get("speed", 1.0))
         if speed <= 0:
@@ -390,16 +403,13 @@ def build_plan(spec_or_path, base_dir: Path | None = None) -> Plan:
             kind, path, info = "color", None, None
             src_in = 0.0
         elif "hyperframes" in rc and "source" not in rc:
-            # a full-screen HyperFrames composition used as a clip
+            # a full-screen HyperFrames composition (or vedit page) used as a clip
             from . import hyperframes as HF
             kind, info = "scene", None
             path = HF.resolve(rc["hyperframes"], base_dir)
             src_in = 0.0
             if "duration" not in rc and "out" not in rc:
                 rc = {**rc, "duration": HF.meta(path)["duration"]}
-        elif ("scene" in rc or "html" in rc) and "source" not in rc:
-            raise VeditError(f"clip {cid}: 'scene'/'html' clips were replaced by HyperFrames projects: "
-                             '{"hyperframes": "<project dir>", "variables": {...}}')
         else:
             if "source" not in rc:
                 raise VeditError(f"clip {cid}: needs 'source' (or 'color' for a solid slug)")

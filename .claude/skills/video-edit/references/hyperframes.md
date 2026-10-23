@@ -21,7 +21,9 @@ Before building a named effect by hand, search the registry (`hyperframes-regist
                                "variables": {"color": "#1a0f05"}}}]
 ```
 
-- `hyperframes` / `project`: a folder relative to the edit, or a built-in name (below).
+- `hyperframes` / `project`: a folder relative to the edit, a vedit page (an `.html` file, see below),
+  or a built-in name (below). Specs written for the old renderer still work: `html`, `scene` and
+  `template` read as `hyperframes`, `params` as `variables`, and transition type `mograph` as `hyperframes`.
 - `variables`: values for the composition's variables. Paths to images, Lottie JSON or clips are
   resolved relative to the edit and copied into the build, so pass them as-is.
 - `duration`: overrides the composition's `data-duration`. The built-ins time everything off it,
@@ -90,10 +92,41 @@ Rules that matter for footage overlays:
 6. Fonts installed by `scripts/setup.sh` (Bebas Neue, Anton, Oswald, Montserrat, Playfair Display, ...)
    resolve by name; others need `@font-face` (see the hyperframes skill).
 
+## vedit pages (single HTML files)
+
+A spec can also point at one `.html` page written against the vedit runtime, the contract of the
+former renderer that the volleyball example and the anime-short kit use. It runs unchanged inside
+HyperFrames: the build mirrors the folder tree the page's `../` references reach (symlinks), adds
+an `index.html` with `<base href>` set to the page's folder, and loads `hf/lib/vedit-runtime.js`, which
+drives the page from HyperFrames' `hf-seek`.
+
+```html
+<meta name="vedit:kind" content="scene">          <!-- scene | title | overlay | transition | lower_third -->
+<meta name="vedit:duration" content="5">          <!-- the spec's duration overrides it -->
+<meta name="vedit:cover-at" content="0.5">        <!-- transitions -->
+<meta name="vedit:blend" content="screen">        <!-- optional -->
+<meta name="vedit:libs" content="gsap,lottie,three"><!-- gsap/lottie as globals; three via VEDIT.libs.three (+ three_addons) -->
+<meta name="vedit:deps" content="lib.js,data.json"> <!-- local files it loads: part of the build key -->
+<script>
+  const P = VM.params({ title: 'Hello' });        // spec variables over these defaults
+  VM.onFrame((t) => { /* draw frame t */ });       // or GSAP tweens: the global timeline is seeked
+  window.VM_READY = (async () => { /* load models, decode images */ })();   // optional async setup
+</script>
+```
+
+- Use pages for three.js-heavy or stateful work written in this style; new designed graphics are better as
+  HyperFrames projects (registry blocks, Studio preview, lint).
+- Asset paths in variables: image/audio/JSON paths are resolved against the edit, as before; other
+  values (`.vrm`, `.glb`, `.bvh`) are passed through and the page resolves them against itself.
+- Renders are cached by the page, its variables and its `vedit:deps` files. A page that loads other local
+  scripts or data lists them there, or edits to them reuse stale renders.
+- HyperFrames' snapshots don't relay the page console: `bin/vedit hf console <page> [--times ...]` prints what
+  the page logs with `console.error` (and uncaught errors) while it loads and at those times.
+
 ## Review loop
 
 ```bash
-bin/vedit hf snapshot <project|built-in> --variables '{...}' --times 0.3,0.8,1.5 --width 960 --height 540
+bin/vedit hf snapshot <project|page.html|built-in> --variables '{...}' --times 0.3,0.8,1.5 --width 960 --height 540
 bin/hyperframes lint          # inside the project: contract problems with a Fix: line
 ```
 Read the PNGs and judge them like an art director: hierarchy, timing, spacing, legibility over the

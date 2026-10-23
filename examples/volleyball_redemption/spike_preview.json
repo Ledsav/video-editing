@@ -1,0 +1,17 @@
+{
+  "brief": {"prompt": "Animated spike preview: V200W ball, 3D athlete, speed ramps, motion blur"},
+  "output": {"path": "out/spike_preview.mp4", "width": 1920, "height": 1080, "fps": 30, "crf": 16},
+  "timeline": [{"id": "spike", "hyperframes": "impact/spike.html", "duration": 6.5}],
+  "music": [{"path": "music/rise.wav", "start": 0, "in": 0, "duration": 6.5, "volume": 0.55, "fade_in": 0.3, "fade_out": 1.2}],
+  "sfx": [
+    {"name": "whoosh", "start": 0.6, "volume": 0.35},
+    {"name": "whoosh", "start": 1.25, "volume": 0.45},
+    {"name": "riser", "start": 3.52, "volume": 0.7},
+    {"name": "impact", "start": 3.52, "volume": 1.0},
+    {"name": "boom", "start": 3.52, "volume": 0.7},
+    {"name": "whoosh", "start": 3.75, "volume": 0.6},
+    {"name": "impact", "start": 4.02, "volume": 0.8},
+    {"name": "boom", "start": 4.02, "volume": 0.6}
+  ],
+  "audio": {"loudness": -14}
+}

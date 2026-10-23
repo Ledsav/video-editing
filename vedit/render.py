@@ -13,7 +13,7 @@ from pathlib import Path
 from . import grade as G
 from . import hyperframes as HF
 from .text import build_ass
-from .timeline import Clip, Plan, build_plan, resolve_path, resolve_sfx
+from .timeline import Clip, Plan, build_plan, legacy_keys, resolve_path, resolve_sfx
 from .util import (FONTS_DIR, SFX_DIR, VeditError, ff_escape, ffmpeg, hex_to_rgb, log,
                    parse_time, probe, stable_hash)
 
@@ -185,6 +185,8 @@ BEATS_RE = re.compile(r"vedit_beats|VM\.(?:beats|beatIndex|pulse)\b")
 
 
 def _html_text(project: Path) -> str:
+    if HF.is_page(project):
+        return HF._page_scripts_text(project)
     return "\n".join(f.read_text(errors="replace") for f in sorted(project.rglob("*.html"))
                      if not set(f.relative_to(project).parts) & HF.SKIP_DIRS)
 
@@ -210,9 +212,10 @@ def collect_overlays(plan: Plan, work: Path, W: int, H: int, pool: ThreadPoolExe
         jobs.append((path, ov.get("variables") or {}, c.transition.boundary - cover, dur,
                      ov.get("blend", meta.get("blend", "normal")), float(ov.get("opacity", 1.0))))
     for g in plan.spec.get("graphics") or []:
+        g = legacy_keys(g)
         if "hyperframes" not in g:
-            raise VeditError("graphics items are HyperFrames projects now: "
-                             '{"hyperframes": "<project dir>", "variables": {...}, "at_clip": ...}')
+            raise VeditError("graphics items need 'hyperframes': a HyperFrames project, a vedit page (.html) "
+                             'or a built-in, e.g. {"hyperframes": "title-card", "variables": {...}, "at_clip": ...}')
         path = HF.resolve(g["hyperframes"], plan.base_dir)
         meta = HF.meta(path)
         dflt = float(g.get("duration", meta["duration"]))

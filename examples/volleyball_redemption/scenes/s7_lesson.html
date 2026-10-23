@@ -1,0 +1,79 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="10.909">
+<meta name="vedit:description" content="07 The Lesson: dawn over the court, the ball rises like the sun. You will fall. You will lose. Perseverance is getting back up. RISE AGAIN.">
+<script src="common.js"></script>
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0a1020; }
+  #stage { position: absolute; inset: 0; }
+</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ beat: 60 / 88, l1: 'You will fall.', l2: 'You will lose.', kicker: 'Perseverance is', big: 'GETTING BACK UP.',
+                        title: 'RISE AGAIN.', tagline: 'EVERY SET &nbsp;·&nbsp; EVERY POINT &nbsp;·&nbsp; EVERY DAY' });
+  const b = P.beat, bar = 4 * b, stage = document.getElementById('stage');
+  const HZ = 72;   // horizon (vh)
+  const sky = el('div', { position: 'absolute', inset: 0 });
+  const sunGlow = el('div', { position: 'absolute', left: 0, top: 0, width: '150vmin', height: '150vmin', marginLeft: '-75vmin', marginTop: '-75vmin',
+    borderRadius: '50%', mixBlendMode: 'screen', background: `radial-gradient(closest-side, ${C.gold}cc, ${C.orange}55 35%, ${C.orange}00)` });
+  // light rays
+  const ns = 'http://www.w3.org/2000/svg';
+  const rays = document.createElementNS(ns, 'svg'); Object.assign(rays.style, { position: 'absolute', inset: 0, width: '100vw', height: '100vh', mixBlendMode: 'screen' });
+  let rh = ''; for (let i = 0; i < 18; i++) { const a0 = Math.PI + (i / 18) * Math.PI, a1 = a0 + Math.PI / 40, L = 3000;
+    rh += `<path d="M0 0 L ${Math.cos(a0) * L} ${Math.sin(a0) * L} L ${Math.cos(a1) * L} ${Math.sin(a1) * L} Z"/>`; }
+  rays.innerHTML = `<g class="rg" fill="rgba(255,214,150,0.07)">${rh}</g>`; stage.appendChild(rays);
+  const rg = rays.querySelector('.rg');
+  const sunWrap = el('div', { position: 'absolute', left: 0, top: 0, right: 0, height: `${HZ}vh`, overflow: 'hidden' });
+  const sun = makeBall(sunWrap, 44, { rim: C.gold });
+  // court floor below the horizon with the reflection
+  const floor = el('div', { position: 'absolute', left: 0, right: 0, top: `${HZ}vh`, bottom: 0, overflow: 'hidden',
+    background: 'linear-gradient(#3a2a2c, #120f1a)' });
+  const refl = el('div', { position: 'absolute', left: '50vw', top: 0, width: '36vmin', height: '26vh', marginLeft: '-18vmin', filter: 'blur(2.6vmin)',
+    background: `linear-gradient(${C.gold}99, ${C.orange}33 50%, ${C.orange}00)`, borderRadius: '0 0 50% 50%' }, floor);
+  const hline = el('div', { position: 'absolute', left: 0, right: 0, top: `${HZ}vh`, height: '0.3vmin', background: C.cream, transformOrigin: '50% 50%' });
+  const lane = ['M 50 0 L 10 100', 'M 50 0 L 90 100'];
+
+  // copy
+  const q = el('div', { position: 'absolute', left: 0, right: 0, top: '24vh', textAlign: 'center', color: C.cream });
+  const l1 = el('div', { font: `300 5.4vmin ${TEXT}` }, q, P.l1);
+  const l2 = el('div', { font: `300 5.4vmin ${TEXT}`, marginTop: '1vmin' }, q, P.l2);
+  const k = el('div', { position: 'absolute', left: 0, right: 0, top: '21vh', textAlign: 'center', font: `300 5vmin ${TEXT}`, color: C.cream }, stage, P.kicker);
+  const big = el('div', { position: 'absolute', left: 0, right: 0, top: '29vh', textAlign: 'center', font: `400 13vmin ${DISPLAY}`, color: C.gold, lineHeight: 1 }, stage, P.big);
+  const title = el('div', { position: 'absolute', left: 0, right: 0, top: '13vh', textAlign: 'center', font: `400 25vmin ${DISPLAY}`,
+    color: C.cream, lineHeight: 0.95, letterSpacing: '0.01em', textShadow: '0 1vmin 4vmin rgba(10,16,32,0.35)' }, stage, P.title);
+  const rule = el('div', { position: 'absolute', left: '50vw', top: '42.5vh', width: '14vmin', marginLeft: '-7vmin', height: '0.6vmin', background: C.orange });
+  const tag = el('div', { position: 'absolute', left: 0, right: 0, top: '46vh', textAlign: 'center', font: `600 2.1vmin ${TEXT}`,
+    letterSpacing: '0.5em', textIndent: '0.5em', color: C.cream }, stage, P.tagline);
+  const u1 = softWords(l1, { t0: 0.25, out: bar - 0.55, stagger: 0.14 });
+  const u2 = softWords(l2, { t0: 2 * b + 0.1, out: bar - 0.5, stagger: 0.14 });
+  const uk = softWords(k, { t0: bar + 0.05, out: 2 * bar - 0.6, stagger: 0.12 });
+  const ub = riseText(big, { t0: bar + 2 * b, out: 2 * bar - 0.35, stagger: 0.03, dur: 0.6 });
+  const ut = riseText(title, { t0: 2 * bar, out: 99, stagger: 0.05, dur: 0.9 });
+  chapterTag('06', 'THE LESSON', 0.2, 2 * bar - 0.4);
+  const black = el('div', { position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 60 }, document.body);
+  addFinish({ grain: 0.07, vignette: 0.5 });
+
+  VM.onFrame((t) => {
+    // sunrise: the ball climbs out of the horizon; the sky warms with it
+    const r = VM.prog(t, 0, 9, 'outSine');
+    const sy = VM.lerp(HZ + 24, HZ + 2, r);
+    sun.set({ x: 50, y: sy, rot: 20 + t * 4 });
+    sun.el.style.filter = `sepia(${0.35 - 0.2 * r}) saturate(${1.2 + 0.3 * r}) brightness(${0.85 + 0.25 * r})`;
+    sunGlow.style.transform = `translate(50vw, ${sy}vh) scale(${0.6 + 0.5 * r})`; sunGlow.style.opacity = 0.35 + 0.65 * r;
+    const warm = r;
+    sky.style.background = `linear-gradient(${VM.mix('#0a1020', '#1d2346', warm)} 0%, ${VM.mix('#121a33', '#6b3848', warm)} 55%, ${VM.mix('#1a2440', '#f08a4b', warm)} ${HZ}%, #120f1a ${HZ}%)`;
+    rg.setAttribute('transform', `translate(${innerWidth / 2} ${innerHeight * HZ / 100}) rotate(${Math.sin(t * 0.3) * 4})`);
+    rays.style.opacity = VM.prog(t, 2, 4);
+    refl.style.opacity = (0.15 + 0.5 * r) * (0.9 + 0.1 * VM.noise(t * 2, 3));
+    hline.style.transform = `scaleX(${VM.prog(t, 0, 1.2, 'outExpo')})`; hline.style.opacity = 0.5;
+    u1(t); u2(t); uk(t); ub(t); ut(t);
+    // lockup details
+    rule.style.transform = `scaleX(${VM.prog(t, 2 * bar + 0.6, 0.6, 'inOutExpo')})`;
+    tag.style.opacity = VM.prog(t, 2 * bar + 0.9, 0.6);
+    tag.style.letterSpacing = `${0.5 + 0.15 * (1 - VM.prog(t, 2 * bar + 0.9, 1.5, 'outExpo'))}em`;
+    title.style.transform = `scale(${1 + 0.03 * VM.prog(t, 2 * bar, 5.4, 'outSine')})`;
+    title.style.opacity = 1 - VM.prog(t, 4 * bar - 0.9, 0.5);
+    black.style.opacity = VM.prog(t, 4 * bar - 0.9, 0.85, 'inOutSine');
+  });
+</script></body></html>

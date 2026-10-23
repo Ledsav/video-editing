@@ -54,6 +54,9 @@ and get media through `media-use`.
   inside `VM.ready(...)`, with `preserveDrawingBuffer: true`, and draw in `VM.onFrame`. WebGL is
   software-rendered, so keep geometry moderate (under about 300k triangles). CDN libraries are
   vendored locally at build time, so renders work offline.
+- Existing single-page scenes in the vedit style (`<meta name="vedit:*">`, `VM.onFrame`, `VEDIT.libs.three`,
+  `window.VM_READY`) still render as they are: point the spec at the `.html` file. See "vedit pages" in
+  the video-edit skill's `references/hyperframes.md`, including `vedit:deps` for files a page loads.
 - Music sync: a scene that reads `VM.beats` (or `VM.pulse`/`beatIndex`) receives the edit's beats that
   fall inside it, as the `vedit_beats` variable.
 

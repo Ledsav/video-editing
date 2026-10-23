@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs vedit's tools (ffmpeg, Python deps, Playwright renderer, fonts, sfx) when a
+# Installs vedit's tools (ffmpeg, Python deps, HyperFrames, fonts, sfx) when a
 # Claude Code session starts. Idempotent and fast once everything is in place.
 set -euo pipefail
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}"

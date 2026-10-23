@@ -40,6 +40,23 @@ Built-in scenes: `scene-kinetic`, `scene-stats`, `scene-logo-reveal`, `scene-3d-
 `hyperframes-registry`, `media-use`) are vendored in `.claude/skills/` to match the pinned CLI
 (`bin/hyperframes`).
 
+## Anime shorts
+
+The **anime-short skill** (`.claude/skills/anime-short/`) makes anime-style action shorts with 3D characters
+driven by motion capture. You give it a character (VRM/VRoid or Mixamo; CC0 VRoid samples are fetched for you) and
+mocap takes (BVH or GLB; the CMU database is searchable and free for commercial use). It builds a shot list with
+cameras around the character, slow motion and ink impact frames (held brush drawings with a fisheye and a flash on
+the hit). It also makes anime opening and ending title cards, a song cut to the picture, synthesised anime sound
+design, a 9:16 version for TikTok, and the credits each licence needs.
+
+```bash
+.claude/skills/anime-short/tools/new_project.sh boxer            # kit + a 13 s demo + free assets
+python3 .claude/skills/anime-short/tools/shot_stills.py projects/boxer fight   # screenshots of the shots
+```
+
+> Use the anime-short skill. Make a 20 s anime short of a boxer landing one punch, with an opening title card,
+> an impact frame on the punch and an end card. Show me screenshots before rendering.
+
 ## Setup
 
 ```bash
@@ -96,6 +113,7 @@ bin/vedit demo-media --out projects/demo && bin/vedit render examples/demo/edit.
 | per-clip segments (cut, speed, reframe, motion, graded ramp) + composite pass | `vedit/render.py` |
 | animated typography / captions (ASS via libass) | `vedit/text.py` |
 | HyperFrames bridge: offline build copies, variables, sizing → ProRes 4444 alpha / MP4 | `vedit/hyperframes.py`, `hf/`, `bin/hyperframes` |
+| single-page scenes in the vedit style (volleyball example, anime-short kit) inside HyperFrames | `hf/lib/vedit-runtime.js`, `hf/lib/page-console.mjs` |
 | footage analysis, beat tracking, transcription | `vedit/analyze.py`, `vedit/beats.py`, `vedit/transcribe.py` |
 | procedural sfx and placeholder music | `vedit/synth.py` |
 

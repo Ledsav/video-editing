@@ -1,0 +1,343 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="6.5">
+<meta name="vedit:libs" content="three">
+<meta name="vedit:description" content="Fully animated spike: 3-step approach, double-arm swing, load, takeoff, bow-and-arrow arch, arm whip and wrist snap at contact, follow-through, landing, roar. Speed ramps (near-freeze at contact), crane/punch-in/whip camera, sub-frame motion blur, V200W ball, net, court, flash, shockwave, sweat, ball trail.">
+<script>document.write(`<script type="importmap">{"imports":{"three":"${VEDIT.libs.three}"}}<\/script>`);</script>
+<script src="../scenes/common.js"></script>
+<script src="../styles/mikasa.js"></script>
+<script src="loadglb.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #04060c; } #stage { position: absolute; inset: 0; overflow: hidden; }
+  canvas.out { position: absolute; inset: 0; width: 100vw; height: 100vh; }</style></head>
+<body><div id="stage"></div>
+<script type="module">
+  const P = VM.params({ model: 'Michelle.glb', subframes: 5, shutter: 0.5, debugPose: -1 });
+  const stage = document.getElementById('stage');
+  window.VM_READY = new Promise(async (resolve) => { try {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js');
+    const W = innerWidth, H = innerHeight, V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+    // ================= renderer + accumulation canvas (sub-frame motion blur) =================
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const out = document.createElement('canvas'); out.width = W; out.height = H; out.className = 'out'; stage.appendChild(out);
+    const og = out.getContext('2d');
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(32, W / H, 0.05, 200);
+
+    // ================= arena =================
+    { // screen-space background: dark arena with out-of-focus lights
+      const c = document.createElement('canvas'); c.width = 960; c.height = 540; const g = c.getContext('2d');
+      const gr = g.createLinearGradient(0, 0, 0, 540); gr.addColorStop(0, '#060a16'); gr.addColorStop(0.55, '#0d1630'); gr.addColorStop(1, '#070a12');
+      g.fillStyle = gr; g.fillRect(0, 0, 960, 540);
+      const R = VM.rand(31);
+      for (let i = 0; i < 70; i++) { const x = R() * 960, y = 60 + R() * 260, r = 4 + R() * 22, warm = R() > 0.55;
+        const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, warm ? 'rgba(255,214,140,0.55)' : 'rgba(140,170,255,0.4)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2); }
+      for (let i = 0; i < 9; i++) { const x = 40 + i * 110 + R() * 30; const rg = g.createRadialGradient(x, 30, 0, x, 30, 60);
+        rg.addColorStop(0, 'rgba(255,245,220,0.9)'); rg.addColorStop(0.2, 'rgba(255,230,180,0.25)'); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(x - 60, 0, 120, 90); }
+      const bgTex = new THREE.CanvasTexture(c); bgTex.colorSpace = THREE.SRGBColorSpace; scene.background = bgTex;
+    }
+    const NETZ = 0.55;
+    { // court floor
+      const c = document.createElement('canvas'); c.width = 2048; c.height = 4096; const g = c.getContext('2d');
+      const S = 2048 / 14;                                  // px per metre: 14 m wide x 28 m long
+      g.fillStyle = '#0c1630'; g.fillRect(0, 0, 2048, 4096);
+      const cx = 1024, cz = 2048 - NETZ * S;                 // court origin (x = 0, z = net)
+      g.fillStyle = '#16306e'; g.fillRect(cx - 4.5 * S, cz - 9 * S, 9 * S, 18 * S);
+      g.strokeStyle = '#e9ecf2'; g.lineWidth = 0.05 * S;
+      g.strokeRect(cx - 4.5 * S, cz - 9 * S, 9 * S, 18 * S);
+      [0, -3, 3].forEach((dz) => { g.beginPath(); g.moveTo(cx - 4.5 * S, cz - dz * S); g.lineTo(cx + 4.5 * S, cz - dz * S); g.stroke(); });
+      const R = VM.rand(5); g.globalAlpha = 0.05;
+      for (let i = 0; i < 4000; i++) { g.fillStyle = R() > 0.5 ? '#fff' : '#000'; g.fillRect(R() * 2048, R() * 4096, 2, 2); }
+      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 28), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.68, metalness: 0.0 }));
+      floor.rotation.x = -Math.PI / 2; floor.position.z = 0; floor.receiveShadow = true; scene.add(floor);
+      // the canvas is drawn with +z (towards the net) upwards; plane uv v grows towards -z after the rotation
+      tex.center.set(0.5, 0.5); tex.rotation = Math.PI; tex.repeat.set(-1, 1);
+    }
+    { // net: mesh texture, white tape, antennas, posts
+      const c = document.createElement('canvas'); c.width = 1900; c.height = 200; const g = c.getContext('2d');
+      g.strokeStyle = 'rgba(10,10,14,0.95)'; g.lineWidth = 2.2;
+      for (let x = 0; x <= 1900; x += 20) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 200); g.stroke(); }
+      for (let y = 0; y <= 200; y += 20) { g.beginPath(); g.moveTo(0, y); g.lineTo(1900, y); g.stroke(); }
+      g.fillStyle = '#f2f2f2'; g.fillRect(0, 0, 1900, 14); g.fillRect(0, 192, 1900, 8);
+      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+      const net = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 1.0), new THREE.MeshStandardMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, roughness: 0.8, alphaTest: 0.05 }));
+      net.position.set(0, 2.24 - 0.5, NETZ); scene.add(net);
+      for (const sx of [-1, 1]) {
+        const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.8, 8), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+        ant.position.set(sx * 4.5, 2.24 + 0.0, NETZ); scene.add(ant);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 16), new THREE.MeshStandardMaterial({ color: 0x1b2440, roughness: 0.4 }));
+        post.position.set(sx * 5.4, 1.3, NETZ); scene.add(post);
+      }
+    }
+    // light beams from the roof (additive cones)
+    const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff1d0, transparent: true, opacity: 0.018, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    [[-1.2, 0.0], [1.8, -1.5], [-3.5, 2.5]].forEach(([x, z]) => { const b = new THREE.Mesh(new THREE.ConeGeometry(0.9, 14, 32, 1, true), beamMat); b.position.set(x, 7, z); scene.add(b); });
+
+    // lights
+    scene.add(new THREE.HemisphereLight(0x5070c0, 0x0a0c14, 0.55));
+    const keyL = new THREE.SpotLight(0xfff2da, 90, 30, 0.38, 0.7, 1.6); keyL.position.set(-2.5, 9, 2.5); keyL.target.position.set(0, 1, 0);
+    keyL.castShadow = true; keyL.shadow.mapSize.set(2048, 2048); keyL.shadow.bias = -0.0004; scene.add(keyL, keyL.target);
+    const rimW = new THREE.DirectionalLight(0xffcf7a, 6); rimW.position.set(4, 4, 3); scene.add(rimW);
+    const rimB = new THREE.DirectionalLight(0x6f9cff, 4.5); rimB.position.set(3, 2, -4); scene.add(rimB);
+    const fill = new THREE.DirectionalLight(0x9db4ff, 0.6); fill.position.set(-4, 1.5, 1); scene.add(fill);
+    const hitLight = new THREE.PointLight(0xfff0c0, 0, 6, 1.5); scene.add(hitLight);
+
+    // ================= athlete =================
+    const gltf = await loadGLB(GLTFLoader, P.model);
+    const model = gltf.scene; scene.add(model);
+    model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; if (o.material) { o.material.roughness = 0.55; o.material.metalness = 0; } } });
+    { const box = new THREE.Box3().setFromObject(model); model.scale.multiplyScalar(1.78 / (box.max.y - box.min.y)); }
+    const bone = (n) => model.getObjectByName('mixamorig' + n) || model.getObjectByName('mixamorig:' + n);
+    const bones = []; model.traverse((o) => { if (o.isBone) bones.push(o); });
+    const rest = new Map(bones.map((b) => [b, b.quaternion.clone()]));
+
+    // pose = list of [bone, child, dir]; dir in athlete space (x = her left, y = up, z = forward)
+    const L = (side, a) => a.map(([b, c, d]) => [b.replace('$', side), c.replace('$', side), d]);
+    const mirror = (d) => [-d[0], d[1], d[2]];
+    function pose({ hips = [0, 1, 0.1], s = [[0, 1, 0.1], [0, 1, 0.1], [0, 1, 0.1]], neck = [0, 1, 0.1], head = [0, 1, 0],
+                    rSh = [-1, 0.1, 0], rA, rF, rH, lSh = [1, 0.1, 0], lA, lF, lH, rT, rS, rFt = [0, -0.6, 0.8], lT, lS, lFt = [0, -0.6, 0.8] }) {
+      const p = [['Hips', 'Spine', hips], ['Spine', 'Spine1', s[0]], ['Spine1', 'Spine2', s[1]], ['Spine2', 'Neck', s[2]], ['Neck', 'Head', neck], ['Head', 'HeadTop_End', head],
+        ['RightShoulder', 'RightArm', rSh], ['RightArm', 'RightForeArm', rA], ['RightForeArm', 'RightHand', rF],
+        ['LeftShoulder', 'LeftArm', lSh], ['LeftArm', 'LeftForeArm', lA], ['LeftForeArm', 'LeftHand', lF],
+        ['RightUpLeg', 'RightLeg', rT], ['RightLeg', 'RightFoot', rS], ['RightFoot', 'RightToeBase', rFt],
+        ['LeftUpLeg', 'LeftLeg', lT], ['LeftLeg', 'LeftFoot', lS], ['LeftFoot', 'LeftToeBase', lFt]];
+      if (rH) p.push(['RightHand', 'RightHandMiddle1', rH]);
+      if (lH) p.push(['LeftHand', 'LeftHandMiddle1', lH]);
+      return p;
+    }
+    // ---- the spike, key poses (action time in seconds) ----
+    const KEYS = [
+      [0.00, pose({ hips: [0, 1, 0.3], s: [[0, 1, 0.35], [0, 1, 0.35], [0, 1, 0.3]], neck: [0, 1, 0.3], head: [0, 1, 0.15],      // approach stride, right foot back
+        rA: [-0.15, -0.85, -0.45], rF: [-0.05, -0.4, 0.6], lA: [0.15, -0.85, 0.45], lF: [0, 0.3, 1],
+        lT: [0.05, -0.8, 0.6], lS: [0, -1, 0.15], rT: [-0.05, -0.92, -0.35], rS: [0, -0.45, -0.9], rFt: [0, -0.7, -0.4] })],
+      [0.28, pose({ hips: [0, 1, 0.4], s: [[0, 1, 0.5], [0, 1, 0.5], [0, 1, 0.4]], neck: [0, 1, 0.3], head: [0, 0.9, 0.35],      // penultimate: long right step, arms going back
+        rA: [-0.2, -0.55, -0.8], rF: [-0.1, -0.3, -0.95], lA: [0.2, -0.55, -0.8], lF: [0.1, -0.3, -0.95],
+        rT: [-0.05, -0.7, 0.72], rS: [0, -1, 0.25], lT: [0.05, -0.85, -0.5], lS: [0, -0.3, -0.95], lFt: [0, -0.8, -0.4] })],
+      [0.52, pose({ hips: [0, 1, 0.55], s: [[0, 1, 0.75], [0, 1, 0.65], [0, 1, 0.5]], neck: [0, 1, 0.4], head: [0, 0.85, 0.55],  // plant + load: deep squat, arms fully back
+        rA: [-0.2, 0.25, -1], rF: [-0.05, 0.4, -1], lA: [0.2, 0.25, -1], lF: [0.05, 0.4, -1],
+        rT: [-0.15, -0.5, 0.86], rS: [0, -1, -0.28], lT: [0.15, -0.5, 0.86], lS: [0, -1, -0.28], rFt: [0, -0.2, 1], lFt: [0, -0.2, 1] })],
+      [0.70, pose({ hips: [0, 1, 0.1], s: [[0, 1, 0.1], [0, 1, 0.05], [0, 1, 0.05]], neck: [0, 1, 0.1], head: [0, 0.95, -0.2],   // takeoff: legs drive, arms swing up
+        rA: [-0.1, 0.75, 0.65], rF: [-0.05, 1, 0.35], lA: [0.1, 0.75, 0.65], lF: [0.05, 1, 0.35],
+        rT: [-0.1, -1, 0.12], rS: [0, -1, -0.08], lT: [0.1, -1, 0.15], lS: [0, -1, -0.05], rFt: [0, -0.85, -0.5], lFt: [0, -0.85, -0.5] })],
+      [0.94, pose({ hips: [0, 1, -0.1], s: [[0, 1, -0.2], [0, 1, -0.28], [0, 1, -0.12]], neck: [0, 1, 0.15], head: [0, 0.8, -0.6], // bow and arrow: arch, elbow drawn back, left points at the ball
+        rSh: [-0.8, 0.35, -0.5], rA: [-0.5, 0.3, -0.8], rF: [0.2, 0.97, 0.05],
+        lSh: [1, 0.35, 0.2], lA: [0.12, 0.92, 0.42], lF: [0.05, 0.95, 0.5],
+        rT: [-0.1, -0.95, 0.2], rS: [0, -0.3, -0.95], lT: [0.12, -0.95, 0.3], lS: [0, -0.4, -0.92], rFt: [0, -0.7, -0.7], lFt: [0, -0.7, -0.7] })],
+      [1.05, pose({ hips: [0, 1, -0.15], s: [[0, 1, -0.28], [0, 1, -0.35], [0, 1, -0.15]], neck: [0, 1, 0.1], head: [0, 0.75, -0.65], // full cock, max arch: the arm lags behind the body
+        rSh: [-0.75, 0.4, -0.55], rA: [-0.42, 0.38, -0.82], rF: [0.25, 0.9, -0.3], rH: [0.1, 0.3, -0.95],
+        lSh: [1, 0.2, 0.25], lA: [0.2, 0.55, 0.8], lF: [0.1, 0.4, 0.9],
+        rT: [-0.1, -0.95, 0.15], rS: [0, -0.2, -0.98], lT: [0.12, -0.95, 0.25], lS: [0, -0.25, -0.97], rFt: [0, -0.6, -0.8], lFt: [0, -0.6, -0.8] })],
+      [1.09, pose({ hips: [0, 1, 0.0], s: [[0, 1, -0.05], [0, 1, 0.0], [0, 1, 0.05]], neck: [0, 1, 0.12], head: [0, 0.85, -0.45],  // whip: elbow leads, forearm lags
+        rSh: [-0.95, 0.5, -0.15], rA: [-0.25, 0.9, 0.05], rF: [0.1, 0.55, -0.83], rH: [0, 0.2, -1],
+        lSh: [1, 0.05, 0.15], lA: [0.25, -0.2, 0.95], lF: [-0.3, -0.2, 0.9],
+        rT: [-0.1, -0.9, 0.35], rS: [0, -0.55, -0.83], lT: [0.12, -0.88, 0.45], lS: [0, -0.6, -0.8], rFt: [0, -0.7, -0.6], lFt: [0, -0.7, -0.6] })],
+      [1.12, pose({ hips: [0, 1, 0.1], s: [[0, 1, 0.15], [0, 1, 0.25], [0, 1, 0.22]], neck: [0, 1, 0.15], head: [0, 0.95, -0.25],  // CONTACT: full extension, wrist snap, left arm pulled down
+        rSh: [-1, 0.55, 0.05], rA: [-0.12, 0.95, 0.38], rF: [-0.08, 0.9, 0.5], rH: [0, 0.55, 0.85],
+        lSh: [1, -0.1, 0.1], lA: [0.25, -0.75, 0.6], lF: [-0.55, -0.25, 0.6],
+        rT: [-0.1, -0.85, 0.5], rS: [0, -0.85, -0.4], lT: [0.12, -0.8, 0.58], lS: [0, -0.8, -0.45], rFt: [0, -0.8, -0.3], lFt: [0, -0.8, -0.3] })],
+      [1.28, pose({ hips: [0, 1, 0.3], s: [[0, 1, 0.45], [0, 1, 0.45], [0, 1, 0.35]], neck: [0, 1, 0.35], head: [0, 0.9, 0.45],    // follow-through: pike, arm across the body
+        rSh: [-1, -0.2, 0.2], rA: [0.25, -0.45, 0.85], rF: [0.65, -0.65, 0.3], rH: [0.6, -0.8, 0],
+        lA: [0.3, -0.9, -0.25], lF: [0.1, -1, 0.1],
+        rT: [-0.1, -0.7, 0.72], rS: [0, -0.95, -0.15], lT: [0.12, -0.72, 0.7], lS: [0, -0.95, -0.2] })],
+      [1.74, pose({ hips: [0, 1, 0.4], s: [[0, 1, 0.5], [0, 1, 0.45], [0, 1, 0.35]], neck: [0, 1, 0.3], head: [0, 0.95, 0.3],      // landing: two feet, knees absorb
+        rA: [-0.25, -0.6, 0.75], rF: [-0.1, -0.15, 1], lA: [0.25, -0.6, 0.75], lF: [0.1, -0.15, 1],
+        rT: [-0.17, -0.6, 0.78], rS: [0, -1, -0.3], lT: [0.17, -0.6, 0.78], lS: [0, -1, -0.3], rFt: [0, -0.1, 1], lFt: [0, -0.1, 1] })],
+      [2.30, pose({ hips: [0, 1, -0.05], s: [[0, 1, -0.1], [0, 1, -0.15], [0, 1, -0.05]], neck: [0, 1, 0], head: [0, 0.9, -0.45],  // roar: chest out, fists clenched
+        rSh: [-1, 0.15, 0], rA: [-0.85, -0.45, 0.15], rF: [-0.25, 0.95, 0.15], lSh: [1, 0.15, 0], lA: [0.85, -0.45, 0.15], lF: [0.25, 0.95, 0.15],
+        rT: [-0.12, -1, 0.15], rS: [0, -1, -0.05], lT: [0.12, -1, 0.15], lS: [0, -1, -0.05], rFt: [0, -0.1, 1], lFt: [0, -0.1, 1] })],
+      [2.90, null],
+    ];
+    KEYS[KEYS.length - 1][1] = KEYS[KEYS.length - 2][1];
+    const T_CONTACT = KEYS[7][0];
+
+    // bake each key pose into local bone quaternions
+    const tmpA = V3(0, 0, 0), tmpB = V3(0, 0, 0);
+    function applyAims(list) {
+      bones.forEach((b) => b.quaternion.copy(rest.get(b)));
+      model.position.set(0, 0, 0); model.updateMatrixWorld(true);
+      for (const [bn, cn, d] of list) {
+        const b = bone(bn), c = bone(cn); if (!b || !c) continue;
+        model.updateMatrixWorld(true);
+        tmpA.setFromMatrixPosition(b.matrixWorld); tmpB.setFromMatrixPosition(c.matrixWorld);
+        const cur = tmpB.sub(tmpA).normalize();
+        const want = V3(...d).normalize().applyQuaternion(model.quaternion);
+        const q = new THREE.Quaternion().setFromUnitVectors(cur, want);
+        const pq = new THREE.Quaternion(); b.parent.getWorldQuaternion(pq);
+        const bq = new THREE.Quaternion(); b.getWorldQuaternion(bq);
+        b.quaternion.copy(pq.invert().multiply(q.multiply(bq)));
+      }
+      model.updateMatrixWorld(true);
+      return new Map(bones.map((b) => [b, b.quaternion.clone()]));
+    }
+    const baked = KEYS.map(([t, list]) => [t, applyAims(list)]);
+
+    // Catmull-Rom through the key quaternions (continuous velocity, no robotic stops)
+    const qa = new THREE.Quaternion();
+    function setPose(t) {
+      const n = baked.length; let i = 0;
+      while (i < n - 2 && t > baked[i + 1][0]) i++;
+      const t0 = baked[i][0], t1 = baked[i + 1][0], u = Math.min(1, Math.max(0, (t - t0) / (t1 - t0)));
+      const k0 = baked[Math.max(0, i - 1)][1], k1 = baked[i][1], k2 = baked[i + 1][1], k3 = baked[Math.min(n - 1, i + 2)][1];
+      const u2 = u * u, u3 = u2 * u;
+      for (const b of bones) {
+        const q1 = k1.get(b), q0 = k0.get(b), q2 = k2.get(b), q3 = k3.get(b);
+        const s0 = q0.dot(q1) < 0 ? -1 : 1, s2 = q2.dot(q1) < 0 ? -1 : 1, s3 = q3.dot(q1) < 0 ? -1 : 1;
+        const cr = (a0, a1, a2, a3) => 0.5 * (2 * a1 + (-a0 + a2) * u + (2 * a0 - 5 * a1 + 4 * a2 - a3) * u2 + (-a0 + 3 * a1 - 3 * a2 + a3) * u3);
+        qa.set(cr(q0.x * s0, q1.x, q2.x * s2, q3.x * s3), cr(q0.y * s0, q1.y, q2.y * s2, q3.y * s3), cr(q0.z * s0, q1.z, q2.z * s2, q3.z * s3), cr(q0.w * s0, q1.w, q2.w * s2, q3.w * s3)).normalize();
+        b.quaternion.copy(qa);
+      }
+    }
+    // root motion: forward travel + feet on the ground, ballistic flight between takeoff and landing
+    const T_OFF = 0.72, T_LAND = 1.72, JUMP = 0.78;
+    const zKeys = [[0, -2.7], [0.28, -1.75], [0.52, -0.75], [0.72, -0.5], [T_CONTACT, -0.22], [T_LAND, 0.02], [2.3, 0.1], [2.9, 0.1]];
+    const zAt = (t) => { let i = 0; while (i < zKeys.length - 2 && t > zKeys[i + 1][0]) i++;
+      const [a, za] = zKeys[i], [b, zb] = zKeys[i + 1], u = Math.min(1, Math.max(0, (t - a) / (b - a)));
+      return za + (zb - za) * (u * u * (3 - 2 * u) * 0.35 + u * 0.65); };
+    const lowNames = ['LeftToeBase', 'RightToeBase', 'LeftFoot', 'RightFoot', 'LeftToe_End', 'RightToe_End', 'LeftLeg', 'RightLeg'].map(bone).filter(Boolean);
+    function placeAthlete(t) {
+      setPose(t);
+      model.position.set(0, 0, zAt(t)); model.updateMatrixWorld(true);
+      let low = Infinity; for (const b of lowNames) low = Math.min(low, tmpA.setFromMatrixPosition(b.matrixWorld).y);
+      let target = 0.02;
+      if (t > T_OFF && t < T_LAND) { const u = (t - T_OFF) / (T_LAND - T_OFF); target += 4 * JUMP * u * (1 - u); }
+      else if (t <= T_OFF) target += 0.03 * Math.abs(Math.sin(t / 0.28 * Math.PI));     // running bounce
+      model.position.y = target - low; model.updateMatrixWorld(true);
+    }
+
+    // ================= ball =================
+    const maps = v200wRefMaps();
+    const ballTex = new THREE.CanvasTexture(maps.color); ballTex.colorSpace = THREE.SRGBColorSpace; ballTex.anisotropy = 8;
+    const BR = 0.105 * 1.15;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(BR, 96, 64), new THREE.MeshStandardMaterial({ map: ballTex, bumpMap: new THREE.CanvasTexture(maps.bump), bumpScale: 1.2, roughness: 0.5 }));
+    ball.castShadow = true; scene.add(ball);
+    placeAthlete(T_CONTACT);
+    const handC = V3(0, 0, 0).setFromMatrixPosition(bone('RightHandMiddle1').matrixWorld);
+    const C = handC.clone().add(V3(0, 0.03, BR * 0.95));                               // ball centre at contact, on the palm
+    const D = V3(0.06, -0.45, 1).normalize(), SPEED = 27;                             // ~100 km/h, down the line
+    const G = V3(0, -9.81, 0);
+    const SET_T0 = 0.05, Ps = C.clone().add(V3(3.2, -1.3, 0.2));                      // the set comes from the setter (her left)
+    const vSet = C.clone().sub(Ps).sub(G.clone().multiplyScalar(0.5 * (T_CONTACT - SET_T0) ** 2)).divideScalar(T_CONTACT - SET_T0);
+    // after the hit: straight line + gravity until the floor, then a bounce
+    const tFloor = (() => { const vy = D.y * SPEED, y0 = C.y - BR; return (-vy - Math.sqrt(vy * vy + 2 * 9.81 * y0)) / -9.81; })();
+    const hitPoint = C.clone().add(D.clone().multiplyScalar(SPEED * tFloor)).add(G.clone().multiplyScalar(0.5 * tFloor * tFloor));
+    function ballAt(t) {
+      if (t < T_CONTACT) { const s = Math.max(0, t - SET_T0); return Ps.clone().add(vSet.clone().multiplyScalar(s)).add(G.clone().multiplyScalar(0.5 * s * s)); }
+      const s = t - T_CONTACT;
+      if (s < tFloor) return C.clone().add(D.clone().multiplyScalar(SPEED * s)).add(G.clone().multiplyScalar(0.5 * s * s));
+      const s2 = s - tFloor, v = D.clone().multiplyScalar(SPEED).add(G.clone().multiplyScalar(tFloor));
+      const vb = V3(v.x * 0.7, -v.y * 0.55, v.z * 0.7);
+      return hitPoint.clone().add(vb.multiplyScalar(s2)).add(G.clone().multiplyScalar(0.5 * s2 * s2));
+    }
+    // trail behind the spiked ball
+    const trailMat = new THREE.MeshBasicMaterial({ color: 0xffe7a8, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
+    let trail = null;
+    // floor impact ring
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 64), new THREE.MeshBasicMaterial({ color: 0xfff0c8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.position.copy(hitPoint).setY(0.01); scene.add(ring);
+    // contact shockwave (in the plane facing the hit direction)
+    const shock = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 96), new THREE.MeshBasicMaterial({ color: 0xfff4d8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    shock.position.copy(C); shock.lookAt(C.clone().add(D)); scene.add(shock);
+    // sweat / chalk spray at contact
+    const NP = 70, pr = VM.rand(77), pv = [];
+    const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NP * 3), 3));
+    for (let i = 0; i < NP; i++) { const a = pr() * Math.PI * 2, b = (pr() - 0.5) * Math.PI;
+      pv.push(V3(Math.cos(a) * Math.cos(b), Math.sin(b) + 0.3, Math.sin(a) * Math.cos(b)).multiplyScalar(1.2 + pr() * 3.2).add(D.clone().multiplyScalar(1.5))); }
+    const spray = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xfff3dc, size: 0.026, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    scene.add(spray);
+
+    // ================= time remap (speed ramps) =================
+    // [video time, action time]: slow approach, near-freeze into contact, real speed for the ball, slow landing
+    const RAMP = [[0, 0], [1.7, 0.72], [3.05, 1.05], [3.35, 1.10], [3.65, 1.135], [3.85, 1.2], [4.35, 1.62], [5.6, 2.4], [6.5, 2.75]];
+    const actionAt = (T) => { let i = 0; while (i < RAMP.length - 2 && T > RAMP[i + 1][0]) i++;
+      const [a, ta] = RAMP[i], [b, tb] = RAMP[i + 1], u = Math.min(1, Math.max(0, (T - a) / (b - a))); return ta + (tb - ta) * u; };
+    const T_HIT_VIDEO = (() => { let lo = 0, hi = 6.5; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (actionAt(m) < T_CONTACT) lo = m; else hi = m; } return lo; })();
+
+    // ================= camera =================
+    // keyframes in video time: [T, position, target, fov]
+    const CAM = [
+      [0.0, [-3.9, 0.75, -3.4], [0, 0.95, -2.2], 30],     // low side tracking on the approach
+      [1.5, [-3.6, 0.55, -1.3], [0, 1.1, -0.6], 30],      // plant: very low
+      [2.4, [-3.3, 0.5, 0.0], [0, 2.0, -0.4], 36],        // low angle, crane up with the jump
+      [3.2, [-2.35, 1.75, 0.3], [C.x, C.y - 0.45, C.z - 0.15], 30],  // punch in on the contact (her side of the net)
+      [3.75, [-2.2, 1.8, 0.35], [C.x, C.y - 0.5, C.z - 0.1], 27],
+      [4.05, [-1.9, 2.85, -0.25], [hitPoint.x, 0.3, hitPoint.z], 38],   // whip: follow the ball over the net into the floor
+      [4.7, [-3.4, 1.05, -0.6], [0, 0.95, 0.0], 32],      // back to her landing
+      [6.5, [-2.8, 1.0, -0.2], [0, 1.25, 0.05], 27],      // slow push on the roar
+    ];
+    const lerp3 = (a, b, u) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+    function camAt(T) {
+      let i = 0; while (i < CAM.length - 2 && T > CAM[i + 1][0]) i++;
+      const [a, pa, ta, fa] = CAM[i], [b, pb, tb, fb] = CAM[i + 1];
+      let u = Math.min(1, Math.max(0, (T - a) / (b - a)));
+      u = i === 4 ? VM.ease.inOutExpo(u) : VM.ease.inOutCubic(u);       // the whip pan is snappy
+      return { p: lerp3(pa, pb, u), t: lerp3(ta, tb, u), f: fa + (fb - fa) * u };
+    }
+
+    // ================= 2D overlay: flash + type =================
+    const flash = el('div', { position: 'absolute', inset: 0, background: 'radial-gradient(circle at var(--x) var(--y), rgba(255,250,235,1), rgba(255,226,150,0.6) 12%, rgba(255,200,90,0) 45%)', opacity: 0, mixBlendMode: 'screen' });
+    const kicker = el('div', { position: 'absolute', left: '7vw', top: '9vh', font: `600 1.8vmin ${TEXT}`, letterSpacing: '0.5em', color: V200W.yellow, opacity: 0 }, stage, 'MATCH POINT &nbsp;·&nbsp; 24 : 24');
+    const score = el('div', { position: 'absolute', right: '7vw', bottom: '9vh', textAlign: 'right', font: `400 17vmin ${DISPLAY}`, lineHeight: 0.85, color: '#f3ede2', opacity: 0, textShadow: '0 1vmin 4vmin rgba(0,0,0,0.5)' }, stage,
+      `25<span style="opacity:.35"> : </span>24`);
+    addFinish({ grain: 0.06, vignette: 0.55 });
+
+    // ================= frame =================
+    function renderAt(T) {
+      const t = actionAt(T);
+      placeAthlete(t);
+      const bp = ballAt(t); ball.position.copy(bp);
+      const s = t - T_CONTACT;
+      ball.rotation.set(t < T_CONTACT ? t * 2 : 2 * T_CONTACT + s * 90, 0.4, 0.2);   // heavy topspin after the hit
+      const sq = s >= 0 && s < 0.02 ? Math.sin(s / 0.02 * Math.PI) : 0;               // squash against the palm
+      ball.scale.set(1 + 0.1 * sq, 1 + 0.1 * sq, 1 - 0.22 * sq);
+      ball.lookAt(ball.position.clone().add(D)); if (sq === 0) ball.rotation.set(t < T_CONTACT ? t * 2 : 2 * T_CONTACT + s * 90, 0.4, 0.2);
+      // trail
+      if (trail) { scene.remove(trail); trail.geometry.dispose(); trail = null; }
+      if (s > 0.004 && s < tFloor + 0.25) {
+        const pts = []; for (let k = 0; k <= 12; k++) pts.push(ballAt(Math.max(T_CONTACT, t - (k / 12) * 0.05)));
+        trail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, BR * 0.28, 8, false), trailMat);
+        trailMat.opacity = 0.28 * (1 - Math.max(0, (s - tFloor) / 0.25)); scene.add(trail);
+      }
+      // contact fx
+      const sh = s >= 0 ? Math.min(1, s / 0.06) : 0;
+      shock.scale.setScalar(0.05 + sh * 1.1); shock.material.opacity = s >= 0 ? (1 - sh) * 0.9 : 0;
+      hitLight.position.copy(C); hitLight.intensity = s >= 0 ? 60 * Math.exp(-s * 40) : 0;
+      const pos = pGeo.attributes.position.array;
+      for (let i = 0; i < NP; i++) { const v = pv[i], ss = Math.max(0, s) * 0.6;
+        pos[i * 3] = C.x + v.x * ss; pos[i * 3 + 1] = C.y + v.y * ss - 4.9 * ss * ss; pos[i * 3 + 2] = C.z + v.z * ss; }
+      pGeo.attributes.position.needsUpdate = true; spray.material.opacity = s > 0 ? Math.max(0, 1 - s / 0.5) : 0;
+      const sf = s - tFloor, rf = sf > 0 ? Math.min(1, sf / 0.35) : 0;
+      ring.scale.setScalar(0.1 + rf * 1.6); ring.material.opacity = sf > 0 ? (1 - rf) * 0.9 : 0;
+      // camera with shake on the hit and the floor impact
+      const c = camAt(T);
+      cam.position.set(...c.p); cam.fov = c.f; cam.updateProjectionMatrix(); cam.lookAt(...c.t);
+      const shakeK = (T > T_HIT_VIDEO ? Math.exp(-(T - T_HIT_VIDEO) * 7) * 0.035 : 0);
+      cam.position.x += VM.noise(T * 50, 1) * shakeK; cam.position.y += VM.noise(T * 50, 2) * shakeK;
+      renderer.render(scene, cam);
+    }
+    const dt = 1 / (VEDIT.fps || 30);
+    VM.onFrame((T) => {
+      const n = Math.max(1, P.subframes);
+      og.globalAlpha = 1; og.globalCompositeOperation = 'source-over';
+      for (let k = 0; k < n; k++) {
+        const Tk = T - dt * P.shutter * (k / n);
+        renderAt(Tk);
+        og.globalAlpha = 1 / (k + 1); og.drawImage(renderer.domElement, 0, 0);
+      }
+      og.globalAlpha = 1;
+      // flash at contact
+      cam.updateMatrixWorld(); const pc = C.clone().project(cam);
+      flash.style.setProperty('--x', `${(pc.x + 1) * 50}%`); flash.style.setProperty('--y', `${(1 - pc.y) * 50}%`);
+      flash.style.opacity = T > T_HIT_VIDEO ? 0.95 * Math.exp(-(T - T_HIT_VIDEO) * 6) : 0;
+      kicker.style.opacity = VM.env(T, 0.3, 3.0, 0.5, 0.4);
+      const sc = VM.prog(T, 4.35, 0.5, 'outExpo'); score.style.opacity = sc; score.style.transform = `translateY(${(1 - sc) * 4}vh)`;
+    });
+    resolve();
+  } catch (e) { console.error('ERR ' + e.message + '\n' + e.stack); resolve(); } });
+</script></body></html>

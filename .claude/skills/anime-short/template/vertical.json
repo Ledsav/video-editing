@@ -1,0 +1,39 @@
+{
+  "src": "out/anime_short.mp4",
+  "dst": "out/anime_short_vertical.mp4",
+  "title": {
+    "jp": "一撃！",
+    "romaji": "ICHIGEKI!",
+    "ep": "第1話",
+    "epTitle": "「最初の一撃」"
+  },
+  "title_from": "op:end",
+  "credits_from": "ed+0.4",
+  "credits": [
+    [
+      "CHARACTER",
+      [
+        "VRoid \"HairSample_Male\" by pixiv (CC0)"
+      ]
+    ],
+    [
+      "MOTION CAPTURE",
+      [
+        "CMU Graphics Lab Motion Capture",
+        "Database (mocap.cs.cmu.edu)"
+      ]
+    ],
+    [
+      "FONTS",
+      [
+        "Dela Gothic One, Yuji Boku (SIL OFL)"
+      ]
+    ],
+    [
+      "SONG",
+      [
+        "SONG CREDIT HERE"
+      ]
+    ]
+  ]
+}

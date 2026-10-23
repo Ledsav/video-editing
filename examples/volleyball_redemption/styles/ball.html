@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="vedit:kind" content="scene">
+<meta name="vedit:duration" content="4">
+<meta name="vedit:libs" content="three">
+<script src="../scenes/common.js"></script>
+<script src="mikasa.js"></script>
+<style>html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #e9e4da; }</style></head>
+<body><div id="stage"></div>
+<script>
+  const P = VM.params({ look: 'studio' });
+  window.VM_READY = (async () => {
+    const views = [[0.5, 0.3, 0.25], [1.57, 0, 0], [0.2, 1.8, -0.4]];
+    const balls = [];
+    for (let i = 0; i < 3; i++) {
+      const m = await createMikasa({ size: 28, look: P.look });
+      m.canvas.style.left = `calc(${18 + i * 32}vw - 14vmin)`; m.canvas.style.top = 'calc(46vh - 14vmin)';
+      document.getElementById('stage').appendChild(m.canvas); balls.push(m);
+    }
+    el('div', { position: 'absolute', left: '7vw', top: '8vh', font: `600 1.8vmin ${TEXT}`, letterSpacing: '0.4em', color: '#0a1020' }, undefined, 'THE BALL &nbsp;·&nbsp; MIKASA V200W COLOURWAY &nbsp;·&nbsp; 3D, LIT, DIMPLED');
+    ['3/4 VIEW', 'TOP (SWIRL)', 'SIDE'].forEach((s, i) => el('div', { position: 'absolute', left: `${18 + i * 32 - 10}vw`, width: '20vw', textAlign: 'center', top: '78vh', font: `500 1.6vmin ${TEXT}`, letterSpacing: '0.3em', color: '#555' }, undefined, s));
+    VM.onFrame((t) => balls.forEach((b, i) => b.render({ rx: views[i][0], ry: views[i][1] + t * 0.8, rz: views[i][2] })));
+  })();
+</script></body></html>

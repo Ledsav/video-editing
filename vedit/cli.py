@@ -264,17 +264,25 @@ def cmd_hf(a) -> int:
     variables = json.loads(a.variables) if a.variables else {}
     size = (a.width, a.height) if a.width and a.height else None
     work = Path("work")
+    if a.action == "console":
+        if not HF.is_page(project):
+            raise VeditError("hf console is for vedit pages (.html files); HyperFrames projects: bin/hyperframes check")
+        times = [float(t) for t in a.times.split(",")] if a.times else None
+        for line in HF.page_console(project, work, variables, size, Path.cwd(), a.duration, a.fps, times):
+            print(line)
+        return 0
     if a.action == "snapshot":
-        dur = HF.meta(project)["duration"]
+        dur = a.duration or HF.meta(project)["duration"]
         times = [float(t) for t in a.times.split(",")] if a.times else \
             [round(dur * (i + 0.5) / a.count, 3) for i in range(a.count)]
         out_dir = Path(a.out or f"work/hf_stills/{project.name}")
-        for f in HF.snapshot(project, times, out_dir, variables=variables, work=work, size=size, base=Path.cwd()):
+        for f in HF.snapshot(project, times, out_dir, variables=variables, work=work, size=size, base=Path.cwd(),
+                             duration=a.duration):
             print(f)
     else:
         out_dir = Path(a.out or "work/hf_renders")
         print(HF.render(project, out_dir, alpha=a.alpha, fps=a.fps, variables=variables, quality=a.quality,
-                        work=work, size=size, base=Path.cwd()))
+                        work=work, size=size, base=Path.cwd(), duration=a.duration))
     return 0
 
 
@@ -441,13 +449,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--jobs", "-j", type=int)
     s.set_defaults(fn=cmd_render)
 
-    s = sub.add_parser("hf", help="HyperFrames: list built-ins, scaffold, render or snapshot a composition")
-    s.add_argument("action", choices=["list", "new", "render", "snapshot"])
-    s.add_argument("project", nargs="?", help="project folder, or a built-in name (bin/vedit hf list)")
+    s = sub.add_parser("hf", help="HyperFrames: list built-ins, scaffold, render, snapshot or read a page's console")
+    s.add_argument("action", choices=["list", "new", "render", "snapshot", "console"],
+                   help="console: what a vedit page logs while loading (and at --times)")
+    s.add_argument("project", nargs="?", help="project folder, vedit page (.html), or built-in name (bin/vedit hf list)")
     s.add_argument("--variables", help="JSON variable values")
-    s.add_argument("--duration", type=float, help="new: composition length in seconds")
+    s.add_argument("--duration", type=float, help="length in seconds (new: of the scaffold; render/snapshot: override)")
     s.add_argument("--overlay", action="store_true", help="new: transparent background (graphic over footage)")
-    s.add_argument("--times", help="snapshot: comma-separated seconds")
+    s.add_argument("--times", help="snapshot/console: comma-separated seconds")
     s.add_argument("--count", type=int, default=6, help="snapshot: number of evenly spaced stills")
     s.add_argument("--alpha", action="store_true", help="render: ProRes 4444 .mov with alpha")
     s.add_argument("--quality", default="looks", choices=["draft", "looks", "delivery"])
