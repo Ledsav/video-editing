@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- Warm film light leak drifting across the frame. Rendered on black and screen-blended. Pair with a crossfade for nostalgic or dreamy transitions.
+     variables: colors: [3 CSS colors]; strength: 0..1.5; seed: int -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      #root { position: absolute; inset: 0; overflow: hidden; }
+
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: #000; }
+  .blob { position: absolute; border-radius: 50%; mix-blend-mode: screen; filter: blur(6vh); }
+
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="light-leak" data-start="0" data-duration="1.6" data-width="1920" data-height="1080" data-vedit-blend="screen" data-vedit-kind="overlay">
+
+    </div>
+    <script src="assets/vedit/vm-shim.js"></script>
+    <script>
+
+  const P = VM.params({ colors: ['#ff6a00', '#ff2e63', '#ffd27a'], strength: 1.0, seed: 3 });
+  const rnd = VM.rand(P.seed);
+  const blobs = P.colors.concat(P.colors.slice(0, 1)).map((c, i) => {
+    const el = document.createElement('div');
+    el.className = 'blob';
+    const size = 70 + rnd() * 60;
+    el.style.width = size + 'vw'; el.style.height = size * 0.8 + 'vw';
+    el.style.background = `radial-gradient(closest-side, ${c}, transparent)`;
+    VM.root.appendChild(el);
+    return { el, size, y: -20 + rnd() * 60, speed: 0.6 + rnd() * 0.8, phase: rnd() * 6.28, dir: i % 2 ? -1 : 1 };
+  });
+  VM.onFrame((t) => {
+    const D = VM.duration, p = t / D;
+    const env = Math.sin(Math.PI * VM.clamp(p)) ** 1.5 * P.strength;
+    blobs.forEach((b, i) => {
+      const x = b.dir > 0 ? VM.lerp(-b.size, 100, p * b.speed + 0.15 * i) : VM.lerp(100, -b.size, p * b.speed + 0.1 * i);
+      const y = b.y + 8 * VM.noise(t * 1.3 + b.phase, i);
+      b.el.style.transform = `translate(${x}vw, ${y}vh)`;
+      b.el.style.opacity = VM.clamp(env * (0.65 + 0.35 * VM.noise(t * 6 + i, 9)), 0, 1);
+    });
+  });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[VM.id] = VM.start();
+    </script>
+  </body>
+</html>

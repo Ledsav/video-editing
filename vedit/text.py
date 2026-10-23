@@ -2,7 +2,7 @@
 
 libass (ffmpeg's `ass` filter) renders these with real kerning, outlines, blur and
 per-character transforms, which is enough for clean kinetic typography. For fully
-designed animated graphics use mograph templates instead (see mograph.py).
+designed animated graphics use HyperFrames compositions instead (see hyperframes.py).
 """
 from __future__ import annotations
 

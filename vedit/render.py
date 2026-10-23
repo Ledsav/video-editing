@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import grade as G
-from . import mograph
+from . import hyperframes as HF
 from .text import build_ass
 from .timeline import Clip, Plan, build_plan, resolve_path, resolve_sfx
 from .util import (FONTS_DIR, SFX_DIR, VeditError, ff_escape, ffmpeg, hex_to_rgb, log,
@@ -144,11 +145,13 @@ def render_segment(plan: Plan, c: Clip, work: Path, W: int, H: int, quality: dic
     seg_dir = work / "segments"
     seg_dir.mkdir(parents=True, exist_ok=True)
     if c.kind == "scene":
-        beats = [b - c.start for b in (plan.beats or []) if c.start - 0.5 <= b <= c.end + 0.5]
-        c.scene_file = mograph.render(c.path, work / "scenes", width=W, height=H, fps=plan.fps,
-                                      duration=c.duration + 3 / plan.fps,
-                                      params=mograph.resolve_assets(c.raw.get("params", {}), plan.base_dir),
-                                      opaque=True, beats=beats)
+        variables = dict(c.raw.get("variables") or {})
+        if BEATS_RE.search(_html_text(c.path)):
+            variables["vedit_beats"] = [round(b - c.start, 4) for b in (plan.beats or [])
+                                        if c.start - 0.5 <= b <= c.end + 0.5]
+        c.scene_file = HF.render(c.path, work / "scenes", alpha=False, fps=plan.fps, variables=variables,
+                                 quality=quality["hf"], work=work, size=(W, H), base=plan.base_dir,
+                                 duration=_dur_override(c.path, c.duration))
     args = _segment_args(plan, c, work, W, H, quality)
     key = stable_hash([str(a) for a in args], c.path if c.path else "")
     vpath = seg_dir / f"{c.index:03d}_{c.id}_{key}.mp4"
@@ -177,37 +180,57 @@ def render_segment(plan: Plan, c: Clip, work: Path, W: int, H: int, quality: dic
 # Stage 2: graphics
 # ----------------------------------------------------------------------------
 
-def collect_overlays(plan: Plan, work: Path, W: int, H: int, pool: ThreadPoolExecutor) -> list[Overlay]:
+# a composition that reads the music beats (directly or through the vm-shim helpers)
+BEATS_RE = re.compile(r"vedit_beats|VM\.(?:beats|beatIndex|pulse)\b")
+
+
+def _html_text(project: Path) -> str:
+    return "\n".join(f.read_text(errors="replace") for f in sorted(project.rglob("*.html"))
+                     if not set(f.relative_to(project).parts) & HF.SKIP_DIRS)
+
+
+def _dur_override(path: Path, dur: float) -> float | None:
+    """The duration to render a composition at, when the spec asks for other than its own."""
+    return round(dur, 4) if abs(dur - HF.meta(path)["duration"]) > 1e-3 else None
+
+
+def collect_overlays(plan: Plan, work: Path, W: int, H: int, pool: ThreadPoolExecutor,
+                     quality: dict) -> list[Overlay]:
+    """Render every HyperFrames graphic and transition overlay (transparent unless screen-blended)."""
     jobs = []
-    fps = plan.fps
     for c in plan.clips:
         ov = c.transition.overlay if c.index > 0 else None
         if not ov:
             continue
-        path, meta = mograph.resolve(ov, plan.base_dir)
-        dur = float(ov.get("duration", meta.get("duration", 1.0)))
-        meta_dur = float(meta.get("duration", dur)) or dur
-        cover = float(ov.get("cover_at", meta.get("cover_at", meta_dur / 2) * dur / meta_dur))
-        start = c.transition.boundary - cover
-        jobs.append((path, mograph.resolve_assets(ov.get("params", {}), plan.base_dir), start, dur,
-                     ov.get("blend", meta.get("blend", "normal")),
-                     float(ov.get("opacity", 1.0))))
+        path = HF.resolve(ov["hyperframes"], plan.base_dir)
+        meta = HF.meta(path)
+        dur = float(ov.get("duration", meta["duration"]))
+        # compositions are timed relative to their length, so a stretched one covers proportionally later
+        cover = float(ov.get("cover_at", meta.get("cover_at", meta["duration"] / 2) * dur / meta["duration"]))
+        jobs.append((path, ov.get("variables") or {}, c.transition.boundary - cover, dur,
+                     ov.get("blend", meta.get("blend", "normal")), float(ov.get("opacity", 1.0))))
     for g in plan.spec.get("graphics") or []:
-        path, meta = mograph.resolve(g, plan.base_dir)
-        dflt = float(g.get("duration", meta.get("duration", 3.0)))
-        start, end = plan.resolve_span({**g, "duration": g.get("duration", dflt)}, dflt)
-        jobs.append((path, mograph.resolve_assets(g.get("params", {}), plan.base_dir), start, end - start,
-                     g.get("blend", meta.get("blend", "normal")),
-                     float(g.get("opacity", 1.0))))
+        if "hyperframes" not in g:
+            raise VeditError("graphics items are HyperFrames projects now: "
+                             '{"hyperframes": "<project dir>", "variables": {...}, "at_clip": ...}')
+        path = HF.resolve(g["hyperframes"], plan.base_dir)
+        meta = HF.meta(path)
+        dflt = float(g.get("duration", meta["duration"]))
+        start, end = plan.resolve_span({**g, "duration": dflt}, dflt)
+        jobs.append((path, g.get("variables") or {}, start, end - start,
+                     g.get("blend", meta.get("blend", "normal")), float(g.get("opacity", 1.0))))
     futures = []
-    submitted: dict = {}  # identical graphics (same file, params, length) render once
-    for path, params, start, dur, blend, opacity in jobs:
+    submitted: dict = {}  # identical graphics (same project and variables) render once
+    for path, variables, start, dur, blend, opacity in jobs:
         if dur <= 0:
             continue
-        key = (str(path), json.dumps(params, sort_keys=True), round(dur, 4))
+        alpha = blend != "screen"
+        override = _dur_override(path, dur)
+        key = (str(path), json.dumps(variables, sort_keys=True), alpha, override)
         if key not in submitted:
-            submitted[key] = pool.submit(mograph.render, path, work / "graphics", width=W, height=H, fps=fps,
-                                         duration=dur, params=params)
+            submitted[key] = pool.submit(HF.render, path, work / "graphics", alpha=alpha, fps=plan.fps,
+                                         variables=variables, quality=quality["hf"], work=work, size=(W, H),
+                                         base=plan.base_dir, duration=override)
         futures.append((submitted[key], start, dur, blend, opacity))
     return [Overlay(f.result(), s, d, b, o) for f, s, d, b, o in futures]
 
@@ -383,7 +406,8 @@ def render(spec_path: str | Path, *, preview: bool = False, output: str | Path |
     if preview:
         W, H = W // 4 * 2, H // 4 * 2
     quality = {"seg_crf": 26 if preview else int(out_cfg.get("intermediate_crf", 12)),
-               "seg_preset": "ultrafast" if preview else "veryfast"}
+               "seg_preset": "ultrafast" if preview else "veryfast",
+               "hf": "draft" if preview else "looks"}
     spec_stem = Path(spec_path).stem
     work = plan.base_dir / "work" / spec_stem / ("preview" if preview else "full")
     work.mkdir(parents=True, exist_ok=True)
@@ -400,7 +424,7 @@ def render(spec_path: str | Path, *, preview: bool = False, output: str | Path |
 
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         seg_futures = [pool.submit(render_segment, plan, c, work, W, H, quality) for c in plan.clips]
-        overlays = collect_overlays(plan, work, W, H, pool)
+        overlays = collect_overlays(plan, work, W, H, pool, quality)
         segs = [f.result() for f in seg_futures]
 
     inputs: list = []
@@ -441,7 +465,7 @@ def render(spec_path: str | Path, *, preview: bool = False, output: str | Path |
             steps.append(f"[ob{k}][ol{k}]blend=all_mode=screen{op}:shortest=1,format=yuv420p[{o}]")
         else:
             fade = f",colorchannelmixer=aa={ov.opacity:.3f}" if ov.opacity < 1 else ""
-            trim = f"trim=start={-ov.start:.4f}," if ov.start < 0 else ""
+            trim = f"trim=start={max(-ov.start, 0.0):.4f}:duration={ov.duration - max(-ov.start, 0.0):.4f},"
             steps.append(f"[{n_in}:v]{trim}format=yuva420p{fade},"
                          f"setpts=PTS-STARTPTS+{max(ov.start, 0.0):.4f}/TB[ol{k}]")
             steps.append(f"[{cur}][ol{k}]overlay=eof_action=pass:format=auto[{o}]")

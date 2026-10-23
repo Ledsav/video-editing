@@ -1,0 +1,65 @@
+<!doctype html>
+<!-- Data scene: up to four big numbers count up inside drawn progress rings, labels slide in under them, title on top. For facts, results, recaps.
+     variables: title; stats: [{value, label, prefix, suffix, decimals, ring: 0..1}]; bg, fg, accent, muted: CSS colours -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      #root { position: absolute; inset: 0; overflow: hidden; }
+
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; font-family: 'Montserrat', 'Inter', sans-serif; }
+  #title { position: absolute; left: 0; right: 0; top: 11vh; text-align: center; font: 700 5vmin 'Montserrat', sans-serif; letter-spacing: 0.32em; padding-left: 0.32em; }
+  #grid { position: absolute; left: 6vw; right: 6vw; top: 24vh; bottom: 10vh; display: grid; gap: 3vmin; align-items: center; justify-items: center; }
+  .stat { position: relative; display: flex; flex-direction: column; align-items: center; }
+  .ring { width: 30vmin; height: 30vmin; }
+  .num { position: absolute; top: 15vmin; transform: translateY(-50%); font: 400 9vmin 'Anton', 'Bebas Neue', sans-serif; }
+  .lab { margin-top: 2.4vmin; font: 600 2.4vmin 'Montserrat', sans-serif; letter-spacing: 0.25em; text-transform: uppercase; text-align: center; max-width: 34vmin; }
+
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="scene-stats" data-start="0" data-duration="5" data-width="1920" data-height="1080" data-vedit-kind="scene">
+<div id="title"></div><div id="grid"></div>
+    </div>
+    <script src="assets/vedit/vm-shim.js"></script>
+    <script>
+
+  const P = VM.params({ title: 'CORTES APERTAS', stats: [
+      { value: 58, label: 'clip girate' }, { value: 9, label: 'ore di festa', suffix: 'h' }, { value: 1, label: 'giorno', ring: 1 }],
+    bg: '#f4efe6', fg: '#16130f', accent: '#e2412b', muted: '#d8cfbf' });
+  VM.root.style.background = P.bg;
+  const title = document.getElementById('title'); title.textContent = P.title; title.style.color = P.fg;
+  const titleChars = VM.split(title);
+  const grid = document.getElementById('grid');
+  const portrait = innerHeight > innerWidth;
+  grid.style.gridTemplateColumns = portrait ? '1fr' : `repeat(${P.stats.length}, 1fr)`;
+  const items = P.stats.map((s, i) => {
+    const el = document.createElement('div'); el.className = 'stat';
+    el.innerHTML = `<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="${P.muted}" stroke-width="2.5"/>
+      <circle class="arc" cx="50" cy="50" r="44" fill="none" stroke="${P.accent}" stroke-width="5" stroke-linecap="round" transform="rotate(-90 50 50)"/></svg>
+      <div class="num" style="color:${P.fg}"></div><div class="lab" style="color:${P.fg}">${s.label}</div>`;
+    if (portrait) { el.querySelector('.ring').style.width = el.querySelector('.ring').style.height = '22vmin'; el.querySelector('.num').style.top = '11vmin'; }
+    grid.appendChild(el);
+    return { el, s, arc: el.querySelector('.arc'), num: el.querySelector('.num'), lab: el.querySelector('.lab'), delay: VM.stagger(i, P.stats.length, 0.22) };
+  });
+  VM.onFrame((t) => {
+    const D = VM.duration, out = VM.prog(t, D - 0.45, 0.45, 'inCubic');
+    titleChars.forEach((c, i) => { const p = VM.prog(t, 0.05 + i * 0.025, 0.5, 'outExpo'); c.style.opacity = p * (1 - out); c.style.transform = `translateY(${(1 - p) * 60}%)`; });
+    items.forEach(({ el, s, arc, num, lab, delay }) => {
+      const t0 = 0.35 + delay;
+      const pop = VM.spring(t, t0, { stiffness: 160, damping: 14 });
+      el.style.transform = `scale(${0.6 + 0.4 * pop}) translateY(${out * -4}vh)`;
+      el.style.opacity = VM.prog(t, t0, 0.2) * (1 - out);
+      VM.draw(arc, VM.prog(t, t0 + 0.1, 1.6, 'inOutCubic') * (s.ring !== undefined ? s.ring : 0.85));
+      num.textContent = VM.count(t, t0 + 0.1, 1.6, 0, s.value, { decimals: s.decimals || 0, prefix: s.prefix || '', suffix: s.suffix || '' });
+      lab.style.opacity = VM.prog(t, t0 + 0.6, 0.5); lab.style.transform = `translateY(${(1 - VM.prog(t, t0 + 0.6, 0.6, 'outCubic')) * 2}vmin)`;
+    });
+  });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[VM.id] = VM.start();
+    </script>
+  </body>
+</html>

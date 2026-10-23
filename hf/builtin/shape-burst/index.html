@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- Geometric accent: rings, dashes, crosses and triangles explode outward from a point and fade. Drop it on beat hits, reveals and punch-ins.
+     variables: colors: [CSS colors]; origin: [x, y] in 0..1; count: number of shapes; seed: int; spread: 0..1 -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      #root { position: absolute; inset: 0; overflow: hidden; }
+html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: transparent; } canvas { position: absolute; inset: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="shape-burst" data-start="0" data-duration="1.2" data-width="1920" data-height="1080" data-vedit-kind="overlay">
+<canvas id="cv"></canvas>
+    </div>
+    <script src="assets/vedit/vm-shim.js"></script>
+    <script>
+
+  const P = VM.params({ colors: ['#ffffff', '#ffd400', '#ff2d55'], origin: [0.5, 0.5], count: 26, seed: 11, spread: 0.6 });
+  const cv = document.getElementById('cv'), W = cv.width = innerWidth, H = cv.height = innerHeight, g = cv.getContext('2d');
+  const rnd = VM.rand(P.seed), U = Math.min(W, H);
+  const shapes = Array.from({ length: P.count }, (_, i) => ({
+    kind: ['ring', 'dash', 'cross', 'tri', 'dot'][i % 5], a: rnd() * Math.PI * 2, dist: (0.25 + rnd() * 0.75) * P.spread,
+    size: (0.012 + rnd() * 0.03) * U, spin: (rnd() - 0.5) * 8, color: P.colors[i % P.colors.length], delay: rnd() * 0.12,
+  }));
+  VM.onFrame((t) => {
+    const D = VM.duration; g.clearRect(0, 0, W, H);
+    const ox = P.origin[0] * W, oy = P.origin[1] * H;
+    const shock = VM.prog(t, 0, D * 0.45, 'outExpo');
+    g.globalAlpha = 1 - shock; g.strokeStyle = P.colors[0]; g.lineWidth = U * 0.006 * (1 - shock) + 1;
+    g.beginPath(); g.arc(ox, oy, shock * U * 0.55, 0, Math.PI * 2); g.stroke();
+    for (const s of shapes) {
+      const p = VM.prog(t, s.delay, D - s.delay, 'outExpo');
+      if (p <= 0) continue;
+      const r = s.dist * U * p, x = ox + Math.cos(s.a) * r, y = oy + Math.sin(s.a) * r;
+      g.save(); g.translate(x, y); g.rotate(s.a + s.spin * p);
+      g.globalAlpha = VM.clamp(1 - VM.prog(t, D * 0.45, D * 0.55, 'inQuad'));
+      g.strokeStyle = g.fillStyle = s.color; g.lineWidth = U * 0.0045; g.lineCap = 'round';
+      const z = s.size * (1 - 0.4 * p);
+      g.beginPath();
+      if (s.kind === 'ring') { g.arc(0, 0, z, 0, Math.PI * 2); g.stroke(); }
+      else if (s.kind === 'dash') { g.moveTo(-z * 1.5, 0); g.lineTo(z * 1.5, 0); g.stroke(); }
+      else if (s.kind === 'cross') { g.moveTo(-z, 0); g.lineTo(z, 0); g.moveTo(0, -z); g.lineTo(0, z); g.stroke(); }
+      else if (s.kind === 'tri') { g.moveTo(0, -z); g.lineTo(z * 0.87, z * 0.5); g.lineTo(-z * 0.87, z * 0.5); g.closePath(); g.stroke(); }
+      else { g.arc(0, 0, z * 0.35, 0, Math.PI * 2); g.fill(); }
+      g.restore();
+    }
+  });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[VM.id] = VM.start();
+    </script>
+  </body>
+</html>

@@ -1,12 +1,12 @@
 ---
 name: video-edit
-description: Edit videos from a natural-language prompt. Cuts footage to a story, color grades dynamically along the story arc (the look evolves with the narrative), adds animated text, music with ducking and beat-synced cuts, sound design, and motion-graphics transitions/titles designed in HTML/CSS/JS. Use whenever the user wants to cut, edit, trim, assemble, grade, color, title, caption, add music to, or add transitions/motion graphics to video, or make a trailer, teaser, reel, recap, promo or short film from footage.
+description: Edit videos from a natural-language prompt. Cuts footage to a story, color grades dynamically along the story arc (the look evolves with the narrative), adds animated text, music with ducking and beat-synced cuts, sound design, and motion-graphics transitions/titles designed as HyperFrames compositions (HTML/CSS/GSAP). Use whenever the user wants to cut, edit, trim, assemble, grade, color, title, caption, add music to, or add transitions/motion graphics to video, or make a trailer, teaser, reel, recap, promo or short film from footage.
 ---
 
 # Video editing from a prompt
 
 You are the editor, colorist, motion designer and sound designer. The `vedit` toolkit
-(`bin/vedit`, Python + ffmpeg + headless Chromium) does the rendering; your job is the
+(`bin/vedit`, Python + ffmpeg, with HyperFrames for designed graphics) does the rendering; your job is the
 creative decisions, written down as an **edit spec** (`edit.json`). Everything is
 re-renderable and cached, so iterate freely.
 
@@ -55,8 +55,8 @@ Full schema: [references/edit-spec.md](references/edit-spec.md). Essentials:
 2. `bin/vedit storyboard edit.json` → **Read the image**: one graded still per clip with
    the arc label. Does the color progression read as the story? Adjust tones/intensity/overrides.
 3. For a specific look decision: `bin/vedit look media/x.mp4 --at 12 --tones original,teal_orange,cold_thriller`.
-4. For any graphic (template or custom): `bin/vedit mograph preview <name|file.html> --params '{...}' --background work/frames/x.jpg`
-   → Read the strip and judge the design like an art director.
+4. For any graphic (built-in or your own): `bin/vedit hf snapshot <name|dir> --variables '{...}' --times 0.3,1,2`
+   → Read the stills and judge the design like an art director.
 
 ### 6. Render and review
 - `bin/vedit render edit.json --preview` (half-res, fast) → extract frames around every
@@ -66,25 +66,28 @@ Full schema: [references/edit-spec.md](references/edit-spec.md). Essentials:
 - `bin/vedit render edit.json` for the final. Report the output path, duration, the arc and
   the main creative choices to the user, and offer specific alternatives.
 
-## Motion graphics: design your own
+## Motion graphics: HyperFrames
 
-Templates (`bin/vedit templates`): shape_wipe, circle_reveal, bars_stagger, ink_spread,
-film_burn, light_leak, title_card, lower_third, kinetic_type, chapter_marker, glitch_title,
-shape_burst, speed_lines. When none fits the brief, **write a custom HTML graphic** in
-`projects/<name>/graphics/` and reference it with `"html": "graphics/my_title.html"`. You are
-good at this: CSS, SVG filters, canvas, typography. Follow the contract and design guidance in
-[references/motion-graphics.md](references/motion-graphics.md). Always preview stills and
-iterate before using it in the edit.
+Titles, lower thirds, designed transitions, overlays and full-screen scenes are HyperFrames
+compositions, referenced from the spec with `"hyperframes": "<dir or built-in>"` plus `variables`.
+Built-ins (`bin/vedit hf list`): shape-wipe, circle-reveal, bars-stagger, ink-spread, film-burn,
+light-leak, title-card, lower-third, kinetic-type, chapter-marker, glitch-title, shape-burst,
+speed-lines, and the scene-* compositions. When none fits the brief, search the HyperFrames
+registry (`hyperframes-registry` skill) or **design your own**: `bin/vedit hf new
+projects/<name>/hf/<thing> --overlay`. You are good at this: CSS, SVG, canvas, GSAP, typography.
+Follow [references/hyperframes.md](references/hyperframes.md) (vedit specifics) and the
+`hyperframes` skill (the composition contract). Always look at stills and iterate before using
+a graphic in the edit.
 
-Transition graphics must fully cover the frame at their `cover-at` moment; the renderer
-hard-cuts the footage underneath at exactly that instant.
+Transition compositions must fully cover the frame at their cover point (`data-vedit-cover-at`);
+the renderer hard-cuts the footage underneath at exactly that instant.
 
 ## Principles
 - Story first: every cut, color shift and transition should mean something in the arc.
   Do not use flashy transitions everywhere: a sequence of plain cuts makes the one
   `zoom_punch` on the drop hit hard.
 - Match transition energy to the arc: dissolves/dips for calm or time passing, whips/glitch/
-  punch for energy, mograph wipes for chapter changes and brand moments.
+  punch for energy, designed wipes for chapter changes and brand moments.
 - Keep grades believable at intensity 0.6–0.9 unless the brief is stylized; skin tones
   should not go green or grey unless that is the point (horror, war).
 - Text: few words, big, on screen long enough to read twice (≈ 0.3 s per word + 1 s).

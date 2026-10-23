@@ -20,7 +20,7 @@ def _json(obj) -> None:
 # ----------------------------------------------------------------------------
 
 def cmd_doctor(a) -> int:
-    from .mograph import available
+    from .hyperframes import available
     from .timeline import xfade_names
 
     ok = True
@@ -38,8 +38,8 @@ def cmd_doctor(a) -> int:
         for f in ("xfade", "lut3d", "ass", "drawtext", "sidechaincompress", "loudnorm", "blend", "rgbashift"):
             row(f"ffmpeg filter {f}", f" {f} " in filters)
         row("ffmpeg xfade transitions", bool(xfade_names()), f"{len(xfade_names())} available")
-    mg, why = available()
-    row("motion graphics (node + playwright)", mg, why)
+    hf, why = available()
+    row("HyperFrames (scenes, overlays, designed transitions)", hf, why)
     fams = installed_font_families()
     have = [f for f in ("Bebas Neue", "Anton", "Montserrat", "Playfair Display", "Space Grotesk") if f in fams]
     row("display fonts", bool(have), ", ".join(have) or f"none (run scripts/setup.sh); fonts dir {FONTS_DIR}")
@@ -203,9 +203,11 @@ def cmd_storyboard(a) -> int:
     for c in plan.clips:
         mid = G.lerp_params(c.grade_start, c.grade_end, 0.5)
         if c.kind == "scene":
-            from . import mograph as MG
-            src = MG.stills(c.path, [c.duration * 0.6], work / f"{c.id}_scene", width=plan.output["width"] // 2,
-                            height=plan.output["height"] // 2, duration=c.duration, params=c.raw.get("params", {}))[0]
+            from . import hyperframes as HF
+            src = HF.snapshot(c.path, [c.duration * 0.6], work / f"{c.id}_scene",
+                              variables=c.raw.get("variables") or {}, work=plan.base_dir / "work",
+                              size=(plan.output["width"] // 2, plan.output["height"] // 2),
+                              base=plan.base_dir)[0]
         elif c.kind == "color":
             from PIL import Image
             from .util import hex_to_rgb
@@ -240,35 +242,39 @@ def cmd_render(a) -> int:
     return 0
 
 
-def cmd_templates(a) -> int:
-    from .mograph import list_templates
+def cmd_hf(a) -> int:
+    """HyperFrames helpers: scaffold a vedit-ready project, render it, or snapshot stills."""
+    from . import hyperframes as HF
 
-    for t in list_templates():
-        extra = f", cover at {t['cover_at']}s" if t["cover_at"] else ""
-        print(f"{t['name']:16s} [{t['kind']}, {t['duration']}s{extra}, blend={t['blend']}]\n"
-              f"{'':16s} {t['description']}\n{'':16s} params: {t['params']}")
-    return 0
-
-
-def cmd_mograph(a) -> int:
-    from . import mograph
-    from .timeline import template_meta, template_path
-
-    html = template_path(a.template)
-    params = json.loads(a.params) if a.params else {}
-    params = mograph.resolve_assets(params, Path.cwd())
-    meta = template_meta(str(html))
-    dur = a.duration or float(meta.get("duration", 2.0))
-    if a.action == "preview":
-        times = [float(t) for t in a.times.split(",")] if a.times else None
-        out = Path(a.out or f"work/mograph/{html.stem}_strip.png")
-        bg = Path(a.background) if a.background else None
-        print(mograph.contact_strip(html, out, times=times, count=a.count, duration=dur, params=params,
-                                    width=a.width, height=a.height, background=bg))
+    if a.action == "list":
+        for b in HF.builtins():
+            extra = f", cover at {b['cover_at']}s" if b.get("cover_at") is not None else ""
+            print(f"{b['name']:20s} [{b.get('kind', '?')}, {b['duration']:g}s{extra}"
+                  f"{', blend=' + b['blend'] if b.get('blend') else ''}]\n{'':20s} {b['description']}\n"
+                  f"{'':20s} variables: {b['variables']}")
+        return 0
+    if not a.project:
+        raise VeditError(f"hf {a.action} needs a project")
+    if a.action == "new":
+        out = HF.new_project(Path(a.project), width=a.width or 1920, height=a.height or 1080, duration=a.duration or 4.0,
+                             overlay=a.overlay)
+        print(out)
+        return 0
+    project = HF.resolve(a.project, Path.cwd())
+    variables = json.loads(a.variables) if a.variables else {}
+    size = (a.width, a.height) if a.width and a.height else None
+    work = Path("work")
+    if a.action == "snapshot":
+        dur = HF.meta(project)["duration"]
+        times = [float(t) for t in a.times.split(",")] if a.times else \
+            [round(dur * (i + 0.5) / a.count, 3) for i in range(a.count)]
+        out_dir = Path(a.out or f"work/hf_stills/{project.name}")
+        for f in HF.snapshot(project, times, out_dir, variables=variables, work=work, size=size, base=Path.cwd()):
+            print(f)
     else:
-        out_dir = Path(a.out or "work/mograph")
-        print(mograph.render(html, out_dir, width=a.width, height=a.height, fps=a.fps, duration=dur, params=params,
-                             opaque=meta.get("kind") == "scene"))
+        out_dir = Path(a.out or "work/hf_renders")
+        print(HF.render(project, out_dir, alpha=a.alpha, fps=a.fps, variables=variables, quality=a.quality,
+                        work=work, size=size, base=Path.cwd()))
     return 0
 
 
@@ -435,22 +441,21 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--jobs", "-j", type=int)
     s.set_defaults(fn=cmd_render)
 
-    s = sub.add_parser("templates", help="list motion-graphics templates")
-    s.set_defaults(fn=cmd_templates)
-
-    s = sub.add_parser("mograph", help="render or preview a motion graphic (template name or .html)")
-    s.add_argument("action", choices=["render", "preview"])
-    s.add_argument("template")
-    s.add_argument("--params", help="JSON params")
-    s.add_argument("--duration", type=float)
-    s.add_argument("--times", help="preview: comma-separated seconds")
-    s.add_argument("--count", type=int, default=6, help="preview: number of stills")
-    s.add_argument("--background", help="preview: image to composite over")
-    s.add_argument("--width", type=int, default=1920)
-    s.add_argument("--height", type=int, default=1080)
+    s = sub.add_parser("hf", help="HyperFrames: list built-ins, scaffold, render or snapshot a composition")
+    s.add_argument("action", choices=["list", "new", "render", "snapshot"])
+    s.add_argument("project", nargs="?", help="project folder, or a built-in name (bin/vedit hf list)")
+    s.add_argument("--variables", help="JSON variable values")
+    s.add_argument("--duration", type=float, help="new: composition length in seconds")
+    s.add_argument("--overlay", action="store_true", help="new: transparent background (graphic over footage)")
+    s.add_argument("--times", help="snapshot: comma-separated seconds")
+    s.add_argument("--count", type=int, default=6, help="snapshot: number of evenly spaced stills")
+    s.add_argument("--alpha", action="store_true", help="render: ProRes 4444 .mov with alpha")
+    s.add_argument("--quality", default="looks", choices=["draft", "looks", "delivery"])
+    s.add_argument("--width", type=int)
+    s.add_argument("--height", type=int)
     s.add_argument("--fps", type=float, default=30)
     s.add_argument("--out")
-    s.set_defaults(fn=cmd_mograph)
+    s.set_defaults(fn=cmd_hf)
 
     s = sub.add_parser("synth-sfx", help="generate whoosh/impact/riser/... sound effects")
     s.add_argument("--out", default=str(SFX_DIR))

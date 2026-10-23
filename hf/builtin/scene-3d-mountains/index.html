@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- 3D (three.js): low-poly mountain range at golden hour, the camera glides between the ridges through haze while a title rises out of the valley. For place intros, travel, landscape openers.
+     variables: title; subtitle; sky: [top, horizon] CSS colours; ground: [valley, slope, rock] CSS colours; sun: CSS colour; seed: int; speed: 0..2 -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      #root { position: absolute; inset: 0; overflow: hidden; }
+
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #sky { position: absolute; inset: 0; }
+  #sun { position: absolute; width: 60vmin; height: 60vmin; border-radius: 50%; left: 50%; transform: translate(-50%, -50%); }
+  canvas { position: absolute; inset: 0; }
+  #title { position: absolute; left: 0; right: 0; top: 30vh; text-align: center; color: #fff; font: 400 14vmin 'Anton', 'Bebas Neue', sans-serif;
+           letter-spacing: 0.12em; padding-left: 0.12em; text-shadow: 0 0.6vmin 3vmin rgba(0,0,0,0.35); }
+  #sub { position: absolute; left: 0; right: 0; top: 50vh; text-align: center; color: #fff; font: 600 2.4vmin 'Montserrat', sans-serif; letter-spacing: 0.7em; padding-left: 0.7em; }
+
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="scene-3d-mountains" data-start="0" data-duration="6" data-width="1920" data-height="1080" data-vedit-kind="scene">
+<div id="sky"></div><div id="sun"></div><div id="title"></div><div id="sub"></div>
+    </div>
+    <script src="assets/vedit/vm-shim.js"></script>
+    <script>
+
+  const P = VM.params({ title: 'BARBAGIA', subtitle: 'SARDEGNA', sky: ['#2b3f6b', '#f2a65a'], ground: ['#3b4a2a', '#7a6a45', '#c9b79a'],
+                        sun: '#ffd27a', seed: 7, speed: 1 });
+  document.getElementById('sky').style.background = `linear-gradient(${P.sky[0]} 0%, ${P.sky[1]} 62%, ${P.sky[1]} 100%)`;
+  const sun = document.getElementById('sun');
+  sun.style.background = `radial-gradient(circle, ${P.sun} 0%, ${P.sun}aa 18%, ${P.sun}00 60%)`;
+  const title = document.getElementById('title'), sub = document.getElementById('sub');
+  title.textContent = P.title; sub.textContent = P.subtitle;
+  const tChars = VM.split(title);
+
+  // deterministic value noise + ridged fbm for mountain shapes
+  const rnd = VM.rand(P.seed), perm = Array.from({ length: 512 }, () => rnd());
+  const h2 = (x, y) => perm[((x * 73856093) ^ (y * 19349663)) & 511];
+  const vnoise = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    return VM.lerp(VM.lerp(h2(xi, yi), h2(xi + 1, yi), u), VM.lerp(h2(xi, yi + 1), h2(xi + 1, yi + 1), u), v);
+  };
+  const ridged = (x, y) => { let a = 0, amp = 1, f = 1; for (let o = 0; o < 5; o++) { a += amp * (1 - Math.abs(vnoise(x * f, y * f) * 2 - 1)) ** 2; amp *= 0.5; f *= 2.03; } return a; };
+
+  window.VM_READY = (async () => {
+    const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js');
+    const W = innerWidth, H = innerHeight;
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setSize(W, H); renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
+    VM.root.insertBefore(renderer.domElement, title);
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(new THREE.Color(P.sky[1]), 40, 210);
+    const camera = new THREE.PerspectiveCamera(W > H ? 48 : 62, W / H, 0.5, 400);
+    // terrain: a long strip the camera flies along, with a valley carved down the middle
+    const geo = new THREE.PlaneGeometry(260, 420, 170, 280); geo.rotateX(-Math.PI / 2);
+    const pos = geo.attributes.position, colors = [];
+    const cV = new THREE.Color(P.ground[0]), cS = new THREE.Color(P.ground[1]), cR = new THREE.Color(P.ground[2]);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), z = pos.getZ(i);
+      const valley = Math.min(1, Math.abs(x) / 38) ** 1.6;
+      const h = ridged(x * 0.018, z * 0.018) * 26 * valley + vnoise(x * 0.1, z * 0.1) * 2;
+      pos.setY(i, h);
+      const k = Math.min(1, h / 34), c = k < 0.45 ? cV.clone().lerp(cS, k / 0.45) : cS.clone().lerp(cR, (k - 0.45) / 0.55);
+      colors.push(c.r, c.g, c.b);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }));
+    mesh.position.z = -120; scene.add(mesh);
+    scene.add(new THREE.HemisphereLight(new THREE.Color(P.sky[0]), new THREE.Color(P.ground[0]), 0.9));
+    const sunLight = new THREE.DirectionalLight(new THREE.Color(P.sun), 2.6); sunLight.position.set(-30, 18, -120); scene.add(sunLight);
+    const horizon = new THREE.Vector3();
+    VM.onFrame((t) => {
+      const D = VM.duration, p = t / D;
+      const z = 60 - p * 120 * P.speed;
+      camera.position.set(Math.sin(p * 2.2) * 6, 15 - p * 4 + VM.noise(t * 0.7, 3) * 0.4, z);
+      camera.lookAt(Math.sin(p * 2.2 + 0.4) * 4, 9 - p * 3, z - 60);
+      camera.rotation.z += Math.sin(p * 2.2) * 0.04;            // gentle bank into the turns
+      renderer.render(scene, camera);
+      horizon.set(-30, 14, z - 160).project(camera);
+      sun.style.left = `${(horizon.x * 0.5 + 0.5) * 100}%`; sun.style.top = `${(-horizon.y * 0.5 + 0.5) * 100}%`;
+      const tin = 1.0, out = VM.prog(t, D - 0.6, 0.6, 'inCubic');
+      tChars.forEach((c, i) => {
+        const q = VM.prog(t, tin + VM.stagger(i, tChars.length, 0.06, 'center'), 1.1, 'outExpo');
+        c.style.opacity = q * (1 - out); c.style.transform = `translateY(${(1 - q) * 45}%)`; c.style.filter = `blur(${(1 - q) * 0.8}vmin)`;
+      });
+      sub.style.opacity = VM.prog(t, tin + 0.8, 0.8) * (1 - out);
+    });
+  })();
+      window.__timelines = window.__timelines || {};
+      window.__timelines[VM.id] = VM.start();
+    </script>
+  </body>
+</html>

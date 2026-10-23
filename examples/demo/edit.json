@@ -30,13 +30,13 @@
     {"id": "c2", "source": "city", "in": 1.0, "out": 4.5, "motion": {"type": "ken_burns", "from": [0.3, 0.4], "to": [0.7, 0.6]},
      "transition": "light_leak"},
     {"id": "c3", "source": "fractal", "in": 0, "out": 3.5, "motion": "drift",
-     "transition": {"type": "mograph", "template": "shape_wipe", "duration": 0.9, "params": {"colors": ["#0b4a5e", "#7fd1e8", "#0d0d0d"]}, "sfx": "whoosh"}},
+     "transition": {"type": "hyperframes", "project": "shape-wipe", "duration": 0.9, "variables": {"colors": ["#0b4a5e", "#7fd1e8", "#0d0d0d"]}, "sfx": "whoosh"}},
     {"id": "c4", "source": "life", "in": 0, "out": 3.0, "motion": {"type": "shake", "amount": 0.01},
      "transition": "glitch"},
     {"id": "c5", "source": "bars", "in": 0, "out": 2.5, "speed": 1.5, "mute": true,
      "transition": "zoom_punch"},
     {"id": "c6", "source": "city", "in": 4.0, "out": 7.8, "motion": "pull_out",
-     "transition": {"type": "mograph", "template": "ink_spread", "duration": 1.2, "params": {"color": "#1a0f05"}}},
+     "transition": {"type": "hyperframes", "project": "ink-spread", "duration": 1.2, "variables": {"color": "#1a0f05"}}},
     {"id": "c7", "source": "forest", "in": 3.0, "out": 7.5, "motion": "push_in",
      "transition": {"type": "whip_left"}}
   ],
@@ -47,9 +47,9 @@
     {"text": "Chapter II", "style": "chapter", "at_clip": "c3", "offset": 0.3, "duration": 2.5}
   ],
   "graphics": [
-    {"template": "lower_third", "at_clip": "c2", "offset": 1.0, "duration": 1.9, "params": {"name": "Ana Ríos", "role": "Explorer", "accent": "#f2b27a"}},
-    {"template": "shape_burst", "at_clip": "c5", "offset": 0.0, "params": {"colors": ["#ffffff", "#ff3b30"]}},
-    {"template": "title_card", "at_clip": "c7", "offset": 1.0, "duration": 3.4, "params": {"title": "HOPE\nREMAINS", "subtitle": "coming soon", "accent": "#ffb347", "size": 18}}
+    {"hyperframes": "lower-third", "at_clip": "c2", "offset": 1.0, "duration": 1.9, "variables": {"name": "Ana Ríos", "role": "Explorer", "accent": "#f2b27a"}},
+    {"hyperframes": "shape-burst", "at_clip": "c5", "offset": 0.0, "variables": {"colors": ["#ffffff", "#ff3b30"]}},
+    {"hyperframes": "title-card", "at_clip": "c7", "offset": 1.0, "duration": 3.4, "variables": {"title": "HOPE\nREMAINS", "subtitle": "coming soon", "accent": "#ffb347", "size": 18}}
   ],
   "effects": [
     {"type": "flash", "at_clip": "c7", "offset": -0.05, "duration": 0.2, "intensity": 0.5}

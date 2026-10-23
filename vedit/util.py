@@ -15,8 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
 FONTS_DIR = ASSETS / "fonts"
 SFX_DIR = ASSETS / "sfx"
-MOGRAPH_DIR = ROOT / "mograph"
-TEMPLATES_DIR = MOGRAPH_DIR / "templates"
+NODE_DIR = ROOT / "mograph"          # Node dependencies: HyperFrames CLI, gsap/lottie/three, fonts
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 

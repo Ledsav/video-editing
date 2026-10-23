@@ -58,24 +58,21 @@ if [[ "$WITH_WHISPER" == "1" ]] && ! done_step whisper; then
   pip_install -r "$ROOT/requirements-optional.txt" && mark whisper
 fi
 
-# 3. Node: Playwright (motion graphics renderer) + fonts ----------------------
-if command -v npm >/dev/null; then
-  if ! done_step node-deps || [[ ! -d "$ROOT/mograph/node_modules/playwright" ]]; then
-    log "installing motion-graphics renderer (playwright) and fonts"
-    (cd "$ROOT/mograph" && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --silent --no-audit --no-fund)
+# 3. Node: HyperFrames (designed scenes, overlays, transitions) + fonts -----
+# HyperFrames needs Node >= 22 and renders with its own headless Chrome.
+if command -v npm >/dev/null && [[ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ]]; then
+  if ! done_step node-deps || [[ ! -x "$ROOT/mograph/node_modules/.bin/hyperframes" ]]; then
+    log "installing HyperFrames, gsap/lottie/three and fonts"
+    (cd "$ROOT/mograph" && npm install --silent --no-audit --no-fund)
     mark node-deps
   fi
-  if ! done_step chromium; then
-    if [[ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ]] && ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium* >/dev/null 2>&1; then
-      :
-    else
-      log "downloading chromium for playwright"
-      (cd "$ROOT/mograph" && npx playwright install chromium) || log "chromium download failed: motion graphics disabled"
-    fi
-    mark chromium
+  if ! done_step hf-browser; then
+    log "fetching the HyperFrames render browser"
+    "$ROOT/bin/hyperframes" telemetry disable >/dev/null 2>&1 || true
+    "$ROOT/bin/hyperframes" browser ensure && mark hf-browser || log "browser download failed: HyperFrames disabled"
   fi
 else
-  log "npm not found: motion graphics and extra fonts are disabled (install Node.js >= 18)"
+  log "Node.js >= 22 not found: HyperFrames scenes/graphics and extra fonts are disabled"
 fi
 
 # 4. Fonts: convert fontsource woff2 -> ttf so libass (ffmpeg) and Chromium share them

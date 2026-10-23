@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- Concentric color rings burst from a point to cover the frame, then a hole opens from the same point to reveal the next shot.
+     variables: colors: [2 CSS colors]; origin: [x, y] in 0..1 -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      #root { position: absolute; inset: 0; overflow: hidden; }
+
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: transparent; }
+  .ring { position: absolute; inset: 0; }
+
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="circle-reveal" data-start="0" data-duration="1.1" data-width="1920" data-height="1080" data-vedit-cover-at="0.55" data-vedit-kind="transition">
+<div class="ring" id="r0"></div><div class="ring" id="r1"></div>
+    </div>
+    <script src="assets/vedit/vm-shim.js"></script>
+    <script>
+
+  const P = VM.params({ colors: ['#ffffff', '#ff2d55'], origin: [0.5, 0.5] });
+  const W = innerWidth, H = innerHeight;
+  const ox = P.origin[0] * W, oy = P.origin[1] * H;
+  const R = Math.hypot(Math.max(ox, W - ox), Math.max(oy, H - oy)) + 4;
+  const rings = [0, 1].map((i) => { const r = document.getElementById('r' + i); r.style.background = P.colors[i % P.colors.length]; return r; });
+  VM.onFrame((t) => {
+    const D = VM.duration, C = D * 0.5;
+    rings.forEach((r, i) => {
+      const lag = i * D * 0.08;               // ring 1 (top) arrives later, opens earlier
+      const outer = R * VM.prog(t, lag, C - lag, 'inOutQuart');
+      const inner = R * VM.prog(t, C + (1 - i) * D * 0.08, C - D * 0.08, 'inOutQuart');
+      r.style.clipPath = `circle(${outer}px at ${ox}px ${oy}px)`;
+      const m = `radial-gradient(circle at ${ox}px ${oy}px, transparent ${inner}px, #000 ${inner + 0.5}px)`;
+      r.style.maskImage = m; r.style.webkitMaskImage = m;
+    });
+  });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[VM.id] = VM.start();
+    </script>
+  </body>
+</html>

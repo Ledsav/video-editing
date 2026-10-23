@@ -55,12 +55,12 @@ story turns, ideally hidden under a transition or a hard cut on a beat (`"ease":
 |---|---|
 | continuous time, same scene | `cut` (90% of all edits) |
 | time passes, softness, memory | `crossfade`, `dissolve`, `dip_black`, `light_leak` |
-| chapter / location change | `dip_black` + `chapter_marker`, `ink_spread`, `bars_stagger` |
-| energy, momentum, travel | `whip_*`, `slide_*`, `zoom_in`, `shape_wipe` |
-| impact, drop, reveal | `zoom_punch`, `flash`, + `shape_burst` / `speed_lines` graphics |
-| tech, error, unease | `glitch`, `pixelate`, `slice`, `glitch_title` |
+| chapter / location change | `dip_black` + `chapter-marker`, `ink-spread`, `bars-stagger` |
+| energy, momentum, travel | `whip_*`, `slide_*`, `zoom_in`, `shape-wipe` |
+| impact, drop, reveal | `zoom_punch`, `flash`, + `shape-burst` / `speed-lines` graphics |
+| tech, error, unease | `glitch`, `pixelate`, `slice`, `glitch-title` |
 | nostalgia, analog | `film_burn`, `light_leak`, `vintage_film` tone |
-| brand / playful | `circle_reveal`, `bars_stagger`, `shape_wipe` with brand colors |
+| brand / playful | `circle-reveal`, `bars-stagger`, `shape-wipe` with brand colors |
 
 Rules: one transition family per piece (plus cuts); stylized transitions only at structural
 moments; match direction to on-screen motion (subject moves right → `whip_right`).
@@ -69,10 +69,10 @@ moments; match direction to on-screen motion (subject moves right → `whip_righ
 
 | tone | title font | support font | animation |
 |---|---|---|---|
-| cinematic/epic | Bebas Neue, Anton | Montserrat (tracked caps) | tracking_in, title_card |
+| cinematic/epic | Bebas Neue, Anton | Montserrat (tracked caps) | tracking_in, title-card |
 | elegant/doc | Playfair Display, DM Serif Display | Montserrat | blur_in, fade |
-| tech/modern | Space Grotesk, Archivo Black | Inter | typewriter, glitch_title |
-| social/hype | Anton, Archivo Black | Montserrat Bold | words, pop, kinetic_type |
+| tech/modern | Space Grotesk, Archivo Black | Inter | typewriter, glitch-title |
+| social/hype | Anton, Archivo Black | Montserrat Bold | words, pop, kinetic-type |
 | personal/playful | Permanent Marker | Montserrat | pop |
 
 - One display font + one support font. Accent color from the grade's highlight tint.

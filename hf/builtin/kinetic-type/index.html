@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- Kinetic typography: words slam in one per beat with motion blur and alternate between filled, outlined and accent-boxed treatments. Set beat to the music's beat period to lock it to the track.
+     variables: words: [strings]; beat: seconds per word; accent: CSS color; color: CSS color; background: 'transparent' or CSS color; font: CSS font-family; size: vh -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      #root { position: absolute; inset: 0; overflow: hidden; }
+
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: transparent; }
+  #bg { position: absolute; inset: 0; }
+  .w { position: absolute; left: 50%; top: 50%; white-space: nowrap; line-height: 1; padding: 0.08em 0.25em; }
+
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="kinetic-type" data-start="0" data-duration="3" data-width="1920" data-height="1080" data-vedit-kind="title">
+<div id="bg"></div>
+    </div>
+    <script src="assets/vedit/vm-shim.js"></script>
+    <script>
+
+  const P = VM.params({ words: ['MAKE', 'IT', 'LOUD'], beat: 0.5, accent: '#ff2d55', color: '#ffffff',
+                        background: 'transparent', font: "'Anton', 'Bebas Neue', 'Archivo Black', sans-serif", size: 24 });
+  document.getElementById('bg').style.background = P.background;
+  const els = P.words.map((w, i) => {
+    const e = document.createElement('div'); e.className = 'w'; e.textContent = w;
+    e.style.font = `400 ${P.size}vh ${P.font}`;
+    const mode = i % 3;
+    if (mode === 0) e.style.color = P.color;
+    if (mode === 1) { e.style.color = 'transparent'; e.style.webkitTextStroke = `0.5vh ${P.color}`; }
+    if (mode === 2) { e.style.color = P.background === 'transparent' ? '#000' : P.background; e.style.background = P.accent; }
+    VM.root.appendChild(e); return e;
+  });
+  VM.onFrame((t) => {
+    els.forEach((e, i) => {
+      const t0 = i * P.beat, last = i === els.length - 1;
+      const t1 = last ? VM.duration : t0 + P.beat;
+      if (t < t0 || t >= t1) { e.style.opacity = 0; return; }
+      const p = VM.prog(t, t0, Math.min(0.18, P.beat * 0.5), 'outExpo');
+      const s = VM.lerp(1.9, 1, p) * (1 + 0.04 * VM.prog(t, t0, t1 - t0));
+      const rot = (i % 2 ? 1 : -1) * VM.lerp(6, 0, p);
+      const outP = last ? VM.prog(t, VM.duration - 0.3, 0.3, 'inCubic') : 0;
+      e.style.opacity = 1 - outP;
+      e.style.filter = `blur(${(1 - p) * 1.2}vh)`;
+      e.style.transform = `translate(-50%, -50%) scale(${s * (1 + outP * 0.4)}) rotate(${rot}deg)`;
+    });
+  });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[VM.id] = VM.start();
+    </script>
+  </body>
+</html>

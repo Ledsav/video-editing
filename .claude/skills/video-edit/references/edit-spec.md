@@ -83,8 +83,9 @@ Export any look as a LUT for other software: `bin/vedit lut teal_orange --out te
 
 - `out` or `duration` (output seconds). Stills (`.jpg/.png`) default to 3 s; use `motion` on them.
 - Solid slug: `{"id": "black", "color": "#000000", "duration": 1.0}`.
-- Motion-design scene: `{"id": "s1", "scene": "scene_kinetic", "duration": 5, "params": {...}}` or
-  `{"html": "scenes/my_scene.html", ...}`: an HTML page rendered full-screen as a clip (see the
+- Motion-design scene: `{"id": "s1", "hyperframes": "hf/opener", "variables": {...}}` (or a built-in
+  such as `"scene-kinetic"`): a HyperFrames composition rendered full-screen as a clip, lasting its
+  own `data-duration` unless `duration`/`out` is given (see [hyperframes.md](hyperframes.md) and the
   motion-design skill). Scenes keep their own colours unless `"graded": true`.
 - `speed` 0.5 = slow motion, 2 = double speed (audio pitch-preserved).
 - `fit`: `cover` crops to fill, `contain` letterboxes, `blur_fill` puts vertical footage on a blurred copy of itself.
@@ -105,9 +106,9 @@ Export any look as a LUT for other software: `bin/vedit lut teal_orange --out te
 | `zoom_in`, `blur`, `pixelate`, `radial`, `wind`, `slice`, `iris_open|close` | stylized xfades | 0.5–0.7 s |
 | `glitch` | cut + RGB split, noise and slice displacement + glitch sfx | 0.3 s |
 | `zoom_punch` | cut + incoming shot slams from 122% to 100% + flash + impact | 0.35 s |
-| `light_leak` | crossfade + screen-blended warm light leak | 1.0 s |
-| `film_burn` | cut hidden under a celluloid burn | 1.2 s |
-| `mograph` | any template/HTML that covers the frame: `{"type":"mograph","template":"shape_wipe","duration":0.9,"params":{...}}` | template |
+| `light_leak` | crossfade + screen-blended warm light leak (built-in `light-leak`; `variables` pass through) | 1.0 s |
+| `film_burn` | cut hidden under a celluloid burn (built-in `film-burn`) | 1.2 s |
+| `hyperframes` | a HyperFrames composition that covers the frame: `{"type":"hyperframes","project":"shape-wipe","duration":0.9,"variables":{...}}`; `cover_at`, `blend`, `opacity` optional | composition |
 | any ffmpeg xfade name | `circleopen`, `hlslice`, `squeezeh`, `coverleft`, `revealright`, `diagtl`, ... | 0.6 s |
 
 Every transition accepts `duration`, `sfx` (name or file, `"none"` to disable), `sfx_volume`,
@@ -132,15 +133,17 @@ and `effect`/`overlay` to layer extras.
 - `size`, `spacing`, `outline`, `shadow` are fractions of frame height.
 - Fonts installed by setup: Bebas Neue, Anton, Oswald, Archivo Black, Montserrat, Space Grotesk, Playfair Display, DM Serif Display, Cormorant Garamond, Permanent Marker, plus Inter/DejaVu.
 
-## Graphics (HTML motion graphics overlays)
+## Graphics (HyperFrames overlays)
 
 ```json
-{"template": "title_card", "at_clip": "c1", "offset": 0.5, "duration": 4,
- "params": {"title": "NORTH\nBOUND", "subtitle": "a film by Ana", "accent": "#ffb347"},
+{"hyperframes": "title-card", "at_clip": "c1", "offset": 0.5, "duration": 4,
+ "variables": {"title": "NORTH\nBOUND", "subtitle": "a film by Ana", "accent": "#ffb347"},
  "blend": "normal|screen", "opacity": 1.0}
-{"html": "graphics/my_logo_reveal.html", "start": "90%", "duration": 3}
+{"hyperframes": "hf/logo-reveal", "start": "90%", "duration": 3}
 ```
-`bin/vedit templates` lists templates and their params.
+`hyperframes` is a composition folder relative to the edit, or a built-in (`bin/vedit hf list`).
+`duration` defaults to the composition's own and stretches it when different. Identical graphics
+(same composition, variables and length) render once. See [hyperframes.md](hyperframes.md).
 
 ## Effects (accents on the whole frame, e.g. on beat drops)
 

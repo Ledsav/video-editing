@@ -16,3 +16,6 @@ out/
 !examples/**/*.json
 .setup/
 assets/sfx/sfx.json
+.hyperframes/
+# scratch HyperFrames projects from early testing
+hf/transitions/

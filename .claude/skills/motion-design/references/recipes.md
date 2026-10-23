@@ -1,6 +1,8 @@
 # Motion-design recipes
 
-All snippets assume the scene contract (see SKILL.md). `t` is seconds since the scene starts.
+Snippets use the vedit helpers (`assets/vedit/vm-shim.js`, loaded after GSAP) inside a HyperFrames
+composition; end the page script with `window.__timelines[VM.id] = VM.start();`. `t` is seconds since
+the composition starts.
 
 ## Text
 
@@ -8,7 +10,7 @@ All snippets assume the scene contract (see SKILL.md). `t` is seconds since the 
 // Mask reveal per character (GSAP)
 const chars = VM.split(document.querySelector('.title'));        // wraps chars in inline-block spans
 document.querySelector('.title').style.overflow = 'hidden';
-gsap.from(chars, { yPercent: 115, rotate: 6, duration: 0.6, ease: 'expo.out', stagger: 0.03, delay: 0.2 });
+VM.tl.from(chars, { yPercent: 115, rotate: 6, duration: 0.6, ease: 'expo.out', stagger: 0.03 }, 0.2);  // on the registered timeline
 
 // Word-per-beat kinetic text without GSAP
 const words = VM.split(el, 'words');
@@ -59,40 +61,43 @@ const k = VM.beatIndex(t);          // which beat we're on
 const hit = VM.pulse(t, 10);        // 1 on each beat, decays: scale/brightness accents
 el.style.transform = `scale(${1 + 0.05 * hit})`;
 ```
-`VM.beats` are relative to the scene start; they exist when the edit has a `sync.beats` file.
+`VM.beats` are relative to the scene start. vedit passes them (as the `vedit_beats` variable) to
+scenes whose HTML mentions `vedit_beats`, when the edit has a `sync.beats` file.
 
 ## Lottie (After Effects exports)
 
 ```html
-<meta name="vedit:libs" content="lottie">
+<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.13.0/build/player/lottie.min.js"></script>
 <div id="anim" style="position:absolute;inset:10vmin"></div>
 <script>
-  const P = VM.params({ animation: 'assets/rocket.json' });   // path relative to the edit
-  lottie.loadAnimation({ container: document.getElementById('anim'), path: P.animation, renderer: 'svg', autoplay: false, loop: false });
-  window.VM_READY = new Promise((r) => setTimeout(r, 300));   // let it parse
+  const P = VM.params({ animation: 'assets/rocket.json' });   // a path passed in variables is copied in
+  const anim = lottie.loadAnimation({ container: document.getElementById('anim'), path: P.animation,
+                                      renderer: 'svg', autoplay: false, loop: false });
+  (window.__hfLottie = window.__hfLottie || []).push(anim);     // HyperFrames seeks registered instances
+  VM.ready(new Promise((r) => anim.addEventListener('DOMLoaded', r)));
 </script>
 ```
-The runtime seeks every registered Lottie animation to `t` each frame.
 
 ## three.js
 
 ```js
-window.VM_READY = (async () => {
-  const THREE = await import(VEDIT.libs.three);
+VM.ready((async () => {
+  const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js');  // vendored at build
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-  renderer.setSize(innerWidth, innerHeight); document.body.appendChild(renderer.domElement);
+  renderer.setSize(innerWidth, innerHeight); VM.root.appendChild(renderer.domElement);
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 500);
   // ... meshes, lights ...
   VM.onFrame((t) => { camera.position.z = 10 - t; renderer.render(scene, camera); });
-})();
+})());
 ```
-Addons (OrbitControls, loaders, postprocessing): `await import(VEDIT.libs.three_addons + 'loaders/GLTFLoader.js')`
-(they import `three` by bare name: prefer core-only code, or inline what you need).
+Addons (loaders, postprocessing) import `three` by bare name, which needs an import map: prefer
+core-only code, or inline what you need.
 
 ## Transitions between scenes
 
 - Hard cut on a beat with a **match** (same colour block or shape continues): cleanest.
-- Built-in: `crossfade`, `dip_black`, any xfade; designed: `shape_wipe`, `circle_reveal`, `bars_stagger`, `ink_spread`.
+- Built-in: `crossfade`, `dip_black`, any xfade; designed: `shape-wipe`, `circle-reveal`, `bars-stagger`, `ink-spread`,
+  or a registry overlay transition (`bin/hyperframes catalog transition`).
 - In-scene exits: end each scene with its own 0.3–0.5 s exit so cuts feel intentional.
 
 ## Checklist before rendering

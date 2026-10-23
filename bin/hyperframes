@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run the pinned HyperFrames CLI (mograph/node_modules) with telemetry off.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export HYPERFRAMES_NO_TELEMETRY=1 DO_NOT_TRACK=1
+exec "$ROOT/mograph/node_modules/.bin/hyperframes" "$@"

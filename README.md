@@ -17,35 +17,39 @@ that starts calm, turns tense, ends hopeful, punchy transitions, bold titles") a
   and cuts can snap to the beats of the track. Procedural whooshes, impacts, risers and
   glitches land on transitions.
 - **Adds motion graphics and transitions.** It has 50+ ffmpeg transitions, plus effect
-  transitions (glitch, zoom punch, light leak, film burn) and **HTML/CSS/JS motion graphics**
-  rendered frame-by-frame in headless Chromium with alpha. That covers the 13 bundled
-  templates and any custom graphic Claude designs for your edit.
+  transitions (glitch, zoom punch, light leak, film burn) and designed titles, lower thirds,
+  overlays and transitions built as **[HyperFrames](https://github.com/heygen-com/hyperframes)
+  compositions** (HTML/CSS/GSAP rendered frame-accurately, with alpha). That covers the 18
+  built-ins in `hf/builtin/`, ~450 HyperFrames registry blocks, and any custom graphic Claude
+  designs for your edit.
 
 ## Motion design
 
 The **motion-design skill** (`.claude/skills/motion-design/`) makes videos that are entirely
 designed: promos, explainers, kinetic typography, logo reveals, data animations, 3D scenes and
-photo montages. Each scene is an HTML page (CSS/SVG/canvas/WebGL, with **GSAP**, **Lottie** and
-**three.js** available offline) rendered frame-accurately, so it can be cut, beat-synced,
-transitioned and mixed with footage like any clip:
+photo montages. Each scene is a HyperFrames composition (CSS/SVG/canvas/WebGL, with **GSAP**,
+**Lottie** and **three.js** served from local copies, so renders work offline). It can play on
+its own, or be cut, beat-synced, transitioned and mixed with graded footage like any vedit clip:
 
 ```json
-{"id": "s1", "scene": "scene_kinetic", "duration": 6, "params": {"lines": ["CORTES", "APERTAS"]}}
+{"id": "s1", "hyperframes": "scene-kinetic", "duration": 6, "variables": {"lines": ["CORTES", "APERTAS"]}}
 ```
 
-Scene templates: `scene_kinetic`, `scene_stats`, `scene_logo_reveal`, `scene_3d_mountains`,
-`scene_photo_stack`. Long scenes render in parallel browser workers.
+Built-in scenes: `scene-kinetic`, `scene-stats`, `scene-logo-reveal`, `scene-3d-mountains`,
+`scene-photo-stack`. The HyperFrames skills (`hyperframes`, `hyperframes-cli`,
+`hyperframes-registry`, `media-use`) are vendored in `.claude/skills/` to match the pinned CLI
+(`bin/hyperframes`).
 
 ## Setup
 
 ```bash
-scripts/setup.sh                # ffmpeg (if missing), Python deps, Playwright renderer, fonts, sfx
+scripts/setup.sh                # ffmpeg (if missing), Python deps, HyperFrames + its browser, fonts, sfx
 scripts/setup.sh --with-whisper # + speech-to-text (needs huggingface.co access the first time)
 bin/vedit doctor
 ```
 
-Requirements: ffmpeg ≥ 5.1 (with libass, libx264), Python ≥ 3.10, Node ≥ 18 (for motion
-graphics). In Claude Code cloud sessions the `SessionStart` hook runs the setup automatically.
+Requirements: ffmpeg ≥ 5.1 (with libass, libx264), Python ≥ 3.10, Node ≥ 22 (for HyperFrames
+graphics and scenes). In Claude Code cloud sessions the `SessionStart` hook runs the setup automatically.
 
 ## Using it with Claude
 
@@ -71,8 +75,9 @@ bin/vedit plan projects/trip/edit.json               # resolved timeline + story
 bin/vedit storyboard projects/trip/edit.json         # one graded still per clip
 bin/vedit render projects/trip/edit.json --preview   # half-res draft
 bin/vedit render projects/trip/edit.json             # final
-bin/vedit templates                                  # motion-graphics templates
-bin/vedit mograph preview title_card --params '{"title":"HELLO"}'
+bin/vedit hf list                                    # built-in HyperFrames compositions
+bin/vedit hf snapshot title-card --variables '{"title":"HELLO"}' --times 0.5,1.5
+bin/vedit hf new projects/trip/hf/end-card --overlay # scaffold your own (then bin/hyperframes add <block>)
 bin/vedit lut teal_orange --out teal_orange.cube     # use the looks in Resolve/Premiere
 ```
 
@@ -90,7 +95,7 @@ bin/vedit demo-media --out projects/demo && bin/vedit render examples/demo/edit.
 | grade model, LUT generation, finishing filters | `vedit/grade.py`, `vedit/tones.py` |
 | per-clip segments (cut, speed, reframe, motion, graded ramp) + composite pass | `vedit/render.py` |
 | animated typography / captions (ASS via libass) | `vedit/text.py` |
-| HTML motion graphics → ProRes 4444 alpha (Playwright) | `vedit/mograph.py`, `mograph/` |
+| HyperFrames bridge: offline build copies, variables, sizing → ProRes 4444 alpha / MP4 | `vedit/hyperframes.py`, `hf/`, `bin/hyperframes` |
 | footage analysis, beat tracking, transcription | `vedit/analyze.py`, `vedit/beats.py`, `vedit/transcribe.py` |
 | procedural sfx and placeholder music | `vedit/synth.py` |
 

@@ -16,7 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from . import grade as G
-from .util import (IMAGE_EXTS, SFX_DIR, TEMPLATES_DIR, VeditError, parse_time, probe,
+from .util import (IMAGE_EXTS, SFX_DIR, VeditError, parse_time, probe,
                    require)
 
 DEFAULT_OUTPUT = {"width": 1920, "height": 1080, "fps": 30, "crf": 18, "preset": "medium",
@@ -50,8 +50,8 @@ TRANSITION_PRESETS: dict[str, dict] = {
     "zoom_punch": {"kind": "cut", "punch": 0.22, "punch_duration": 0.35, "sfx": "impact",
                    "effect": {"type": "flash", "duration": 0.18, "intensity": 0.6}},
     "light_leak": {"kind": "xfade", "xfade": "fade", "duration": 1.0,
-                   "overlay": {"template": "light_leak", "duration": 1.6}},
-    "film_burn": {"kind": "cut", "overlay": {"template": "film_burn", "duration": 1.2},
+                   "overlay": {"hyperframes": "light-leak"}},
+    "film_burn": {"kind": "cut", "overlay": {"hyperframes": "film-burn"},
                   "sfx": "whoosh"},
 }
 
@@ -85,7 +85,7 @@ def xfade_names() -> frozenset[str]:
 
 @dataclass
 class Transition:
-    kind: str = "cut"           # cut | xfade | mograph
+    kind: str = "cut"           # cut | xfade
     name: str = "cut"
     xfade: str | None = None
     duration: float = 0.0       # seconds the transition lasts
@@ -254,19 +254,19 @@ def resolve_transition(raw, fps: float) -> Transition:
         base = dict(TRANSITION_PRESETS[name])
     elif name in xfade_names():
         base = {"kind": "xfade", "xfade": name, "duration": 0.6}
+    elif name == "hyperframes":
+        project = raw.get("project") or raw.get("hyperframes")
+        if not project:
+            raise VeditError("hyperframes transition needs 'project' (a HyperFrames project directory)")
+        base = {"kind": "cut", "overlay": {"hyperframes": project,
+                                           **{k: raw[k] for k in ("variables", "blend", "cover_at", "duration", "opacity")
+                                              if k in raw}}}
     elif name == "mograph":
-        tpl = raw.get("template") or raw.get("html")
-        if not tpl:
-            raise VeditError("mograph transition needs 'template' or 'html'")
-        base = {"kind": "cut", "overlay": {k: raw[k] for k in ("template", "html", "params", "blend")
-                                           if k in raw}}
-        if "duration" in raw:
-            base["overlay"]["duration"] = raw["duration"]
-        if "cover_at" in raw:
-            base["overlay"]["cover_at"] = raw["cover_at"]
+        raise VeditError("the 'mograph' transition was replaced by 'hyperframes': "
+                         '{"type": "hyperframes", "project": "<HyperFrames project dir>", "cover_at": 0.5}')
     else:
         raise VeditError(f"unknown transition {name!r}. Use a preset ({', '.join(TRANSITION_PRESETS)}), "
-                         f"an ffmpeg xfade name, or 'mograph'.")
+                         f"an ffmpeg xfade name, or 'hyperframes'.")
     t = Transition(kind=base["kind"], name=name, xfade=base.get("xfade"))
     t.duration = float(raw.get("duration", base.get("duration", 0.0)))
     if t.kind == "xfade":
@@ -279,8 +279,8 @@ def resolve_transition(raw, fps: float) -> Transition:
         t.effect = {**base.get("effect", {}), **(raw.get("effect") or {})}
     if "overlay" in base or "overlay" in raw:
         ov = {**base.get("overlay", {}), **(raw.get("overlay") or {})}
-        if name in ("light_leak", "film_burn") and "params" in raw:
-            ov["params"] = raw["params"]
+        if name in ("light_leak", "film_burn") and "variables" in raw:
+            ov["variables"] = raw["variables"]
         t.overlay = ov
     t.punch = float(raw.get("punch", base.get("punch", 0.0)))
     t.punch_duration = float(raw.get("punch_duration", base.get("punch_duration", 0.35)))
@@ -389,13 +389,17 @@ def build_plan(spec_or_path, base_dir: Path | None = None) -> Plan:
         if "color" in rc and "source" not in rc:
             kind, path, info = "color", None, None
             src_in = 0.0
-        elif ("scene" in rc or "html" in rc) and "source" not in rc:
-            # a full-screen motion-design scene (HTML page) used as a clip
+        elif "hyperframes" in rc and "source" not in rc:
+            # a full-screen HyperFrames composition used as a clip
+            from . import hyperframes as HF
             kind, info = "scene", None
-            path = template_path(rc.get("html") or rc["scene"], base_dir)
+            path = HF.resolve(rc["hyperframes"], base_dir)
             src_in = 0.0
             if "duration" not in rc and "out" not in rc:
-                rc = {**rc, "duration": float(template_meta(str(path)).get("duration", 3.0))}
+                rc = {**rc, "duration": HF.meta(path)["duration"]}
+        elif ("scene" in rc or "html" in rc) and "source" not in rc:
+            raise VeditError(f"clip {cid}: 'scene'/'html' clips were replaced by HyperFrames projects: "
+                             '{"hyperframes": "<project dir>", "variables": {...}}')
         else:
             if "source" not in rc:
                 raise VeditError(f"clip {cid}: needs 'source' (or 'color' for a solid slug)")
@@ -550,33 +554,6 @@ def snap_info(plan: Plan) -> list[dict]:
             "story": arc_label(plan.arc, c.start + c.duration / 2),
         })
     return rows
-
-
-def template_meta(name_or_path: str, base: Path | None = None) -> dict:
-    """Read <meta name="vedit:*"> tags from a mograph HTML file."""
-    path = template_path(name_or_path, base)
-    html = path.read_text()
-    meta = {"path": path}
-    for m in re.finditer(r'<meta\s+name="vedit:([\w-]+)"\s+content="([^"]*)"', html):
-        key, val = m.group(1).replace("-", "_"), m.group(2)
-        try:
-            meta[key] = float(val)
-        except ValueError:
-            meta[key] = val
-    return meta
-
-
-def template_path(name_or_path: str, base: Path | None = None) -> Path:
-    p = Path(name_or_path)
-    if p.suffix == ".html":
-        cand = p if p.is_absolute() else ((base or Path.cwd()) / p)
-        if cand.exists():
-            return cand
-    t = TEMPLATES_DIR / f"{name_or_path}.html"
-    if t.exists():
-        return t
-    avail = ", ".join(sorted(x.stem for x in TEMPLATES_DIR.glob("*.html")))
-    raise VeditError(f"mograph template/html not found: {name_or_path}. Templates: {avail}")
 
 
 def is_image(path: Path) -> bool:

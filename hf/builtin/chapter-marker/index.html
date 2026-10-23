@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- Chapter marker: oversized outlined number, a rule that draws across, and a chapter title that types on. Structures a story into acts.
+     variables: number: e.g. '01' or 'II'; title; accent: CSS color; color: CSS color; position: left|center -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      #root { position: absolute; inset: 0; overflow: hidden; }
+
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: transparent; }
+  #c { position: absolute; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 3vh; }
+  #num { font: 400 30vh 'Bebas Neue', 'Anton', sans-serif; color: transparent; line-height: 0.8; }
+  #right { display: flex; flex-direction: column; gap: 1.6vh; }
+  #rule { height: 0.35vh; width: 22vw; transform-origin: left; }
+  #title { font: 600 3.4vh 'Space Grotesk', 'Montserrat', sans-serif; letter-spacing: 0.4em; text-transform: uppercase; white-space: nowrap; }
+
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="chapter-marker" data-start="0" data-duration="3.5" data-width="1920" data-height="1080" data-vedit-kind="title">
+<div id="c"><div id="num"></div><div id="right"><div id="rule"></div><div id="title"></div></div></div>
+    </div>
+    <script src="assets/vedit/vm-shim.js"></script>
+    <script>
+
+  const P = VM.params({ number: '01', title: 'The Beginning', accent: '#e8c27a', color: '#ffffff', position: 'left' });
+  const c = document.getElementById('c'), num = document.getElementById('num'), rule = document.getElementById('rule'), title = document.getElementById('title');
+  if (P.position === 'center') { c.style.left = '50%'; c.style.transform = 'translate(-50%, -50%)'; } else c.style.left = '8vw';
+  num.textContent = P.number; num.style.webkitTextStroke = `0.35vh ${P.color}`;
+  rule.style.background = P.accent; title.style.color = P.color; title.textContent = P.title;
+  const chars = VM.split(title);
+  VM.onFrame((t) => {
+    const D = VM.duration, out = D - 0.6;
+    const pn = VM.prog(t, 0, 0.9, 'outExpo'), po = VM.prog(t, out, 0.5, 'inExpo');
+    num.style.opacity = pn * (1 - po);
+    num.style.transform = `translateX(${(1 - pn) * -6 + po * -6}vh)`;
+    num.style.color = `rgba(255,255,255,${0.12 * pn * (1 - po)})`;
+    rule.style.transform = `scaleX(${VM.prog(t, 0.3, 0.7, 'inOutExpo') * (1 - VM.prog(t, out + 0.1, 0.4, 'inOutExpo'))})`;
+    chars.forEach((s, i) => { s.style.opacity = (t > 0.6 + i * 0.035 ? 1 : 0) * (1 - VM.prog(t, out, 0.3)); });
+  });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[VM.id] = VM.start();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- Full-screen kinetic typography (GSAP): each line rises out of a mask letter by letter, colour blocks wipe between lines, everything locks up into a final stacked title. Lines land on the music's beats when the edit has a beat grid.
+     variables: lines: [strings]; bg, fg, accent: CSS colours; font: CSS font-family; beat: seconds per line when no beat grid; every: use every Nth beat -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      #root { position: absolute; inset: 0; overflow: hidden; }
+
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .line { position: absolute; overflow: hidden; white-space: nowrap; line-height: 0.86; padding: 0.04em 0.02em; }
+  .ch { display: inline-block; will-change: transform; }
+  .block { position: absolute; left: -10vw; width: 120vw; height: 120vh; top: -10vh; }
+  #lockup { position: absolute; left: 0; right: 0; top: 50%; display: flex; flex-direction: column; align-items: center; opacity: 0; }
+  #lockup div { line-height: 0.88; }
+  #rule { height: 0.8vmin; width: 22vmin; transform-origin: center; }
+
+
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .line { position: absolute; overflow: hidden; white-space: nowrap; line-height: 0.86; padding: 0.04em 0.02em; }
+  .ch { display: inline-block; will-change: transform; }
+  .block { position: absolute; left: -10vw; width: 120vw; height: 120vh; top: -10vh; }
+  #lockup { position: absolute; left: 0; right: 0; top: 50%; display: flex; flex-direction: column; align-items: center; opacity: 0; }
+  #lockup div { line-height: 0.88; }
+  #rule { height: 0.8vmin; width: 22vmin; transform-origin: center; }
+
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="scene-kinetic" data-start="0" data-duration="6" data-width="1920" data-height="1080" data-vedit-kind="scene">
+<div id="stage"><div class="block" id="b1"></div><div class="block" id="b2"></div><div id="rule"></div><div id="lockup"></div></div>
+
+    </div>
+    <script src="assets/vedit/vm-shim.js"></script>
+    <script>
+
+  const P = VM.params({ lines: ['AUTUNNO', 'IN', 'BARBAGIA'], bg: '#0e0d0c', fg: '#f4efe6', accent: '#e2412b',
+                        font: "'Anton', 'Bebas Neue', sans-serif", beat: 0.9, every: 2 });
+  VM.root.style.background = P.bg;
+  const stage = document.getElementById('stage');
+  const W = innerWidth, H = innerHeight, size = Math.min(W * 0.95 / Math.max(...P.lines.map((l) => l.length * 0.52)), H * 0.42);
+  // timing: on the beat grid when available, otherwise every P.beat seconds
+  const grid = VM.beats.filter((b) => b > 0.15).filter((_, i) => i % P.every === 0);
+  const at = (i) => (grid.length > i ? grid[i] : 0.2 + i * P.beat);
+  const tl = VM.tl;   // the composition's registered (paused) timeline
+  const b1 = document.getElementById('b1'), b2 = document.getElementById('b2');
+  b1.style.background = P.accent; b2.style.background = P.fg;
+  gsap.set([b1, b2], { xPercent: -110, skewX: -12 });   // initial state owned by GSAP (not CSS) so transforms don't stack
+  P.lines.forEach((text, i) => {
+    const line = document.createElement('div'); line.className = 'line';
+    line.style.font = `400 ${size}px ${P.font}`; line.style.color = i % 2 ? P.bg : P.fg;
+    line.textContent = text; stage.appendChild(line);
+    const chars = VM.split(line); chars.forEach((c) => c.classList.add('ch'));
+    const t0 = at(i), t1 = at(i + 1);
+    // the background flips between dark and light every other line, wiped by a skewed block
+    if (i % 2 === 1) tl.fromTo(b2, { xPercent: -110 }, { xPercent: 0, duration: 0.35, ease: 'expo.inOut' }, t0 - 0.3);
+    if (i % 2 === 0 && i > 0) tl.to(b2, { xPercent: 110, duration: 0.35, ease: 'expo.inOut' }, t0 - 0.3);
+    tl.fromTo(b1, { xPercent: -110 }, { xPercent: 110, duration: 0.5, ease: 'power3.inOut' }, t0 - 0.42);
+    tl.fromTo(chars, { yPercent: 115, rotate: 6 }, { yPercent: 0, rotate: 0, duration: 0.55, ease: 'expo.out', stagger: 0.028 }, t0);
+    tl.fromTo(line, { scale: 1.08 }, { scale: 1, duration: Math.max(0.6, t1 - t0), ease: 'power1.out' }, t0);
+    if (i < P.lines.length - 1) tl.to(chars, { yPercent: -115, duration: 0.3, ease: 'expo.in', stagger: 0.015 }, t1 - 0.32);
+    else tl.to(line, { opacity: 0, duration: 0.01 }, t1 - 0.05);
+  });
+  // final lockup: all lines stacked, accent rule draws under it
+  const n = P.lines.length, tEnd = at(n);
+  const lock = document.getElementById('lockup');
+  P.lines.forEach((text, i) => {
+    const d = document.createElement('div'); d.textContent = text;
+    d.style.font = `400 ${size * 0.5}px ${P.font}`; d.style.color = i === n - 1 ? P.accent : P.fg;
+    lock.appendChild(d);
+  });
+  tl.to(b2, { xPercent: 110, duration: 0.3, ease: 'expo.inOut' }, tEnd - 0.35);
+  tl.fromTo(lock, { opacity: 0, scale: 0.92, yPercent: -50, filter: 'blur(1.2vmin)' }, { opacity: 1, scale: 1, yPercent: -50, filter: 'blur(0vmin)', duration: 0.7, ease: 'expo.out' }, tEnd - 0.05);
+  const rule = document.getElementById('rule'); rule.style.background = P.accent;
+  rule.style.position = 'relative'; rule.style.marginTop = '2.2vmin';
+  lock.appendChild(rule);                                   // sits right under the lockup
+  tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: 'expo.inOut' }, tEnd + 0.25);
+
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines[VM.id] = VM.start();
+    </script>
+  </body>
+</html>
